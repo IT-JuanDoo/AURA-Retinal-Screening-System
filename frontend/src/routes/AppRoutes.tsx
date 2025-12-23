@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from '../pages/auth/LoginPage';
 import RegisterPage from '../pages/auth/RegisterPage';
-import ProfilePage from '../pages/user/ProfilePage';
+import PatientProfilePage from '../pages/patient/PatientProfilePage';
 import HomePage from '../pages/HomePage';
 import PatientDashboard from '../pages/patient/PatientDashboard';
 import { useAuthStore } from '../store/authStore';
@@ -64,7 +64,7 @@ const AppRoutes = () => {
         path="/profile"
         element={
           <ProtectedRoute>
-            <ProfilePage />
+            <PatientProfilePage />
           </ProtectedRoute>
         }
       />

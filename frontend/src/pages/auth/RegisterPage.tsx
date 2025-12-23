@@ -13,8 +13,7 @@ const RegisterPage = () => {
   const { register, googleLogin, facebookLogin, isLoading, error, clearError } = useAuthStore();
   
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
+    fullName: '',
     phone: '',
     email: '',
     password: '',
@@ -44,11 +43,16 @@ const RegisterPage = () => {
       return;
     }
 
+    // Split fullName thành firstName và lastName
+    const nameParts = formData.fullName.trim().split(/\s+/);
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
     const success = await register({
       email: formData.email,
       password: formData.password,
-      firstName: formData.firstName,
-      lastName: formData.lastName,
+      firstName: firstName,
+      lastName: lastName,
       phone: formData.phone
     });
 
@@ -268,36 +272,20 @@ const RegisterPage = () => {
 
             {/* Email Form */}
             <form className="space-y-3" onSubmit={handleSubmit}>
-              {/* Name Fields */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="firstName">
-                    Họ
-                  </label>
-                  <input
-                    className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
-                    id="firstName"
-                    name="firstName"
-                    placeholder="Nguyễn"
-                    type="text"
-                    value={formData.firstName}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="lastName">
-                    Tên
-                  </label>
-                  <input
-                    className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
-                    id="lastName"
-                    name="lastName"
-                    placeholder="Văn A"
-                    type="text"
-                    value={formData.lastName}
-                    onChange={handleChange}
-                  />
-                </div>
+              {/* Full Name Field */}
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="fullName">
+                  Họ và tên
+                </label>
+                <input
+                  className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
+                  id="fullName"
+                  name="fullName"
+                  placeholder="Nguyễn Văn A"
+                  type="text"
+                  value={formData.fullName}
+                  onChange={handleChange}
+                />
               </div>
 
               {/* Phone */}

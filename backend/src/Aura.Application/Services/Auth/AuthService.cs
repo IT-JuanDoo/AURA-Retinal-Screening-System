@@ -584,12 +584,24 @@ public class AuthService : IAuthService
                 return null;
             }
 
+            // Xử lý tên từ Google: ưu tiên GivenName/FamilyName, nếu không có thì split từ Name
+            string? firstName = googleUser.GivenName;
+            string? lastName = googleUser.FamilyName;
+            
+            if (string.IsNullOrEmpty(firstName) && string.IsNullOrEmpty(lastName) && !string.IsNullOrEmpty(googleUser.Name))
+            {
+                // Split full name thành first name và last name
+                var nameParts = googleUser.Name.Trim().Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                firstName = nameParts.Length > 0 ? nameParts[0] : null;
+                lastName = nameParts.Length > 1 ? nameParts[1] : null;
+            }
+
             return new SocialUserInfo
             {
                 ProviderId = googleUser.Id ?? "",
                 Email = googleUser.Email,
-                FirstName = googleUser.GivenName,
-                LastName = googleUser.FamilyName,
+                FirstName = firstName,
+                LastName = lastName,
                 ProfileImageUrl = googleUser.Picture,
                 Provider = "google"
             };
@@ -620,9 +632,9 @@ public class AuthService : IAuthService
         {
             using var httpClient = new HttpClient();
             
-            // Gọi Facebook Graph API để lấy thông tin user
+            // Gọi Facebook Graph API để lấy thông tin user (bao gồm name để fallback)
             var response = await httpClient.GetAsync(
-                $"https://graph.facebook.com/me?fields=id,email,first_name,last_name,picture&access_token={accessToken}");
+                $"https://graph.facebook.com/me?fields=id,email,first_name,last_name,name,picture&access_token={accessToken}");
             
             if (!response.IsSuccessStatusCode)
             {
@@ -646,12 +658,24 @@ public class AuthService : IAuthService
             // Facebook có thể không trả về email nếu user không cấp quyền
             var email = facebookUser.Email ?? $"{facebookUser.Id}@facebook.com";
 
+            // Xử lý tên từ Facebook: ưu tiên FirstName/LastName, nếu không có thì split từ Name
+            string? firstName = facebookUser.FirstName;
+            string? lastName = facebookUser.LastName;
+            
+            if (string.IsNullOrEmpty(firstName) && string.IsNullOrEmpty(lastName) && !string.IsNullOrEmpty(facebookUser.Name))
+            {
+                // Split full name thành first name và last name
+                var nameParts = facebookUser.Name.Trim().Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                firstName = nameParts.Length > 0 ? nameParts[0] : null;
+                lastName = nameParts.Length > 1 ? nameParts[1] : null;
+            }
+
             return new SocialUserInfo
             {
                 ProviderId = facebookUser.Id,
                 Email = email,
-                FirstName = facebookUser.FirstName,
-                LastName = facebookUser.LastName,
+                FirstName = firstName,
+                LastName = lastName,
                 ProfileImageUrl = facebookUser.Picture?.Data?.Url,
                 Provider = "facebook"
             };
@@ -670,6 +694,7 @@ public class AuthService : IAuthService
         public string? Email { get; set; }
         public string? FirstName { get; set; }
         public string? LastName { get; set; }
+        public string? Name { get; set; }
         public FacebookPicture? Picture { get; set; }
     }
 
