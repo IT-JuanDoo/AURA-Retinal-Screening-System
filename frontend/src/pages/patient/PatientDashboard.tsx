@@ -119,7 +119,7 @@ const PatientDashboard = () => {
               <div className="relative group">
                 <div 
                   className="h-8 w-8 rounded-full bg-cover bg-center ring-2 ring-slate-100 dark:ring-slate-800 cursor-pointer hover:ring-primary transition-all"
-                  style={{ backgroundImage: `url("https://ui-avatars.com/api/?name=${user?.firstName || 'User'}&background=2b8cee&color=fff")` }}
+                  style={{ backgroundImage: `url("${user?.profileImageUrl || `https://ui-avatars.com/api/?name=${user?.firstName || 'User'}&background=2b8cee&color=fff`}")` }}
                   title={`${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'Người dùng'}
                 />
                 

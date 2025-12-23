@@ -488,6 +488,20 @@ public class AuthService : IAuthService
             _logger.LogInformation("New user registered via {Provider}: {Email}", provider, user.Email);
         }
 
+        // Update user info if provided (avatar, name might have changed)
+        if (!string.IsNullOrEmpty(socialUser.ProfileImageUrl) && user.ProfileImageUrl != socialUser.ProfileImageUrl)
+        {
+            user.ProfileImageUrl = socialUser.ProfileImageUrl;
+        }
+        if (!string.IsNullOrEmpty(socialUser.FirstName))
+        {
+            user.FirstName = socialUser.FirstName;
+        }
+        if (!string.IsNullOrEmpty(socialUser.LastName))
+        {
+            user.LastName = socialUser.LastName;
+        }
+
         // Generate tokens
         var accessToken = _jwtService.GenerateAccessToken(user);
         var refreshToken = CreateRefreshToken(user.Id, ipAddress);
