@@ -1,24 +1,97 @@
-import { Routes, Route } from 'react-router-dom';
-// TODO: Import pages
-// import LoginPage from '../pages/auth/LoginPage';
-// import RegisterPage from '../pages/auth/RegisterPage';
-// TODO: Import PrivateRoute component
+import { Routes, Route, Navigate } from 'react-router-dom';
+import LoginPage from '../pages/auth/LoginPage';
+import RegisterPage from '../pages/auth/RegisterPage';
+import { useAuthStore } from '../store/authStore';
+
+// Protected Route component
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated } = useAuthStore();
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  return <>{children}</>;
+};
+
+// Public Route component (redirect to dashboard if authenticated)
+const PublicRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated } = useAuthStore();
+  
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return <>{children}</>;
+};
+
+// Placeholder Dashboard component
+const DashboardPage = () => {
+  const { user, logout } = useAuthStore();
+  
+  return (
+    <div className="min-h-screen bg-background-light dark:bg-background-dark p-8">
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-white dark:bg-surface-dark rounded-xl shadow-soft p-8">
+          <h1 className="text-2xl font-bold text-text-main dark:text-white mb-4">
+            Chào mừng đến với AURA Dashboard
+          </h1>
+          <p className="text-text-secondary dark:text-gray-400 mb-4">
+            Xin chào, {user?.firstName || user?.email}!
+          </p>
+          <p className="text-text-secondary dark:text-gray-400 mb-6">
+            Email: {user?.email}
+          </p>
+          <button
+            onClick={logout}
+            className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+          >
+            Đăng xuất
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const AppRoutes = () => {
   return (
     <Routes>
       {/* Public routes */}
-      {/* <Route path="/login" element={<LoginPage />} /> */}
-      {/* <Route path="/register" element={<RegisterPage />} /> */}
-
+      <Route 
+        path="/login" 
+        element={
+          <PublicRoute>
+            <LoginPage />
+          </PublicRoute>
+        } 
+      />
+      <Route 
+        path="/register" 
+        element={
+          <PublicRoute>
+            <RegisterPage />
+          </PublicRoute>
+        } 
+      />
+      
       {/* Protected routes */}
-      {/* <Route path="/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} /> */}
-
-      {/* Default route */}
-      <Route path="/" element={<div>Welcome to AURA</div>} />
+      <Route 
+        path="/dashboard" 
+        element={
+          <ProtectedRoute>
+            <DashboardPage />
+          </ProtectedRoute>
+        } 
+      />
+      
+      {/* Redirect root to login or dashboard */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      
+      {/* 404 - redirect to login */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 };
 
 export default AppRoutes;
-

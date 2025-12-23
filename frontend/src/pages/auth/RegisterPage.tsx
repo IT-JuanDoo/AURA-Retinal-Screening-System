@@ -3,38 +3,68 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
 
-const LoginPage = () => {
+const RegisterPage = () => {
   const navigate = useNavigate();
-  const { login, isLoading, error, clearError } = useAuthStore();
+  const { register, isLoading, error, clearError } = useAuthStore();
   
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    phone: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
+  });
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
-    
-    const success = await login({ email, password });
+
+    if (formData.password !== formData.confirmPassword) {
+      toast.error('Mật khẩu xác nhận không khớp');
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      toast.error('Mật khẩu phải có ít nhất 6 ký tự');
+      return;
+    }
+
+    const success = await register({
+      email: formData.email,
+      password: formData.password,
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      phone: formData.phone
+    });
+
     if (success) {
-      toast.success('Đăng nhập thành công!');
-      navigate('/dashboard');
+      toast.success('Đăng ký thành công! Vui lòng kiểm tra email để xác thực.');
+      navigate('/login');
     } else {
-      toast.error(error || 'Đăng nhập thất bại');
+      toast.error(error || 'Đăng ký thất bại');
     }
   };
 
-  const handleGoogleLogin = async () => {
-    toast.error('Đăng nhập Google đang được phát triển');
+  const handleGoogleRegister = async () => {
+    toast.error('Đăng ký Google đang được phát triển');
   };
 
-  const handleFacebookLogin = async () => {
-    toast.error('Đăng nhập Facebook đang được phát triển');
+  const handleFacebookRegister = async () => {
+    toast.error('Đăng ký Facebook đang được phát triển');
   };
 
-  const handleTwitterLogin = async () => {
-    toast.error('Đăng nhập X đang được phát triển');
+  const handleTwitterRegister = async () => {
+    toast.error('Đăng ký X đang được phát triển');
   };
 
   return (
@@ -103,7 +133,7 @@ const LoginPage = () => {
         </div>
       </div>
 
-      {/* Right Panel - Login Form */}
+      {/* Right Panel - Register Form */}
       <div className="w-full lg:w-[55%] flex flex-col relative bg-white dark:bg-background-dark">
         {/* Mobile Header */}
         <div className="lg:hidden p-4 flex items-center justify-between border-b border-border-light dark:border-border-dark">
@@ -126,35 +156,35 @@ const LoginPage = () => {
         </div>
 
         {/* Form Container */}
-        <div className="flex-1 flex flex-col justify-center items-center px-6 py-8 lg:px-16">
-          <div className="w-full max-w-[380px] space-y-6">
+        <div className="flex-1 flex flex-col justify-center items-center px-6 py-6 lg:px-16">
+          <div className="w-full max-w-[380px] space-y-5">
             {/* Header */}
             <div className="text-center">
               <h1 className="text-2xl font-bold tracking-tight text-text-main dark:text-white">
-                Chào mừng đến với AURA
+                Tạo tài khoản mới
               </h1>
               <p className="mt-1 text-sm text-text-secondary dark:text-gray-400">
-                Đăng nhập để truy cập hệ thống quản trị.
+                Nhập thông tin chi tiết để bắt đầu với AURA.
               </p>
             </div>
 
             {/* Tabs */}
             <div className="flex p-1 bg-background-light dark:bg-surface-dark rounded-xl border border-border-light dark:border-border-dark">
-              <button className="flex-1 py-2.5 text-sm font-semibold rounded-lg bg-white dark:bg-background-dark text-text-main dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/5 transition-all text-center">
-                Đăng nhập
-              </button>
               <Link
-                to="/register"
+                to="/login"
                 className="flex-1 py-2.5 text-sm font-semibold rounded-lg text-text-secondary hover:text-text-main dark:text-gray-400 dark:hover:text-white transition-all text-center"
               >
-                Đăng ký
+                Đăng nhập
               </Link>
+              <button className="flex-1 py-2.5 text-sm font-semibold rounded-lg bg-white dark:bg-background-dark text-text-main dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/5 transition-all text-center">
+                Đăng ký
+              </button>
             </div>
 
-            {/* Social Login Buttons */}
+            {/* Social Register Buttons */}
             <div className="grid grid-cols-3 gap-3">
               <button
-                onClick={handleGoogleLogin}
+                onClick={handleGoogleRegister}
                 disabled={isLoading}
                 className="flex items-center justify-center gap-2 px-3 py-2.5 border border-border-light dark:border-border-dark rounded-lg hover:bg-background-light dark:hover:bg-surface-dark transition-all bg-white dark:bg-transparent disabled:opacity-50"
               >
@@ -164,26 +194,29 @@ const LoginPage = () => {
                   <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                 </svg>
+                <span className="text-xs font-medium text-text-main dark:text-white">Google</span>
               </button>
 
               <button
-                onClick={handleFacebookLogin}
+                onClick={handleFacebookRegister}
                 disabled={isLoading}
                 className="flex items-center justify-center gap-2 px-3 py-2.5 border border-border-light dark:border-border-dark rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all bg-white dark:bg-transparent disabled:opacity-50"
               >
                 <svg className="w-5 h-5 text-[#1877F2]" fill="currentColor" viewBox="0 0 24 24">
                   <path clipRule="evenodd" d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" fillRule="evenodd"/>
                 </svg>
+                <span className="text-xs font-medium text-text-main dark:text-white">Facebook</span>
               </button>
 
               <button
-                onClick={handleTwitterLogin}
+                onClick={handleTwitterRegister}
                 disabled={isLoading}
                 className="flex items-center justify-center gap-2 px-3 py-2.5 border border-border-light dark:border-border-dark rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-all bg-white dark:bg-transparent disabled:opacity-50"
               >
                 <svg className="w-5 h-5 text-black dark:text-white" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M13.6823 10.6218L20.2391 3H18.6854L12.9921 9.61788L8.44486 3H3.2002L10.0765 13.0074L3.2002 21H4.75404L10.7663 14.0113L15.5685 21H20.8131L13.6819 10.6218H13.6823ZM11.5541 13.0956L10.8574 12.0991L5.31391 4.16971H7.70053L12.1742 10.5689L12.8709 11.5655L18.6861 19.8835H16.2995L11.5541 13.096V13.0956Z"/>
                 </svg>
+                <span className="text-xs font-medium text-text-main dark:text-white">X</span>
               </button>
             </div>
 
@@ -191,26 +224,82 @@ const LoginPage = () => {
             <div className="relative flex items-center">
               <div className="flex-grow border-t border-border-light dark:border-border-dark"></div>
               <span className="flex-shrink-0 mx-4 text-xs font-medium text-text-secondary uppercase tracking-wider">
-                hoặc
+                hoặc đăng ký bằng email
               </span>
               <div className="flex-grow border-t border-border-light dark:border-border-dark"></div>
             </div>
 
             {/* Email Form */}
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              <div className="space-y-1.5">
-                <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="email">
-                  Địa chỉ Email
+            <form className="space-y-3" onSubmit={handleSubmit}>
+              {/* Name Fields */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="firstName">
+                    Họ
+                  </label>
+                  <input
+                    className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
+                    id="firstName"
+                    name="firstName"
+                    placeholder="Nguyễn"
+                    type="text"
+                    value={formData.firstName}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="lastName">
+                    Tên
+                  </label>
+                  <input
+                    className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
+                    id="lastName"
+                    name="lastName"
+                    placeholder="Văn A"
+                    type="text"
+                    value={formData.lastName}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="phone">
+                  Số điện thoại
                 </label>
                 <div className="relative">
                   <input
-                    className="block w-full px-4 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
+                    className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
+                    id="phone"
+                    name="phone"
+                    placeholder="0901 234 567"
+                    type="tel"
+                    value={formData.phone}
+                    onChange={handleChange}
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-text-secondary">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              {/* Email */}
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="email">
+                  Địa chỉ Email <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
                     id="email"
                     name="email"
                     placeholder="ten@phongkham.com"
                     type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={formData.email}
+                    onChange={handleChange}
                     required
                   />
                   <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-text-secondary">
@@ -221,56 +310,70 @@ const LoginPage = () => {
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="password">
-                  Mật khẩu
-                </label>
-                <div className="relative">
-                  <input
-                    className="block w-full px-4 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
-                    id="password"
-                    name="password"
-                    placeholder="••••••••"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                  <button
-                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-text-secondary hover:text-text-main transition-colors cursor-pointer focus:outline-none"
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <input
-                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary bg-white dark:bg-surface-dark dark:border-border-dark cursor-pointer"
-                    id="remember-me"
-                    name="remember-me"
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                  />
-                  <label className="ml-2 block text-sm text-text-main dark:text-gray-300 cursor-pointer" htmlFor="remember-me">
-                    Ghi nhớ đăng nhập
+              {/* Password Row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="password">
+                    Mật khẩu <span className="text-red-500">*</span>
                   </label>
+                  <div className="relative">
+                    <input
+                      className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
+                      id="password"
+                      name="password"
+                      placeholder="••••••••"
+                      type={showPassword ? 'text' : 'password'}
+                      value={formData.password}
+                      onChange={handleChange}
+                      required
+                      minLength={6}
+                    />
+                    <button
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-text-secondary hover:text-text-main transition-colors cursor-pointer focus:outline-none"
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        {showPassword ? (
+                          <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                        ) : (
+                          <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
+                        )}
+                      </svg>
+                    </button>
+                  </div>
                 </div>
-                <Link className="text-sm font-medium text-primary hover:text-primary-dark transition-colors" to="/forgot-password">
-                  Quên mật khẩu?
-                </Link>
+
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="confirmPassword">
+                    Xác nhận <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
+                      id="confirmPassword"
+                      name="confirmPassword"
+                      placeholder="••••••••"
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      required
+                    />
+                    <button
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-text-secondary hover:text-text-main transition-colors cursor-pointer focus:outline-none"
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        {showConfirmPassword ? (
+                          <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                        ) : (
+                          <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
+                        )}
+                      </svg>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {error && (
@@ -290,7 +393,7 @@ const LoginPage = () => {
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                 ) : (
-                  'Đăng nhập'
+                  'Tạo tài khoản'
                 )}
               </button>
             </form>
@@ -298,12 +401,12 @@ const LoginPage = () => {
             {/* Footer Links */}
             <div className="text-center text-sm text-text-secondary">
               <p>
-                Bạn chưa có tài khoản?{' '}
-                <Link className="font-semibold text-primary hover:text-primary-dark transition-colors" to="/register">
-                  Tạo tài khoản mới
+                Bạn đã có tài khoản?{' '}
+                <Link className="font-semibold text-primary hover:text-primary-dark transition-colors" to="/login">
+                  Đăng nhập ngay
                 </Link>
               </p>
-              <div className="flex justify-center gap-4 mt-4 text-xs opacity-70">
+              <div className="flex justify-center gap-4 mt-3 text-xs opacity-70">
                 <a className="hover:text-text-main dark:hover:text-white transition-colors" href="#">
                   Chính sách bảo mật
                 </a>
@@ -320,4 +423,4 @@ const LoginPage = () => {
   );
 };
 
-export default LoginPage;
+export default RegisterPage;

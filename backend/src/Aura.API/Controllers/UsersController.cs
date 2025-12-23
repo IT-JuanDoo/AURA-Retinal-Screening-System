@@ -9,38 +9,37 @@ public class UsersController : ControllerBase
     // TODO: Inject IUserService
 
     [HttpGet]
-    public async Task<IActionResult> GetUsers()
+    public IActionResult GetUsers()
     {
         // TODO: Implement get all users
-        return Ok();
+        return Ok(new { message = "Get all users - Not implemented yet" });
     }
 
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetUser(string id)
+    public IActionResult GetUser(string id)
     {
         // TODO: Implement get user by id
-        return Ok();
+        return Ok(new { message = $"Get user {id} - Not implemented yet" });
     }
 
     [HttpPut("{id}")]
-    public async Task<IActionResult> UpdateUser(string id, [FromBody] object updateDto)
+    public IActionResult UpdateUser(string id, [FromBody] object updateDto)
     {
         // TODO: Implement update user
-        return Ok();
+        return Ok(new { message = $"Update user {id} - Not implemented yet" });
     }
 
     [HttpDelete("{id}")]
-    public async Task<IActionResult> DeleteUser(string id)
+    public IActionResult DeleteUser(string id)
     {
         // TODO: Implement delete user
-        return Ok();
+        return Ok(new { message = $"Delete user {id} - Not implemented yet" });
     }
 
     [HttpPost("{id}/upload-avatar")]
-    public async Task<IActionResult> UploadAvatar(string id, IFormFile file)
+    public IActionResult UploadAvatar(string id, IFormFile file)
     {
         // TODO: Implement upload avatar
-        return Ok();
+        return Ok(new { message = $"Upload avatar for user {id} - Not implemented yet" });
     }
 }
-
