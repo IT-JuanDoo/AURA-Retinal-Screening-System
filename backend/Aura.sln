@@ -1,0 +1,27 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aura.API", "src\Aura.API\Aura.API.csproj", "{API_PROJECT_GUID}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aura.Core", "src\Aura.Core\Aura.Core.csproj", "{CORE_PROJECT_GUID}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aura.Application", "src\Aura.Application\Aura.Application.csproj", "{APP_PROJECT_GUID}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aura.Infrastructure", "src\Aura.Infrastructure\Aura.Infrastructure.csproj", "{INFRA_PROJECT_GUID}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aura.Shared", "src\Aura.Shared\Aura.Shared.csproj", "{SHARED_PROJECT_GUID}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{API_PROJECT_GUID}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{API_PROJECT_GUID}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{API_PROJECT_GUID}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{API_PROJECT_GUID}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
+
