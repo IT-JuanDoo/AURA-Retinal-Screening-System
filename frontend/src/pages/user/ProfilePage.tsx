@@ -29,6 +29,9 @@ type UserProfile = {
   emergencyContactPhone?: string;
   lifestyle?: string;
   medicalNotes?: string;
+  // local-only fields for password change form
+  password?: string;
+  newPassword?: string;
 };
 
 const emptyProfile: UserProfile = {

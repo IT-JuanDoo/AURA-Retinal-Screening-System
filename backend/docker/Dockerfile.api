@@ -1,0 +1,29 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# copy solution & project files
+COPY ../Aura.sln ./Aura.sln
+COPY ../src/Aura.API/Aura.API.csproj ./src/Aura.API/Aura.API.csproj
+COPY ../src/Aura.Application/Aura.Application.csproj ./src/Aura.Application/Aura.Application.csproj
+COPY ../src/Aura.Core/Aura.Core.csproj ./src/Aura.Core/Aura.Core.csproj
+COPY ../src/Aura.Infrastructure/Aura.Infrastructure.csproj ./src/Aura.Infrastructure/Aura.Infrastructure.csproj
+COPY ../src/Aura.Shared/Aura.Shared.csproj ./src/Aura.Shared/Aura.Shared.csproj
+
+RUN dotnet restore ./src/Aura.API/Aura.API.csproj
+
+# copy source
+COPY ../src ./src
+
+RUN dotnet publish ./src/Aura.API/Aura.API.csproj -c Release -o /app/publish
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+WORKDIR /app
+COPY --from=build /app/publish .
+
+ENV ASPNETCORE_URLS=http://+:5000
+
+EXPOSE 5000
+
+ENTRYPOINT ["dotnet", "Aura.API.dll"]
+
+

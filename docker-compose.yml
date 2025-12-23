@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: ./docker/Dockerfile.api
+    container_name: aura-api
+    ports:
+      - "5000:5000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ./Dockerfile
+    container_name: aura-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
+
