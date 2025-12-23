@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Aura.Application\Aura.Application.csproj" />
     <ProjectReference Include="..\Aura.Infrastructure\Aura.Infrastructure.csproj" />
+    <ProjectReference Include="..\Aura.Shared\Aura.Shared.csproj" />
   </ItemGroup>
 
 </Project>
