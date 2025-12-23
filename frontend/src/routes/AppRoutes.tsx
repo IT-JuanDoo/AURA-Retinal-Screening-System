@@ -2,6 +2,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from '../pages/auth/LoginPage';
 import RegisterPage from '../pages/auth/RegisterPage';
 import ProfilePage from '../pages/user/ProfilePage';
+import HomePage from '../pages/HomePage';
+import GiaoDienViewerPage from '../pages/giaodien/GiaoDienViewerPage';
 import { useAuthStore } from '../store/authStore';
 
 // Protected Route component
@@ -59,6 +61,7 @@ const AppRoutes = () => {
   return (
     <Routes>
       {/* Public routes */}
+      <Route path="/" element={<HomePage />} />
       <Route 
         path="/login" 
         element={
@@ -94,11 +97,18 @@ const AppRoutes = () => {
         }
       />
       
-      {/* Redirect root to login or dashboard */}
-      <Route path="/" element={<Navigate to="/login" replace />} />
+      {/* Giao diện pages - Protected routes */}
+      <Route
+        path="/giaodien/:page"
+        element={
+          <ProtectedRoute>
+            <GiaoDienViewerPage />
+          </ProtectedRoute>
+        }
+      />
       
-      {/* 404 - redirect to login */}
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      {/* 404 - redirect to home */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 };
