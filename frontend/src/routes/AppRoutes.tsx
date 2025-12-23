@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from '../pages/auth/LoginPage';
 import RegisterPage from '../pages/auth/RegisterPage';
+import ProfilePage from '../pages/user/ProfilePage';
 import { useAuthStore } from '../store/authStore';
 
 // Protected Route component
@@ -83,6 +84,14 @@ const AppRoutes = () => {
             <DashboardPage />
           </ProtectedRoute>
         } 
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <ProfilePage />
+          </ProtectedRoute>
+        }
       />
       
       {/* Redirect root to login or dashboard */}

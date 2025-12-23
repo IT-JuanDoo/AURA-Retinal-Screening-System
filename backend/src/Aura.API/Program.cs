@@ -1,5 +1,6 @@
 using System.Text;
 using Aura.Application.Services.Auth;
+using Aura.Application.Services.Users;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -105,6 +106,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddSingleton<IUserService, UserService>();
 
 // TODO: Add database context when ready
 // builder.Services.AddDbContext<AuraDbContext>(options =>
