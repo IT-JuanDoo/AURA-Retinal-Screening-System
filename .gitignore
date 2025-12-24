@@ -38,4 +38,5 @@ dist/
 
 # Docker
 docker-compose.override.yml
+.env.docker
 

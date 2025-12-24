@@ -81,17 +81,6 @@ const authService = {
     return response.data;
   },
 
-  async twitterLogin(oauthToken: string, oauthVerifier: string): Promise<AuthResponse> {
-    const response = await api.post<AuthResponse>('/auth/twitter', { oauthToken, oauthVerifier });
-    if (response.data.success && response.data.accessToken) {
-      localStorage.setItem('token', response.data.accessToken);
-      if (response.data.refreshToken) {
-        localStorage.setItem('refreshToken', response.data.refreshToken);
-      }
-    }
-    return response.data;
-  },
-
   // Token management
   async refreshToken(): Promise<AuthResponse> {
     const refreshToken = localStorage.getItem('refreshToken');

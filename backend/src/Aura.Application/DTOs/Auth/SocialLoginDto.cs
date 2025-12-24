@@ -10,12 +10,6 @@ public class FacebookLoginDto
     public string AccessToken { get; set; } = string.Empty;
 }
 
-public class TwitterLoginDto
-{
-    public string OAuthToken { get; set; } = string.Empty;
-    public string OAuthVerifier { get; set; } = string.Empty;
-}
-
 public class SocialUserInfo
 {
     public string ProviderId { get; set; } = string.Empty;

@@ -41,26 +41,6 @@ const mockHealthData = {
 const PatientDashboard = () => {
   const { user, logout } = useAuthStore();
   const [selectedPeriod, setSelectedPeriod] = useState('6months');
-  
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'good': return 'emerald';
-      case 'warning': return 'amber';
-      case 'critical': return 'red';
-      default: return 'slate';
-    }
-  };
-
-  const getRiskColor = (risk: string) => {
-    switch (risk) {
-      case 'low': return 'emerald';
-      case 'medium': return 'amber';
-      case 'high': return 'red';
-      default: return 'slate';
-    }
-  };
-
-  const maxScore = Math.max(...mockHealthData.healthHistory.map(h => h.score));
 
   return (
     <div className="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 font-sans antialiased min-h-screen flex flex-col transition-colors duration-200">

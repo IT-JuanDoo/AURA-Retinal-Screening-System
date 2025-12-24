@@ -109,24 +109,6 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Login with Twitter/X OAuth
-    /// </summary>
-    [HttpPost("twitter")]
-    [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> TwitterLogin([FromBody] TwitterLoginDto twitterLoginDto)
-    {
-        var ipAddress = GetIpAddress();
-        var result = await _authService.TwitterLoginAsync(twitterLoginDto.OAuthToken, twitterLoginDto.OAuthVerifier, ipAddress);
-        
-        if (!result.Success)
-            return Unauthorized(result);
-
-        SetRefreshTokenCookie(result.RefreshToken!);
-        return Ok(result);
-    }
-
-    /// <summary>
     /// Refresh access token using refresh token
     /// </summary>
     [HttpPost("refresh")]

@@ -23,9 +23,11 @@ public interface IAuthService
     // Social authentication
     Task<AuthResponseDto> GoogleLoginAsync(string idToken, string? ipAddress = null);
     Task<AuthResponseDto> FacebookLoginAsync(string accessToken, string? ipAddress = null);
-    Task<AuthResponseDto> TwitterLoginAsync(string oauthToken, string oauthVerifier, string? ipAddress = null);
     
     // User info
     Task<UserInfoDto?> GetCurrentUserAsync(string userId);
     Task<bool> LogoutAsync(string userId, string? refreshToken = null);
+    
+    // Profile update
+    Task<UserInfoDto?> UpdateProfileAsync(string userId, string? firstName, string? lastName, string? phone, string? gender, string? address, string? profileImageUrl, DateTime? dob);
 }

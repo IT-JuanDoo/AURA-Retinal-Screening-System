@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
+import { uploadAvatar } from '../../services/cloudinaryService';
+import userService from '../../services/userService';
 
 interface PatientProfile {
   fullName: string;
@@ -25,7 +27,7 @@ interface PatientProfile {
 }
 
 const PatientProfilePage = () => {
-  const { user, logout } = useAuthStore();
+  const { user, logout, fetchCurrentUser } = useAuthStore();
   const navigate = useNavigate();
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -68,13 +70,33 @@ const PatientProfilePage = () => {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // TODO: Call API to save profile
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
+      // Split fullName into firstName and lastName
+      const nameParts = profile.fullName.trim().split(' ');
+      const firstName = nameParts.length > 0 ? nameParts[0] : '';
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
+      // Convert dateOfBirth to ISO format if needed
+      const dob = profile.dateOfBirth ? new Date(profile.dateOfBirth).toISOString() : undefined;
+
+      // Update profile via API
+      await userService.updateProfile({
+        firstName,
+        lastName,
+        phone: profile.phone,
+        gender: profile.gender,
+        address: profile.address,
+        dob: dob,
+        profileImageUrl: profile.profileImageUrl,
+      });
+      
+      // Refresh user data in store
+      await fetchCurrentUser();
       
       toast.success('Đã lưu thay đổi thành công!');
       setHasChanges(false);
-    } catch (error) {
-      toast.error('Lưu thay đổi thất bại. Vui lòng thử lại.');
+    } catch (error: any) {
+      console.error('Save profile error:', error);
+      toast.error(error.response?.data?.message || 'Lưu thay đổi thất bại. Vui lòng thử lại.');
     } finally {
       setIsSaving(false);
     }
@@ -83,22 +105,49 @@ const PatientProfilePage = () => {
   const handleCancel = () => {
     // Reload original data
     setHasChanges(false);
-    toast.info('Đã hủy thay đổi');
+    toast('Đã hủy thay đổi');
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        toast.error('File không được vượt quá 2MB');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfile(prev => ({ ...prev, profileImageUrl: reader.result as string }));
-        setHasChanges(true);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('File phải là hình ảnh');
+      return;
+    }
+
+    // Validate file size (max 10MB for Cloudinary)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Kích thước ảnh không được vượt quá 10MB');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      
+      // Upload to Cloudinary
+      const imageUrl = await uploadAvatar(file);
+      
+      // Save to backend immediately
+      await userService.updateProfile({
+        profileImageUrl: imageUrl
+      });
+      
+      // Update local state
+      setProfile(prev => ({ ...prev, profileImageUrl: imageUrl }));
+      setHasChanges(false); // No pending changes since we saved immediately
+      
+      // Refresh user data in store
+      await fetchCurrentUser();
+      
+      toast.success('Tải ảnh đại diện thành công!');
+    } catch (error: any) {
+      console.error('Image upload error:', error);
+      toast.error(error.response?.data?.message || error.message || 'Tải ảnh thất bại. Vui lòng thử lại.');
+    } finally {
+      setIsSaving(false);
     }
   };
 

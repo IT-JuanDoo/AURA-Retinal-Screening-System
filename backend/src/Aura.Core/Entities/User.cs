@@ -42,7 +42,7 @@ public class User
     public string? Lifestyle { get; set; }
     public string? MedicalNotes { get; set; }
 
-    // TODO: Add navigation properties
-    // public virtual ICollection<UserRole> UserRoles { get; set; }
+    // Navigation properties (FR-32: RBAC)
+    public virtual ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
 }
 

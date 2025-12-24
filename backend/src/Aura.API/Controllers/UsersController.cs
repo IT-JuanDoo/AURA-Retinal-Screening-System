@@ -1,6 +1,9 @@
 using Aura.Application.DTOs.Users;
+using Aura.Application.Services.Auth;
 using Aura.Application.Services.Users;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Aura.API.Controllers;
 
@@ -9,10 +12,12 @@ namespace Aura.API.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
+    private readonly IAuthService _authService;
 
-    public UsersController(IUserService userService)
+    public UsersController(IUserService userService, IAuthService authService)
     {
         _userService = userService;
+        _authService = authService;
     }
 
     // GET: /api/users
@@ -46,10 +51,64 @@ public class UsersController : ControllerBase
         }
     }
 
+    // PUT: /api/users/me  (update current user's profile)
+    [HttpPut("me")]
+    [Authorize]
+    public async Task<IActionResult> UpdateCurrentUserProfile([FromBody] UpdateUserProfileDto dto)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized(new { message = "Không thể xác định người dùng" });
+        }
+
+        try
+        {
+            // Parse DOB if provided
+            DateTime? dob = null;
+            if (dto.Dob.HasValue)
+            {
+                dob = dto.Dob.Value;
+            }
+
+            // Use AuthService to update profile (users are stored there)
+            var updated = await _authService.UpdateProfileAsync(
+                userId,
+                dto.FirstName,
+                dto.LastName,
+                dto.Phone,
+                dto.Gender,
+                dto.Address,
+                dto.ProfileImageUrl,
+                dob
+            );
+            
+            if (updated == null)
+            {
+                return NotFound(new { message = "Người dùng không tồn tại" });
+            }
+            
+            return Ok(new { success = true, user = updated });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     // PUT: /api/users/{id}  (update profile)
     [HttpPut("{id}")]
+    [Authorize]
     public async Task<IActionResult> UpdateUser(string id, [FromBody] UpdateUserProfileDto dto)
     {
+        // Only allow users to update their own profile
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId != id)
+        {
+            return Forbid();
+        }
+
         try
         {
             var updated = await _userService.UpdateProfileAsync(id, dto);

@@ -387,34 +387,6 @@ public class AuthService : IAuthService
         }
     }
 
-    public async Task<AuthResponseDto> TwitterLoginAsync(string oauthToken, string oauthVerifier, string? ipAddress = null)
-    {
-        try
-        {
-            // TODO: Verify Twitter OAuth token
-            var twitterUser = await VerifyTwitterTokenAsync(oauthToken, oauthVerifier);
-            if (twitterUser == null)
-            {
-                return new AuthResponseDto
-                {
-                    Success = false,
-                    Message = "Twitter token không hợp lệ"
-                };
-            }
-
-            return ProcessSocialLogin(twitterUser, "twitter", ipAddress);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Twitter login failed");
-            return new AuthResponseDto
-            {
-                Success = false,
-                Message = "Đăng nhập Twitter thất bại"
-            };
-        }
-    }
-
     public Task<UserInfoDto?> GetCurrentUserAsync(string userId)
     {
         var user = _users.FirstOrDefault(u => u.Id == userId && !u.IsDeleted);
@@ -444,6 +416,30 @@ public class AuthService : IAuthService
         }
 
         return Task.FromResult(true);
+    }
+
+    public Task<UserInfoDto?> UpdateProfileAsync(string userId, string? firstName, string? lastName, string? phone, string? gender, string? address, string? profileImageUrl, DateTime? dob)
+    {
+        var user = _users.FirstOrDefault(u => u.Id == userId && !u.IsDeleted);
+        if (user == null)
+        {
+            _logger.LogWarning("User not found for profile update: {UserId}", userId);
+            return Task.FromResult<UserInfoDto?>(null);
+        }
+
+        // Update fields if provided
+        if (!string.IsNullOrEmpty(firstName)) user.FirstName = firstName;
+        if (!string.IsNullOrEmpty(lastName)) user.LastName = lastName;
+        if (!string.IsNullOrEmpty(phone)) user.Phone = phone;
+        if (!string.IsNullOrEmpty(gender)) user.Gender = gender;
+        if (!string.IsNullOrEmpty(address)) user.Address = address;
+        if (!string.IsNullOrEmpty(profileImageUrl)) user.ProfileImageUrl = profileImageUrl;
+        if (dob.HasValue) user.Dob = dob.Value;
+        
+        user.UpdatedDate = DateTime.UtcNow;
+
+        _logger.LogInformation("Profile updated for user: {UserId}", userId);
+        return Task.FromResult<UserInfoDto?>(MapToUserInfo(user));
     }
 
     #region Private Methods
@@ -720,21 +716,6 @@ public class AuthService : IAuthService
     private class FacebookPictureData
     {
         public string? Url { get; set; }
-    }
-
-    private async Task<SocialUserInfo?> VerifyTwitterTokenAsync(string oauthToken, string oauthVerifier)
-    {
-        // TODO: Use Twitter API to verify token
-        await Task.Delay(100);
-        
-        return new SocialUserInfo
-        {
-            ProviderId = "tw_" + Guid.NewGuid().ToString("N")[..16],
-            Email = "user@twitter.com",
-            FirstName = "Twitter",
-            LastName = "User",
-            Provider = "twitter"
-        };
     }
 
     #endregion

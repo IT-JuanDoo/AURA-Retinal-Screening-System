@@ -33,7 +33,7 @@ const NotificationBell: React.FC = () => {
     // If SSE not available, start polling
     let stopPolling: (() => void) | null = null;
     if (!es) {
-      stopPolling = startPolling((arr) => {
+      stopPolling = startPolling(() => {
         // Replace local notifications with fetched ones; prefer server's order
         // Here we simple set by calling load() which fetches via API
         load();

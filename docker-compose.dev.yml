@@ -1,0 +1,67 @@
+# =============================================================================
+# AURA - Development Docker Compose Configuration
+# Sử dụng cho môi trường phát triển với hot-reload
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # PostgreSQL Database
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: aura-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aura_user
+      POSTGRES_PASSWORD: aura_password_2024
+      POSTGRES_DB: aura_db
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./aura_database_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - aura-dev-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aura_user -d aura_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # pgAdmin - Database Management Tool
+  # ===========================================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: aura-pgadmin-dev
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@aura.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin_dev_data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - aura-dev-network
+    depends_on:
+      - postgres
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  aura-dev-network:
+    driver: bridge
+    name: aura-dev-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres_dev_data:
+    name: aura-postgres-dev-data
+  pgadmin_dev_data:
+    name: aura-pgadmin-dev-data
+
