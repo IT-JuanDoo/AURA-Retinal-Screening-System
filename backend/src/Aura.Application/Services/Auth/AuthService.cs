@@ -43,34 +43,89 @@ public class AuthService : IAuthService
     {
         try
         {
-            // Check if email already exists
-            if (_users.Any(u => u.Email.ToLower() == registerDto.Email.ToLower()))
+            using var conn = OpenConnection();
+            
+            // Check if email already exists in database
+            var checkEmailQuery = @"
+                SELECT id, email 
+                FROM users 
+                WHERE email = @email AND isdeleted = false";
+            
+            using (var cmd = new NpgsqlCommand(checkEmailQuery, conn))
             {
-                return new AuthResponseDto
+                cmd.Parameters.AddWithValue("email", registerDto.Email.ToLower());
+                using var reader = cmd.ExecuteReader();
+                if (reader.Read())
                 {
-                    Success = false,
-                    Message = "Email đã được sử dụng"
-                };
+                    return new AuthResponseDto
+                    {
+                        Success = false,
+                        Message = "Email đã được sử dụng"
+                    };
+                }
             }
 
             // Create new user
-            var user = new User
+            var userId = Guid.NewGuid().ToString();
+            var hashedPassword = HashPassword(registerDto.Password);
+            var username = registerDto.Email.Split('@')[0]; // Generate username from email
+            
+            var insertQuery = @"
+                INSERT INTO users (id, email, password, firstname, lastname, phone, 
+                                 authenticationprovider, isemailverified, isactive, 
+                                 createddate, username, country)
+                VALUES (@id, @email, @password, @firstname, @lastname, @phone, 
+                       @provider, @isemailverified, @isactive, 
+                       @createddate, @username, @country)";
+            
+            using (var cmd = new NpgsqlCommand(insertQuery, conn))
             {
-                Id = Guid.NewGuid().ToString(),
-                Email = registerDto.Email.ToLower(),
-                Password = HashPassword(registerDto.Password),
-                FirstName = registerDto.FirstName,
-                LastName = registerDto.LastName,
-                Phone = registerDto.Phone,
-                AuthenticationProvider = "email",
-                IsEmailVerified = false,
-                IsActive = true,
-                CreatedDate = DateTime.UtcNow
-            };
+                cmd.Parameters.AddWithValue("id", userId);
+                cmd.Parameters.AddWithValue("email", registerDto.Email.ToLower());
+                cmd.Parameters.AddWithValue("password", hashedPassword);
+                cmd.Parameters.AddWithValue("firstname", (object?)registerDto.FirstName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("lastname", (object?)registerDto.LastName ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("phone", (object?)registerDto.Phone ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("provider", "email");
+                cmd.Parameters.AddWithValue("isemailverified", false);
+                cmd.Parameters.AddWithValue("isactive", true);
+                cmd.Parameters.AddWithValue("createddate", DateTime.UtcNow.Date);
+                cmd.Parameters.AddWithValue("username", username);
+                cmd.Parameters.AddWithValue("country", "Vietnam");
+                
+                cmd.ExecuteNonQuery();
+            }
 
-            _users.Add(user);
+            // Read the newly created user
+            var getUserQuery = @"
+                SELECT id, email, firstname, lastname, phone, authenticationprovider, 
+                       isemailverified, isactive, lastloginat, createddate, profileimageurl,
+                       provideruserid, username, country
+                FROM users 
+                WHERE id = @id AND isdeleted = false";
+            
+            User? user = null;
+            using (var cmd = new NpgsqlCommand(getUserQuery, conn))
+            {
+                cmd.Parameters.AddWithValue("id", userId);
+                using var reader = cmd.ExecuteReader();
+                if (reader.Read())
+                {
+                    user = MapUserFromReader(reader);
+                }
+            }
 
-            // Create email verification token
+            if (user == null)
+            {
+                _logger.LogError("Failed to retrieve user after registration: {UserId}", userId);
+                return new AuthResponseDto
+                {
+                    Success = false,
+                    Message = "Đăng ký thất bại. Không thể tạo tài khoản."
+                };
+            }
+
+            // Create email verification token (still in-memory for now)
             var verificationToken = new EmailVerificationToken
             {
                 UserId = user.Id,
@@ -82,7 +137,7 @@ public class AuthService : IAuthService
             // Send verification email
             await _emailService.SendVerificationEmailAsync(user.Email, verificationToken.Token, user.FirstName);
 
-            _logger.LogInformation("User registered successfully: {Email}", user.Email);
+            _logger.LogInformation("User registered successfully and saved to database: {Email}, ID: {UserId}", user.Email, userId);
 
             return new AuthResponseDto
             {
@@ -106,11 +161,31 @@ public class AuthService : IAuthService
     {
         try
         {
-            var user = _users.FirstOrDefault(u => 
-                u.Email.ToLower() == loginDto.Email.ToLower() && 
-                !u.IsDeleted);
+            using var conn = OpenConnection();
+            
+            // Get user from database
+            var getUserQuery = @"
+                SELECT id, email, password, firstname, lastname, phone, authenticationprovider, 
+                       isemailverified, isactive, lastloginat, createddate, profileimageurl,
+                       provideruserid, username, country
+                FROM users 
+                WHERE email = @email AND isdeleted = false";
+            
+            User? user = null;
+            string? hashedPassword = null;
+            using (var cmd = new NpgsqlCommand(getUserQuery, conn))
+            {
+                cmd.Parameters.AddWithValue("email", loginDto.Email.ToLower());
+                using var reader = cmd.ExecuteReader();
+                if (reader.Read())
+                {
+                    hashedPassword = reader.IsDBNull(reader.GetOrdinal("password")) ? null : reader.GetString(reader.GetOrdinal("password"));
+                    user = MapUserFromReader(reader);
+                    user.Password = hashedPassword; // Store password for verification
+                }
+            }
 
-            if (user == null || !VerifyPassword(loginDto.Password, user.Password ?? ""))
+            if (user == null || string.IsNullOrEmpty(hashedPassword) || !VerifyPassword(loginDto.Password, hashedPassword))
             {
                 return Task.FromResult(new AuthResponseDto
                 {
@@ -132,8 +207,18 @@ public class AuthService : IAuthService
             var accessToken = _jwtService.GenerateAccessToken(user);
             var refreshToken = CreateRefreshToken(user.Id);
 
-            // Update last login
-            user.LastLoginAt = DateTime.UtcNow;
+            // Update last login in database
+            var updateLastLoginQuery = @"
+                UPDATE users 
+                SET lastloginat = @lastloginat 
+                WHERE id = @id AND isdeleted = false";
+            
+            using (var cmd = new NpgsqlCommand(updateLastLoginQuery, conn))
+            {
+                cmd.Parameters.AddWithValue("id", user.Id);
+                cmd.Parameters.AddWithValue("lastloginat", DateTime.UtcNow);
+                cmd.ExecuteNonQuery();
+            }
 
             _logger.LogInformation("User logged in: {Email}", user.Email);
 
