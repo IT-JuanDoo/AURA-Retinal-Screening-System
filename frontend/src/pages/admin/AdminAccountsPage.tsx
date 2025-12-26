@@ -14,6 +14,8 @@ export default function AdminAccountsPage() {
   const [rows, setRows] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newItem, setNewItem] = useState<any>({});
 
   const endpoint = useMemo(() => {
     if (tab === "users") return "/admin/users";
@@ -82,6 +84,34 @@ export default function AdminAccountsPage() {
       await load();
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.message || "Không lưu được");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const create = async () => {
+    if (tab === "clinics") {
+      if (
+        !newItem.id ||
+        !newItem.clinicName ||
+        !newItem.email ||
+        !newItem.address
+      ) {
+        toast.error(
+          "Vui lòng điền đầy đủ: ID, Tên phòng khám, Email và Địa chỉ"
+        );
+        return;
+      }
+    }
+    setSaving(true);
+    try {
+      await adminApi.post(endpoint, newItem);
+      toast.success("Đã tạo mới");
+      setIsCreating(false);
+      setNewItem({});
+      await load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || "Không tạo được");
     } finally {
       setSaving(false);
     }
@@ -352,6 +382,43 @@ export default function AdminAccountsPage() {
                 <option value="active">Đang hoạt động</option>
                 <option value="inactive">Đã tắt</option>
               </select>
+              {tab === "clinics" && (
+                <button
+                  onClick={() => {
+                    setIsCreating(true);
+                    setSelected(null);
+                    setNewItem({
+                      id: `clinic-${Date.now()}`,
+                      clinicName: "",
+                      email: "",
+                      phone: "",
+                      address: "",
+                      city: "",
+                      province: "",
+                      country: "Vietnam",
+                      clinicType: "Clinic",
+                      verificationStatus: "Pending",
+                      isActive: true,
+                    });
+                  }}
+                  className="px-6 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors font-medium flex items-center gap-2"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  Thêm mới
+                </button>
+              )}
               <button
                 onClick={load}
                 disabled={loading}
@@ -571,6 +638,135 @@ export default function AdminAccountsPage() {
             </table>
           </div>
         </div>
+
+        {/* Create Panel */}
+        {isCreating && tab === "clinics" && (
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                Thêm phòng khám mới
+              </h3>
+              <button
+                onClick={() => {
+                  setIsCreating(false);
+                  setNewItem({});
+                }}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4 max-h-[600px] overflow-y-auto">
+              <Field
+                label="ID (tự động tạo)"
+                value={newItem.id || ""}
+                onChange={(v) => setNewItem({ ...newItem, id: v })}
+              />
+              <Field
+                label="Tên phòng khám *"
+                value={newItem.clinicName || ""}
+                onChange={(v) => setNewItem({ ...newItem, clinicName: v })}
+              />
+              <Field
+                label="Email *"
+                value={newItem.email || ""}
+                onChange={(v) => setNewItem({ ...newItem, email: v })}
+              />
+              <Field
+                label="Số điện thoại"
+                value={newItem.phone || ""}
+                onChange={(v) => setNewItem({ ...newItem, phone: v })}
+              />
+              <Field
+                label="Địa chỉ *"
+                value={newItem.address || ""}
+                onChange={(v) => setNewItem({ ...newItem, address: v })}
+              />
+              <Field
+                label="Thành phố"
+                value={newItem.city || ""}
+                onChange={(v) => setNewItem({ ...newItem, city: v })}
+              />
+              <Field
+                label="Tỉnh/Thành phố"
+                value={newItem.province || ""}
+                onChange={(v) => setNewItem({ ...newItem, province: v })}
+              />
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Loại phòng khám
+                </label>
+                <select
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={newItem.clinicType || "Clinic"}
+                  onChange={(e) =>
+                    setNewItem({ ...newItem, clinicType: e.target.value })
+                  }
+                >
+                  <option value="Hospital">Hospital - Bệnh viện</option>
+                  <option value="Clinic">Clinic - Phòng khám</option>
+                  <option value="Medical Center">
+                    Medical Center - Trung tâm y tế
+                  </option>
+                  <option value="Other">Other - Khác</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Trạng thái xác thực
+                </label>
+                <select
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={newItem.verificationStatus || "Pending"}
+                  onChange={(e) =>
+                    setNewItem({
+                      ...newItem,
+                      verificationStatus: e.target.value,
+                    })
+                  }
+                >
+                  <option value="Pending">Pending - Đang chờ</option>
+                  <option value="Approved">Approved - Đã duyệt</option>
+                  <option value="Rejected">Rejected - Từ chối</option>
+                  <option value="Suspended">Suspended - Tạm dừng</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  onClick={create}
+                  disabled={saving}
+                  className="flex-1 px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors font-medium"
+                >
+                  {saving ? "Đang tạo..." : "Tạo mới"}
+                </button>
+                <button
+                  onClick={() => {
+                    setIsCreating(false);
+                    setNewItem({});
+                  }}
+                  disabled={saving}
+                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                >
+                  Hủy
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Edit Panel */}
         {selected && (
