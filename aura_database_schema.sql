@@ -2,11 +2,11 @@
 -- AURA Retinal Screening System Database Schema
 -- System: SP26SE025
 -- Database: PostgreSQL
--- Version: 2.0 (Updated to match ERD pattern)
+-- Version: 2.1 (Fixed dependency order for Admins table)
 -- Created: 2025
 -- =====================================================
 
--- Drop existing tables if they exist
+-- Drop existing tables if they exist (CASCADE ensures dependent tables are dropped too)
 DROP TABLE IF EXISTS exported_reports CASCADE;
 DROP TABLE IF EXISTS medical_notes CASCADE;
 DROP TABLE IF EXISTS clinic_reports CASCADE;
@@ -32,9 +32,9 @@ DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS doctors CASCADE;
 DROP TABLE IF EXISTS clinics CASCADE;
 DROP TABLE IF EXISTS admins CASCADE;
-DROP TABLE IF EXISTS roles CASCADE;
-DROP TABLE IF EXISTS permissions CASCADE;
 DROP TABLE IF EXISTS role_permissions CASCADE;
+DROP TABLE IF EXISTS permissions CASCADE;
+DROP TABLE IF EXISTS roles CASCADE;
 
 -- =====================================================
 -- 1. ROLES AND PERMISSIONS
@@ -78,7 +78,33 @@ CREATE TABLE role_permissions (
 );
 
 -- =====================================================
--- 2. USERS (PATIENTS)
+-- 2. ADMINS (MOVED UP TO FIX DEPENDENCY ERROR)
+-- =====================================================
+-- Admins must be created before Clinics because Clinics reference Admins (VerifiedBy)
+
+CREATE TABLE admins (
+    Id VARCHAR(255) PRIMARY KEY,
+    Username VARCHAR(255),
+    Password VARCHAR(255),
+    FirstName VARCHAR(255),
+    LastName VARCHAR(255),
+    Email VARCHAR(255) NOT NULL UNIQUE,
+    Phone VARCHAR(255),
+    ProfileImageUrl VARCHAR(500),
+    RoleId VARCHAR(255) NOT NULL REFERENCES roles(Id),
+    IsSuperAdmin BOOLEAN DEFAULT FALSE,
+    IsActive BOOLEAN DEFAULT TRUE,
+    LastLoginAt TIMESTAMP,
+    CreatedDate DATE,
+    CreatedBy VARCHAR(255),
+    UpdatedDate DATE,
+    UpdatedBy VARCHAR(255),
+    IsDeleted BOOLEAN DEFAULT FALSE,
+    Note VARCHAR(255)
+);
+
+-- =====================================================
+-- 3. USERS (PATIENTS)
 -- =====================================================
 
 CREATE TABLE users (
@@ -111,7 +137,7 @@ CREATE TABLE users (
 );
 
 -- =====================================================
--- 3. USER ROLES (JUNCTION TABLE)
+-- 4. USER ROLES (JUNCTION TABLE)
 -- =====================================================
 
 CREATE TABLE user_roles (
@@ -129,7 +155,7 @@ CREATE TABLE user_roles (
 );
 
 -- =====================================================
--- 4. DOCTORS
+-- 5. DOCTORS
 -- =====================================================
 
 CREATE TABLE doctors (
@@ -160,7 +186,7 @@ CREATE TABLE doctors (
 );
 
 -- =====================================================
--- 5. CLINICS
+-- 6. CLINICS
 -- =====================================================
 
 CREATE TABLE clinics (
@@ -181,32 +207,7 @@ CREATE TABLE clinics (
     VerificationStatus VARCHAR(50) DEFAULT 'Pending' CHECK (VerificationStatus IN ('Pending', 'Approved', 'Rejected', 'Suspended')),
     IsActive BOOLEAN DEFAULT TRUE,
     VerifiedAt TIMESTAMP,
-    VerifiedBy VARCHAR(255) REFERENCES admins(Id),
-    CreatedDate DATE,
-    CreatedBy VARCHAR(255),
-    UpdatedDate DATE,
-    UpdatedBy VARCHAR(255),
-    IsDeleted BOOLEAN DEFAULT FALSE,
-    Note VARCHAR(255)
-);
-
--- =====================================================
--- 6. ADMINS
--- =====================================================
-
-CREATE TABLE admins (
-    Id VARCHAR(255) PRIMARY KEY,
-    Username VARCHAR(255),
-    Password VARCHAR(255),
-    FirstName VARCHAR(255),
-    LastName VARCHAR(255),
-    Email VARCHAR(255) NOT NULL UNIQUE,
-    Phone VARCHAR(255),
-    ProfileImageUrl VARCHAR(500),
-    RoleId VARCHAR(255) NOT NULL REFERENCES roles(Id),
-    IsSuperAdmin BOOLEAN DEFAULT FALSE,
-    IsActive BOOLEAN DEFAULT TRUE,
-    LastLoginAt TIMESTAMP,
+    VerifiedBy VARCHAR(255) REFERENCES admins(Id), -- Now this works because admins exists
     CreatedDate DATE,
     CreatedBy VARCHAR(255),
     UpdatedDate DATE,
