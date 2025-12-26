@@ -877,5 +877,49 @@ COMMENT ON TABLE notification_templates IS 'Stores notification message template
 COMMENT ON TABLE bulk_upload_batches IS 'Tracks bulk image upload batches from clinics (FR-24)';
 
 -- =====================================================
+-- SEED DATA: DEFAULT ADMIN ACCOUNT
+-- =====================================================
+
+-- Insert default admin role
+INSERT INTO roles (Id, RoleName, CreatedDate, IsDeleted)
+VALUES ('admin-role-001', 'Admin', CURRENT_DATE, false)
+ON CONFLICT (Id) DO NOTHING;
+
+-- Insert default super admin role
+INSERT INTO roles (Id, RoleName, CreatedDate, IsDeleted)
+VALUES ('superadmin-role-001', 'SuperAdmin', CURRENT_DATE, false)
+ON CONFLICT (Id) DO NOTHING;
+
+-- Insert default admin account
+-- Email: admin@aura.com
+-- Password: 123456 (hashed using SHA256 + Base64)
+-- Hash: jZae727K08KaOmKSgOaGzww/XVqGr/PKEgIMkjrcbJI=
+INSERT INTO admins (
+    Id, 
+    Username, 
+    Password, 
+    FirstName, 
+    LastName, 
+    Email, 
+    RoleId, 
+    IsSuperAdmin, 
+    IsActive, 
+    CreatedDate
+)
+VALUES (
+    'admin-001',
+    'admin',
+    'jZae727K08KaOmKSgOaGzww/XVqGr/PKEgIMkjrcbJI=',  -- SHA256 hash of "123456"
+    'Admin',
+    'AURA',
+    'admin@aura.com',
+    'superadmin-role-001',
+    true,
+    true,
+    CURRENT_DATE
+)
+ON CONFLICT (Email) DO NOTHING;
+
+-- =====================================================
 -- END OF SCHEMA
 -- =====================================================

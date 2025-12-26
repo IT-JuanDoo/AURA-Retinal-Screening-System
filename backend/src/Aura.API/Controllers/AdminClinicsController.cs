@@ -1,6 +1,7 @@
 using Aura.API.Admin;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace Aura.API.Controllers;
 
@@ -11,11 +12,13 @@ public class AdminClinicsController : ControllerBase
 {
     private readonly AdminAccountRepository _repo;
     private readonly IConfiguration _config;
+    private readonly ILogger<AdminClinicsController>? _logger;
 
-    public AdminClinicsController(AdminAccountRepository repo, IConfiguration config)
+    public AdminClinicsController(AdminAccountRepository repo, IConfiguration config, ILogger<AdminClinicsController>? logger = null)
     {
         _repo = repo;
         _config = config;
+        _logger = logger;
     }
 
     private bool UseDemoMode => _config.GetValue<bool>("Admin:UseDemoMode", false);
@@ -32,12 +35,18 @@ public class AdminClinicsController : ControllerBase
     {
         try
         {
-            return Ok(await _repo.ListClinicsAsync(search, isActive));
+            var result = await _repo.ListClinicsAsync(search, isActive);
+            return Ok(result);
         }
-        catch
+        catch (Exception ex)
         {
-            if (UseDemoMode) return Ok(DemoClinics);
-            return StatusCode(500, new { message = "Không kết nối được database." });
+            _logger?.LogError(ex, "Error listing clinics from database");
+            if (UseDemoMode)
+            {
+                _logger?.LogWarning("Using demo data due to database connection failure and UseDemoMode=true");
+                return Ok(DemoClinics);
+            }
+            return StatusCode(500, new { message = $"Không kết nối được database: {ex.Message}" });
         }
     }
 
@@ -47,12 +56,17 @@ public class AdminClinicsController : ControllerBase
         try
         {
             var n = await _repo.UpdateClinicAsync(id, dto);
-            return n == 0 ? NotFound() : NoContent();
+            return n == 0 ? NotFound(new { message = "Không tìm thấy clinic" }) : NoContent();
         }
-        catch
+        catch (Exception ex)
         {
-            if (UseDemoMode) return NoContent();
-            return StatusCode(500, new { message = "Không kết nối được database." });
+            _logger?.LogError(ex, "Error updating clinic {ClinicId}", id);
+            if (UseDemoMode)
+            {
+                _logger?.LogWarning("Using demo mode for update operation");
+                return NoContent();
+            }
+            return StatusCode(500, new { message = $"Không kết nối được database: {ex.Message}" });
         }
     }
 
@@ -63,12 +77,17 @@ public class AdminClinicsController : ControllerBase
         try
         {
             var n = await _repo.SetClinicActiveAsync(id, dto.IsActive.Value);
-            return n == 0 ? NotFound() : NoContent();
+            return n == 0 ? NotFound(new { message = "Không tìm thấy clinic" }) : NoContent();
         }
-        catch
+        catch (Exception ex)
         {
-            if (UseDemoMode) return NoContent();
-            return StatusCode(500, new { message = "Không kết nối được database." });
+            _logger?.LogError(ex, "Error setting clinic status {ClinicId}", id);
+            if (UseDemoMode)
+            {
+                _logger?.LogWarning("Using demo mode for set status operation");
+                return NoContent();
+            }
+            return StatusCode(500, new { message = $"Không kết nối được database: {ex.Message}" });
         }
     }
 }

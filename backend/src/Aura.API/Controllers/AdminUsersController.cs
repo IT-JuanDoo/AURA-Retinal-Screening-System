@@ -1,6 +1,7 @@
 using Aura.API.Admin;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace Aura.API.Controllers;
 
@@ -11,11 +12,13 @@ public class AdminUsersController : ControllerBase
 {
     private readonly AdminAccountRepository _repo;
     private readonly IConfiguration _config;
+    private readonly ILogger<AdminUsersController>? _logger;
 
-    public AdminUsersController(AdminAccountRepository repo, IConfiguration config)
+    public AdminUsersController(AdminAccountRepository repo, IConfiguration config, ILogger<AdminUsersController>? logger = null)
     {
         _repo = repo;
         _config = config;
+        _logger = logger;
     }
 
     private bool UseDemoMode => _config.GetValue<bool>("Admin:UseDemoMode", false);
@@ -32,12 +35,22 @@ public class AdminUsersController : ControllerBase
     {
         try
         {
-            return Ok(await _repo.ListUsersAsync(search, isActive));
+            var result = await _repo.ListUsersAsync(search, isActive);
+            return Ok(result);
         }
-        catch
+        catch (Exception ex)
         {
-            if (UseDemoMode) return Ok(DemoUsers);
-            return StatusCode(500, new { message = "Không kết nối được database." });
+            // Log error for debugging
+            _logger?.LogError(ex, "Error listing users from database");
+            
+            // Only use demo mode if explicitly enabled AND database connection failed
+            if (UseDemoMode)
+            {
+                _logger?.LogWarning("Using demo data due to database connection failure and UseDemoMode=true");
+                return Ok(DemoUsers);
+            }
+            
+            return StatusCode(500, new { message = $"Không kết nối được database: {ex.Message}" });
         }
     }
 
@@ -47,12 +60,17 @@ public class AdminUsersController : ControllerBase
         try
         {
             var n = await _repo.UpdateUserAsync(id, dto);
-            return n == 0 ? NotFound() : NoContent();
+            return n == 0 ? NotFound(new { message = "Không tìm thấy user" }) : NoContent();
         }
-        catch
+        catch (Exception ex)
         {
-            if (UseDemoMode) return NoContent();
-            return StatusCode(500, new { message = "Không kết nối được database." });
+            _logger?.LogError(ex, "Error updating user {UserId}", id);
+            if (UseDemoMode)
+            {
+                _logger?.LogWarning("Using demo mode for update operation");
+                return NoContent();
+            }
+            return StatusCode(500, new { message = $"Không kết nối được database: {ex.Message}" });
         }
     }
 
@@ -63,12 +81,17 @@ public class AdminUsersController : ControllerBase
         try
         {
             var n = await _repo.SetUserActiveAsync(id, dto.IsActive.Value);
-            return n == 0 ? NotFound() : NoContent();
+            return n == 0 ? NotFound(new { message = "Không tìm thấy user" }) : NoContent();
         }
-        catch
+        catch (Exception ex)
         {
-            if (UseDemoMode) return NoContent();
-            return StatusCode(500, new { message = "Không kết nối được database." });
+            _logger?.LogError(ex, "Error setting user status {UserId}", id);
+            if (UseDemoMode)
+            {
+                _logger?.LogWarning("Using demo mode for set status operation");
+                return NoContent();
+            }
+            return StatusCode(500, new { message = $"Không kết nối được database: {ex.Message}" });
         }
     }
 }

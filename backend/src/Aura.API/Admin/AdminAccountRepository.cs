@@ -81,8 +81,11 @@ where coalesce(isdeleted,false)=false
 order by createddate desc nulls last
 limit 200;", conn);
 
-        cmd.Parameters.AddWithValue("search", (object?)search ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("isActive", (object?)isActive ?? DBNull.Value);
+        var searchParam = new NpgsqlParameter("search", NpgsqlTypes.NpgsqlDbType.Text) { Value = (object?)search ?? DBNull.Value };
+        cmd.Parameters.Add(searchParam);
+        
+        var isActiveParam = new NpgsqlParameter("isActive", NpgsqlTypes.NpgsqlDbType.Boolean) { Value = (object?)isActive ?? DBNull.Value };
+        cmd.Parameters.Add(isActiveParam);
 
         var list = new List<AdminUserRowDto>();
         using var r = await cmd.ExecuteReaderAsync();
@@ -164,8 +167,11 @@ where coalesce(isdeleted,false)=false
 order by createddate desc nulls last
 limit 200;", conn);
 
-        cmd.Parameters.AddWithValue("search", (object?)search ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("isActive", (object?)isActive ?? DBNull.Value);
+        var searchParam = new NpgsqlParameter("search", NpgsqlTypes.NpgsqlDbType.Text) { Value = (object?)search ?? DBNull.Value };
+        cmd.Parameters.Add(searchParam);
+        
+        var isActiveParam = new NpgsqlParameter("isActive", NpgsqlTypes.NpgsqlDbType.Boolean) { Value = (object?)isActive ?? DBNull.Value };
+        cmd.Parameters.Add(isActiveParam);
 
         var list = new List<AdminDoctorRowDto>();
         using var r = await cmd.ExecuteReaderAsync();
@@ -250,8 +256,11 @@ where coalesce(isdeleted,false)=false
 order by createddate desc nulls last
 limit 200;", conn);
 
-        cmd.Parameters.AddWithValue("search", (object?)search ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("isActive", (object?)isActive ?? DBNull.Value);
+        var searchParam = new NpgsqlParameter("search", NpgsqlTypes.NpgsqlDbType.Text) { Value = (object?)search ?? DBNull.Value };
+        cmd.Parameters.Add(searchParam);
+        
+        var isActiveParam = new NpgsqlParameter("isActive", NpgsqlTypes.NpgsqlDbType.Boolean) { Value = (object?)isActive ?? DBNull.Value };
+        cmd.Parameters.Add(isActiveParam);
 
         var list = new List<AdminClinicRowDto>();
         using var r = await cmd.ExecuteReaderAsync();
