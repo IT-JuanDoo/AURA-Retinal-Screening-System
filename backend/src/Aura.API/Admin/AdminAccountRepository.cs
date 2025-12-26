@@ -328,6 +328,39 @@ where id=@id and coalesce(isdeleted,false)=false;", conn);
         cmd.Parameters.AddWithValue("isactive", isActive);
         return await cmd.ExecuteNonQueryAsync();
     }
+
+    public async Task<int> CreateClinicAsync(AdminCreateClinicDto dto)
+    {
+        using var conn = _db.OpenConnection();
+        using var cmd = new NpgsqlCommand(@"
+insert into clinics (
+    id, clinicname, email, phone, address, city, province, country,
+    websiteurl, contactpersonname, contactpersonphone, clinictype,
+    verificationstatus, isactive, createddate, note
+) values (
+    @id, @clinicname, @email, @phone, @address, @city, @province, coalesce(@country, 'Vietnam'),
+    @websiteurl, @contactpersonname, @contactpersonphone, @clinictype,
+    coalesce(@verificationstatus, 'Pending'), coalesce(@isactive, true), CURRENT_DATE, @note
+);", conn);
+
+        cmd.Parameters.AddWithValue("id", dto.Id);
+        cmd.Parameters.AddWithValue("clinicname", dto.ClinicName);
+        cmd.Parameters.AddWithValue("email", dto.Email);
+        cmd.Parameters.AddWithValue("phone", (object?)dto.Phone ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("address", dto.Address);
+        cmd.Parameters.AddWithValue("city", (object?)dto.City ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("province", (object?)dto.Province ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("country", (object?)dto.Country ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("websiteurl", (object?)dto.WebsiteUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("contactpersonname", (object?)dto.ContactPersonName ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("contactpersonphone", (object?)dto.ContactPersonPhone ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("clinictype", (object?)dto.ClinicType ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("verificationstatus", (object?)dto.VerificationStatus ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("isactive", (object?)dto.IsActive ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("note", (object?)dto.Note ?? DBNull.Value);
+
+        return await cmd.ExecuteNonQueryAsync();
+    }
 }
 
 

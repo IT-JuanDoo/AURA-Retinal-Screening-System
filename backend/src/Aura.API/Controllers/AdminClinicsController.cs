@@ -50,6 +50,33 @@ public class AdminClinicsController : ControllerBase
         }
     }
 
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] AdminCreateClinicDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Id) || string.IsNullOrWhiteSpace(dto.ClinicName) || 
+            string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Address))
+        {
+            return BadRequest(new { message = "Id, ClinicName, Email và Address là bắt buộc" });
+        }
+
+        try
+        {
+            var n = await _repo.CreateClinicAsync(dto);
+            return n > 0 ? CreatedAtAction(nameof(List), new { id = dto.Id }, dto) 
+                         : StatusCode(500, new { message = "Không thể tạo clinic" });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error creating clinic");
+            if (UseDemoMode)
+            {
+                _logger?.LogWarning("Using demo mode for create operation");
+                return CreatedAtAction(nameof(List), new { id = dto.Id }, dto);
+            }
+            return StatusCode(500, new { message = $"Không kết nối được database: {ex.Message}" });
+        }
+    }
+
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, [FromBody] AdminUpdateClinicDto dto)
     {

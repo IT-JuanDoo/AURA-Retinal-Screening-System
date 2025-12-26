@@ -78,6 +78,25 @@ public class AdminUpdateDoctorDto
     public string? Note { get; set; }
 }
 
+public class AdminCreateClinicDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string ClinicName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string Address { get; set; } = string.Empty;
+    public string? City { get; set; }
+    public string? Province { get; set; }
+    public string? Country { get; set; }
+    public string? WebsiteUrl { get; set; }
+    public string? ContactPersonName { get; set; }
+    public string? ContactPersonPhone { get; set; }
+    public string? ClinicType { get; set; }
+    public string? VerificationStatus { get; set; }
+    public bool? IsActive { get; set; }
+    public string? Note { get; set; }
+}
+
 public class AdminUpdateClinicDto
 {
     public string? ClinicName { get; set; }
