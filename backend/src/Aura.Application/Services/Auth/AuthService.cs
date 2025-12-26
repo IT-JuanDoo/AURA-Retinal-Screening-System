@@ -4,6 +4,7 @@ using Aura.Application.DTOs.Auth;
 using Aura.Core.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace Aura.Application.Services.Auth;
 
@@ -446,73 +447,166 @@ public class AuthService : IAuthService
 
     private AuthResponseDto ProcessSocialLogin(SocialUserInfo socialUser, string provider, string? ipAddress)
     {
-        // Check if user exists with this provider
-        var user = _users.FirstOrDefault(u => 
-            u.AuthenticationProvider == provider && 
-            u.ProviderUserId == socialUser.ProviderId);
-
-        if (user == null)
+        try
         {
-            // Check if email is already registered with different provider
-            var existingUser = _users.FirstOrDefault(u => u.Email.ToLower() == socialUser.Email.ToLower());
-            if (existingUser != null)
+            using var conn = OpenConnection();
+            
+            // Check if user exists with this provider
+            var checkUserQuery = @"
+                SELECT id, email, firstname, lastname, phone, authenticationprovider, 
+                       isemailverified, isactive, lastloginat, createddate, profileimageurl,
+                       provideruserid, username, country
+                FROM users 
+                WHERE authenticationprovider = @provider AND provideruserid = @provideruserid AND isdeleted = false";
+            
+            User? user = null;
+            using (var cmd = new NpgsqlCommand(checkUserQuery, conn))
             {
-                // Link account or return error based on business logic
+                cmd.Parameters.AddWithValue("provider", provider);
+                cmd.Parameters.AddWithValue("provideruserid", socialUser.ProviderId);
+                using var reader = cmd.ExecuteReader();
+                if (reader.Read())
+                {
+                    user = MapUserFromReader(reader);
+                }
+            }
+
+            if (user == null)
+            {
+                // Check if email is already registered with different provider
+                var checkEmailQuery = @"
+                    SELECT id, email, firstname, lastname, phone, authenticationprovider, 
+                           isemailverified, isactive, lastloginat, createddate, profileimageurl,
+                           provideruserid, username, country
+                    FROM users 
+                    WHERE email = @email AND isdeleted = false";
+                
+                using (var cmd = new NpgsqlCommand(checkEmailQuery, conn))
+                {
+                    cmd.Parameters.AddWithValue("email", socialUser.Email.ToLower());
+                    using var reader = cmd.ExecuteReader();
+                    if (reader.Read())
+                    {
+                        var existingUser = MapUserFromReader(reader);
+                        return new AuthResponseDto
+                        {
+                            Success = false,
+                            Message = $"Email đã được đăng ký với {existingUser.AuthenticationProvider}. Vui lòng đăng nhập bằng {existingUser.AuthenticationProvider}."
+                        };
+                    }
+                }
+
+                // Create new user
+                var userId = Guid.NewGuid().ToString();
+                var username = socialUser.Email.Split('@')[0]; // Generate username from email
+                
+                var insertQuery = @"
+                    INSERT INTO users (id, email, firstname, lastname, profileimageurl, 
+                                     authenticationprovider, provideruserid, isemailverified, 
+                                     isactive, createddate, username, country)
+                    VALUES (@id, @email, @firstname, @lastname, @profileimageurl, 
+                           @provider, @provideruserid, @isemailverified, 
+                           @isactive, @createddate, @username, @country)";
+                
+                using (var cmd = new NpgsqlCommand(insertQuery, conn))
+                {
+                    cmd.Parameters.AddWithValue("id", userId);
+                    cmd.Parameters.AddWithValue("email", socialUser.Email.ToLower());
+                    cmd.Parameters.AddWithValue("firstname", (object?)socialUser.FirstName ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("lastname", (object?)socialUser.LastName ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("profileimageurl", (object?)socialUser.ProfileImageUrl ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("provider", provider);
+                    cmd.Parameters.AddWithValue("provideruserid", socialUser.ProviderId);
+                    cmd.Parameters.AddWithValue("isemailverified", true); // Social login emails are verified
+                    cmd.Parameters.AddWithValue("isactive", true);
+                    cmd.Parameters.AddWithValue("createddate", DateTime.UtcNow.Date);
+                    cmd.Parameters.AddWithValue("username", username);
+                    cmd.Parameters.AddWithValue("country", "Vietnam");
+                    
+                    cmd.ExecuteNonQuery();
+                }
+
+                // Read the newly created user
+                using (var cmd = new NpgsqlCommand(checkUserQuery, conn))
+                {
+                    cmd.Parameters.AddWithValue("provider", provider);
+                    cmd.Parameters.AddWithValue("provideruserid", socialUser.ProviderId);
+                    using var reader = cmd.ExecuteReader();
+                    if (reader.Read())
+                    {
+                        user = MapUserFromReader(reader);
+                    }
+                }
+
+                _logger.LogInformation("User saved to database: {Email}, ID: {UserId}", user?.Email, userId);
+                _logger.LogInformation("New user registered via {Provider}: {Email}", provider, user?.Email);
+            }
+            else
+            {
+                // Update user info if provided (avatar, name might have changed)
+                var updateQuery = @"
+                    UPDATE users 
+                    SET profileimageurl = @profileimageurl,
+                        firstname = @firstname,
+                        lastname = @lastname,
+                        lastloginat = @lastloginat,
+                        updateddate = @updateddate
+                    WHERE id = @id";
+                
+                using (var cmd = new NpgsqlCommand(updateQuery, conn))
+                {
+                    cmd.Parameters.AddWithValue("id", user.Id);
+                    cmd.Parameters.AddWithValue("profileimageurl", (object?)socialUser.ProfileImageUrl ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("firstname", (object?)socialUser.FirstName ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("lastname", (object?)socialUser.LastName ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("lastloginat", DateTime.UtcNow);
+                    cmd.Parameters.AddWithValue("updateddate", DateTime.UtcNow.Date);
+                    
+                    cmd.ExecuteNonQuery();
+                }
+
+                // Update local user object
+                if (!string.IsNullOrEmpty(socialUser.ProfileImageUrl))
+                    user.ProfileImageUrl = socialUser.ProfileImageUrl;
+                if (!string.IsNullOrEmpty(socialUser.FirstName))
+                    user.FirstName = socialUser.FirstName;
+                if (!string.IsNullOrEmpty(socialUser.LastName))
+                    user.LastName = socialUser.LastName;
+                user.LastLoginAt = DateTime.UtcNow;
+            }
+
+            if (user == null)
+            {
                 return new AuthResponseDto
                 {
                     Success = false,
-                    Message = $"Email đã được đăng ký với {existingUser.AuthenticationProvider}. Vui lòng đăng nhập bằng {existingUser.AuthenticationProvider}."
+                    Message = "Không thể tạo hoặc tìm thấy người dùng"
                 };
             }
 
-            // Create new user
-            user = new User
+            // Generate tokens
+            var accessToken = _jwtService.GenerateAccessToken(user);
+            var refreshToken = CreateRefreshToken(user.Id, ipAddress);
+
+            return new AuthResponseDto
             {
-                Id = Guid.NewGuid().ToString(),
-                Email = socialUser.Email.ToLower(),
-                FirstName = socialUser.FirstName,
-                LastName = socialUser.LastName,
-                ProfileImageUrl = socialUser.ProfileImageUrl,
-                AuthenticationProvider = provider,
-                ProviderUserId = socialUser.ProviderId,
-                IsEmailVerified = true, // Social login emails are verified
-                IsActive = true,
-                CreatedDate = DateTime.UtcNow
+                Success = true,
+                Message = "Đăng nhập thành công",
+                AccessToken = accessToken,
+                RefreshToken = refreshToken.Token,
+                ExpiresAt = DateTime.UtcNow.AddMinutes(int.Parse(_configuration["Jwt:ExpirationMinutes"] ?? "60")),
+                User = MapToUserInfo(user)
             };
-
-            _users.Add(user);
-            _logger.LogInformation("New user registered via {Provider}: {Email}", provider, user.Email);
         }
-
-        // Update user info if provided (avatar, name might have changed)
-        if (!string.IsNullOrEmpty(socialUser.ProfileImageUrl) && user.ProfileImageUrl != socialUser.ProfileImageUrl)
+        catch (Exception ex)
         {
-            user.ProfileImageUrl = socialUser.ProfileImageUrl;
+            _logger.LogError(ex, "Error processing social login for provider: {Provider}", provider);
+            return new AuthResponseDto
+            {
+                Success = false,
+                Message = "Đăng nhập thất bại. Vui lòng thử lại."
+            };
         }
-        if (!string.IsNullOrEmpty(socialUser.FirstName))
-        {
-            user.FirstName = socialUser.FirstName;
-        }
-        if (!string.IsNullOrEmpty(socialUser.LastName))
-        {
-            user.LastName = socialUser.LastName;
-        }
-
-        // Generate tokens
-        var accessToken = _jwtService.GenerateAccessToken(user);
-        var refreshToken = CreateRefreshToken(user.Id, ipAddress);
-
-        user.LastLoginAt = DateTime.UtcNow;
-
-        return new AuthResponseDto
-        {
-            Success = true,
-            Message = "Đăng nhập thành công",
-            AccessToken = accessToken,
-            RefreshToken = refreshToken.Token,
-            ExpiresAt = DateTime.UtcNow.AddMinutes(int.Parse(_configuration["Jwt:ExpirationMinutes"] ?? "60")),
-            User = MapToUserInfo(user)
-        };
     }
 
     private RefreshToken CreateRefreshToken(string userId, string? ipAddress = null)
@@ -716,6 +810,38 @@ public class AuthService : IAuthService
     private class FacebookPictureData
     {
         public string? Url { get; set; }
+    }
+
+    private NpgsqlConnection OpenConnection()
+    {
+        var cs = _configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrWhiteSpace(cs))
+            throw new InvalidOperationException("ConnectionStrings:DefaultConnection chưa được cấu hình.");
+
+        var conn = new NpgsqlConnection(cs);
+        conn.Open();
+        return conn;
+    }
+
+    private User MapUserFromReader(NpgsqlDataReader reader)
+    {
+        return new User
+        {
+            Id = reader.GetString(reader.GetOrdinal("id")),
+            Email = reader.GetString(reader.GetOrdinal("email")),
+            FirstName = reader.IsDBNull(reader.GetOrdinal("firstname")) ? null : reader.GetString(reader.GetOrdinal("firstname")),
+            LastName = reader.IsDBNull(reader.GetOrdinal("lastname")) ? null : reader.GetString(reader.GetOrdinal("lastname")),
+            Phone = reader.IsDBNull(reader.GetOrdinal("phone")) ? null : reader.GetString(reader.GetOrdinal("phone")),
+            AuthenticationProvider = reader.GetString(reader.GetOrdinal("authenticationprovider")),
+            IsEmailVerified = reader.GetBoolean(reader.GetOrdinal("isemailverified")),
+            IsActive = reader.GetBoolean(reader.GetOrdinal("isactive")),
+            LastLoginAt = reader.IsDBNull(reader.GetOrdinal("lastloginat")) ? null : reader.GetDateTime(reader.GetOrdinal("lastloginat")),
+            CreatedDate = reader.IsDBNull(reader.GetOrdinal("createddate")) ? DateTime.UtcNow : reader.GetDateTime(reader.GetOrdinal("createddate")),
+            ProfileImageUrl = reader.IsDBNull(reader.GetOrdinal("profileimageurl")) ? null : reader.GetString(reader.GetOrdinal("profileimageurl")),
+            ProviderUserId = reader.IsDBNull(reader.GetOrdinal("provideruserid")) ? null : reader.GetString(reader.GetOrdinal("provideruserid")),
+            Username = reader.IsDBNull(reader.GetOrdinal("username")) ? null : reader.GetString(reader.GetOrdinal("username")),
+            Password = null // Not needed for social login
+        };
     }
 
     #endregion

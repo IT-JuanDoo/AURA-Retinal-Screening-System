@@ -1,7 +1,9 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import adminService from "./adminService";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+// Use relative path /api to leverage Vite proxy when running locally
+// Or use full URL if VITE_API_URL is set (for production/Docker)
+const API_URL = import.meta.env.VITE_API_URL || "/api";
 
 const adminApi = axios.create({
   baseURL: API_URL,

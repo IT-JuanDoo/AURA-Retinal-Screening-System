@@ -12,7 +12,13 @@ using Microsoft.OpenApi.Models;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Configure JSON serializer to use camelCase (matching frontend)
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+    });
 builder.Services.AddEndpointsApiExplorer();
 
 // Configure Swagger with JWT authentication
@@ -118,7 +124,8 @@ builder.Services.AddCors(options =>
             )
             .AllowAnyMethod()
             .AllowAnyHeader()
-            .AllowCredentials(); // Required for cookies
+            .AllowCredentials() // Required for cookies
+            .WithExposedHeaders("Token-Expired"); // Expose custom headers
     });
 });
 
@@ -149,14 +156,15 @@ builder.Services.AddScoped<Aura.API.Admin.AdminAccountRepository>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
-// Enable Swagger in both Development and non-Production environments
-if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName != "Production")
+// Enable Swagger and Swagger UI in all environments so admin can access the docs locally
+if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     app.UseSwagger();
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "AURA API v1");
         options.RoutePrefix = "swagger";
+        options.DisplayRequestDuration();
     });
 }
 
@@ -169,6 +177,15 @@ if (app.Configuration.GetValue<bool>("App:UseHttpsRedirection"))
 
 // Use CORS before authentication
 app.UseCors("AllowFrontend");
+
+// Add headers to support OAuth popups (fix Cross-Origin-Opener-Policy warning)
+app.Use(async (context, next) =>
+{
+    // Set Cross-Origin-Opener-Policy to allow OAuth popups
+    context.Response.Headers.Append("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+    context.Response.Headers.Append("Cross-Origin-Embedder-Policy", "unsafe-none");
+    await next();
+});
 
 // Authentication & Authorization middleware
 app.UseAuthentication();
