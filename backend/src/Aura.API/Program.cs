@@ -149,7 +149,8 @@ builder.Services.AddScoped<Aura.API.Admin.AdminAccountRepository>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
-if (app.Environment.IsDevelopment())
+// Enable Swagger in both Development and non-Production environments
+if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName != "Production")
 {
     app.UseSwagger();
     app.UseSwaggerUI(options =>
