@@ -6,7 +6,7 @@ import { useAdminAuthStore } from "../../store/adminAuthStore";
 type Tab = "users" | "doctors" | "clinics";
 
 export default function AdminAccountsPage() {
-  const { admin, logoutAdmin } = useAdminAuthStore();
+  const { admin, logoutAdmin, isAdminAuthenticated } = useAdminAuthStore();
   const [tab, setTab] = useState<Tab>("users");
   const [search, setSearch] = useState("");
   const [isActiveFilter, setIsActiveFilter] = useState<boolean | null>(null);
@@ -24,6 +24,11 @@ export default function AdminAccountsPage() {
   }, [tab]);
 
   const load = async () => {
+    if (!isAdminAuthenticated) {
+      toast.error("Vui lòng đăng nhập lại");
+      return;
+    }
+
     setLoading(true);
     try {
       const params: any = {};
@@ -33,6 +38,12 @@ export default function AdminAccountsPage() {
       const res = await adminApi.get(endpoint, { params });
       setRows(res.data || []);
     } catch (e: any) {
+      if (e?.response?.status === 401) {
+        toast.error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+        logoutAdmin();
+        window.location.href = "/admin/login";
+        return;
+      }
       toast.error(
         e?.response?.data?.message || e?.message || "Không tải được dữ liệu"
       );

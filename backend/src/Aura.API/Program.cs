@@ -142,7 +142,12 @@ builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 
 // FR-31: Admin Account Management (DB based)
-builder.Services.AddScoped<Aura.API.Admin.AdminDb>();
+builder.Services.AddScoped<Aura.API.Admin.AdminDb>(sp =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    var logger = sp.GetService<ILogger<Aura.API.Admin.AdminDb>>();
+    return new Aura.API.Admin.AdminDb(config, logger);
+});
 builder.Services.AddScoped<Aura.API.Admin.AdminJwtService>();
 builder.Services.AddScoped<Aura.API.Admin.AdminAccountRepository>();
 
@@ -197,7 +202,25 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Health check endpoint
-app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
+// Health check endpoint with database connection test
+app.MapGet("/health", async (IConfiguration config) =>
+{
+    try
+    {
+        var cs = config.GetConnectionString("DefaultConnection");
+        if (!string.IsNullOrWhiteSpace(cs))
+        {
+            using var conn = new Npgsql.NpgsqlConnection(cs);
+            await conn.OpenAsync();
+            using var cmd = new Npgsql.NpgsqlCommand("SELECT 1", conn);
+            await cmd.ExecuteScalarAsync();
+        }
+        return Results.Ok(new { status = "healthy", database = "connected", timestamp = DateTime.UtcNow });
+    }
+    catch
+    {
+        return Results.StatusCode(503);
+    }
+});
 
 app.Run();

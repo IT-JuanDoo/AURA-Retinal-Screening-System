@@ -1,14 +1,18 @@
 using Npgsql;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Aura.API;
 
 public class UserDb
 {
     private readonly IConfiguration _config;
+    private readonly ILogger<UserDb>? _logger;
 
-    public UserDb(IConfiguration config)
+    public UserDb(IConfiguration config, ILogger<UserDb>? logger = null)
     {
         _config = config;
+        _logger = logger;
     }
 
     public NpgsqlConnection OpenConnection()
@@ -17,9 +21,37 @@ public class UserDb
         if (string.IsNullOrWhiteSpace(cs))
             throw new InvalidOperationException("ConnectionStrings:DefaultConnection chưa được cấu hình.");
 
-        var conn = new NpgsqlConnection(cs);
-        conn.Open();
-        return conn;
+        // Retry logic for database connection
+        const int maxRetries = 5;
+        const int delayMs = 2000; // 2 seconds
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                var conn = new NpgsqlConnection(cs);
+                conn.Open();
+                
+                // Test connection with a simple query
+                using (var testCmd = new NpgsqlCommand("SELECT 1", conn))
+                {
+                    testCmd.ExecuteScalar();
+                }
+                
+                _logger?.LogInformation("Database connection established successfully");
+                return conn;
+            }
+            catch (Exception ex) when (attempt < maxRetries)
+            {
+                _logger?.LogWarning(ex, "Database connection attempt {Attempt}/{MaxRetries} failed, retrying in {Delay}ms...", 
+                    attempt, maxRetries, delayMs);
+                Thread.Sleep(delayMs);
+            }
+        }
+
+        // Final attempt without retry
+        var finalConn = new NpgsqlConnection(cs);
+        finalConn.Open();
+        return finalConn;
     }
 }
-

@@ -25,6 +25,10 @@ adminApi.interceptors.response.use(
   (error: AxiosError) => {
     if (error.response?.status === 401) {
       adminService.logout();
+      // Redirect to login page if not already there
+      if (window.location.pathname !== "/admin/login") {
+        window.location.href = "/admin/login";
+      }
     }
     return Promise.reject(error);
   }
