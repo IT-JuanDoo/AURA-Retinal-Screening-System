@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import adminApi from "../../services/adminApi";
 import { useAdminAuthStore } from "../../store/adminAuthStore";
+import { rolesApi, Role } from "../../services/rbacApi";
 
 type Tab = "users" | "doctors" | "clinics";
 
 export default function AdminAccountsPage() {
+  const navigate = useNavigate();
   const { admin, logoutAdmin, isAdminAuthenticated } = useAdminAuthStore();
   const [tab, setTab] = useState<Tab>("users");
   const [search, setSearch] = useState("");
@@ -16,6 +19,8 @@ export default function AdminAccountsPage() {
   const [saving, setSaving] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [newItem, setNewItem] = useState<any>({});
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
+  const [userRoles, setUserRoles] = useState<string[]>([]);
 
   const endpoint = useMemo(() => {
     if (tab === "users") return "/admin/users";
@@ -57,8 +62,18 @@ export default function AdminAccountsPage() {
     setSearch("");
     setIsActiveFilter(null);
     load();
+    loadAllRoles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+
+  useEffect(() => {
+    if (selected?.id && tab === "users") {
+      loadUserRoles(selected.id);
+    } else {
+      setUserRoles([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, tab]);
 
   // Auto search with debounce
   useEffect(() => {
@@ -68,6 +83,54 @@ export default function AdminAccountsPage() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, isActiveFilter]);
+
+  const loadAllRoles = async () => {
+    try {
+      const roles = await rolesApi.getAll();
+      setAllRoles(roles);
+    } catch (e: any) {
+      console.error("Failed to load roles:", e);
+    }
+  };
+
+  const loadUserRoles = async (userId: string) => {
+    try {
+      const roles = await rolesApi.getUserRoles(userId);
+      setUserRoles(roles);
+    } catch (e: any) {
+      console.error("Failed to load user roles:", e);
+      setUserRoles([]);
+    }
+  };
+
+  const handleAssignRole = async (userId: string, roleId: string) => {
+    try {
+      await rolesApi.assignToUser({ userId, roleId, isPrimary: false });
+      toast.success("Đã gán role thành công");
+      await loadUserRoles(userId);
+    } catch (e: any) {
+      toast.error(
+        e?.response?.data?.message || e?.message || "Không gán được role"
+      );
+    }
+  };
+
+  const handleRemoveRole = async (userId: string, roleName: string) => {
+    try {
+      const role = allRoles.find((r) => r.roleName === roleName);
+      if (!role) {
+        toast.error("Không tìm thấy role");
+        return;
+      }
+      await rolesApi.removeFromUser(userId, role.id);
+      toast.success("Đã gỡ role thành công");
+      await loadUserRoles(userId);
+    } catch (e: any) {
+      toast.error(
+        e?.response?.data?.message || e?.message || "Không gỡ được role"
+      );
+    }
+  };
 
   const toggleActive = async (row: any) => {
     const isActive = !row.isActive;
@@ -157,6 +220,12 @@ export default function AdminAccountsPage() {
             </div>
 
             <div className="flex items-center gap-4">
+              <button
+                onClick={() => navigate("/admin/rbac")}
+                className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-sm font-medium"
+              >
+                Phân quyền (RBAC)
+              </button>
               <div className="text-sm text-slate-600 dark:text-slate-400">
                 Xin chào,{" "}
                 <span className="font-semibold text-slate-900 dark:text-white">
@@ -787,7 +856,10 @@ export default function AdminAccountsPage() {
                 Chỉnh sửa thông tin
               </h3>
               <button
-                onClick={() => setSelected(null)}
+                onClick={() => {
+                  setSelected(null);
+                  setUserRoles([]);
+                }}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
               >
                 <svg
@@ -927,6 +999,82 @@ export default function AdminAccountsPage() {
                 </>
               )}
 
+              {/* Phân quyền (Roles) - chỉ hiển thị cho users */}
+              {tab === "users" && selected?.id && (
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+                  <h4 className="text-md font-semibold text-slate-900 dark:text-white mb-3">
+                    🔐 Phân quyền (Roles)
+                  </h4>
+                  {allRoles.length === 0 ? (
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">
+                      Chưa có roles trong hệ thống. Vui lòng tạo roles tại trang{" "}
+                      <button
+                        onClick={() => navigate("/admin/rbac")}
+                        className="text-blue-500 hover:text-blue-600 underline"
+                      >
+                        Quản lý RBAC
+                      </button>
+                      .
+                    </p>
+                  ) : (
+                    <>
+                      <div className="mb-3">
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
+                          Roles hiện tại:{" "}
+                          {userRoles.length > 0
+                            ? userRoles.join(", ")
+                            : "Chưa có"}
+                        </p>
+                        {userRoles.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {userRoles.map((roleName) => (
+                              <span
+                                key={roleName}
+                                className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-full text-sm"
+                              >
+                                {roleName}
+                                <button
+                                  onClick={() =>
+                                    handleRemoveRole(selected.id, roleName)
+                                  }
+                                  className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200"
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <select
+                          className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50"
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAssignRole(selected.id, e.target.value);
+                              e.target.value = "";
+                            }
+                          }}
+                          defaultValue=""
+                        >
+                          <option value="">Chọn role để gán...</option>
+                          {allRoles
+                            .filter((r) => !userRoles.includes(r.roleName))
+                            .map((role) => (
+                              <option key={role.id} value={role.id}>
+                                {role.roleName}{" "}
+                                {role.description
+                                  ? `- ${role.description}`
+                                  : ""}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
                 <button
                   onClick={save}
@@ -936,7 +1084,10 @@ export default function AdminAccountsPage() {
                   {saving ? "Đang lưu..." : "Lưu thay đổi"}
                 </button>
                 <button
-                  onClick={() => setSelected(null)}
+                  onClick={() => {
+                    setSelected(null);
+                    setUserRoles([]);
+                  }}
                   disabled={saving}
                   className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                 >

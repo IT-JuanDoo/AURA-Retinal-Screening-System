@@ -19,7 +19,7 @@ public class RolesController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<IEnumerable<RoleDto>>> GetAllRoles()
     {
         var roles = await _roleService.GetAllRolesAsync();
@@ -27,7 +27,7 @@ public class RolesController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<RoleDto>> GetRoleById(string id)
     {
         var role = await _roleService.GetRoleByIdAsync(id);
@@ -38,7 +38,7 @@ public class RolesController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<RoleDto>> CreateRole([FromBody] CreateRoleDto dto)
     {
         if (!ModelState.IsValid)
@@ -50,7 +50,7 @@ public class RolesController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<RoleDto>> UpdateRole(string id, [FromBody] UpdateRoleDto dto)
     {
         if (!ModelState.IsValid)
@@ -65,7 +65,7 @@ public class RolesController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> DeleteRole(string id)
     {
         var result = await _roleService.DeleteRoleAsync(id);
@@ -76,7 +76,7 @@ public class RolesController : ControllerBase
     }
 
     [HttpPost("assign")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> AssignRoleToUser([FromBody] AssignRoleDto dto)
     {
         if (!ModelState.IsValid)
@@ -91,7 +91,7 @@ public class RolesController : ControllerBase
     }
 
     [HttpDelete("users/{userId}/roles/{roleId}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> RemoveRoleFromUser(string userId, string roleId)
     {
         var result = await _roleService.RemoveRoleFromUserAsync(userId, roleId);
@@ -132,7 +132,7 @@ public class RolesController : ControllerBase
     }
 
     [HttpGet("{roleId}/permissions")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<IEnumerable<PermissionDto>>> GetRolePermissions(string roleId)
     {
         var permissions = await _roleService.GetRolePermissionsAsync(roleId);

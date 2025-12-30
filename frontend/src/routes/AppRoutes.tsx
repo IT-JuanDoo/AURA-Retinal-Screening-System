@@ -3,6 +3,7 @@ import LoginPage from "../pages/auth/LoginPage";
 import RegisterPage from "../pages/auth/RegisterPage";
 import AdminLoginPage from "../pages/admin/AdminLoginPage";
 import AdminAccountsPage from "../pages/admin/AdminAccountsPage";
+import AdminRbacPage from "../pages/admin/AdminRbacPage";
 import PatientProfilePage from "../pages/patient/PatientProfilePage";
 import HomePage from "../pages/HomePage";
 import PatientDashboard from "../pages/patient/PatientDashboard";
@@ -89,6 +90,14 @@ const AppRoutes = () => {
         element={
           <AdminProtectedRoute>
             <AdminAccountsPage />
+          </AdminProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/rbac"
+        element={
+          <AdminProtectedRoute>
+            <AdminRbacPage />
           </AdminProtectedRoute>
         }
       />

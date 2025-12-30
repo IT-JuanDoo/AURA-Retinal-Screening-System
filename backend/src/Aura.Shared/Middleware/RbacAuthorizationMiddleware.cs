@@ -19,7 +19,8 @@ public class RbacAuthorizationMiddleware
         if (context.Request.Path.StartsWithSegments("/health") ||
             context.Request.Path.StartsWithSegments("/swagger") ||
             context.Request.Path.StartsWithSegments("/api/auth/login") ||
-            context.Request.Path.StartsWithSegments("/api/auth/register"))
+            context.Request.Path.StartsWithSegments("/api/auth/register") ||
+            context.Request.Path.StartsWithSegments("/api/admin/auth/login"))
         {
             await _next(context);
             return;
@@ -32,21 +33,73 @@ public class RbacAuthorizationMiddleware
             return;
         }
 
-        // Get user roles and permissions and add to context
-        var roles = await roleService.GetUserRolesAsync(userId);
-        var permissions = await roleService.GetUserPermissionsAsync(userId);
+        // Check if this is an admin user (from JWT token)
+        var accountType = context.User?.FindFirst("account_type")?.Value;
+        var isAdmin = accountType == "admin" || 
+                     context.User?.IsInRole("Admin") == true || 
+                     context.User?.IsInRole("SuperAdmin") == true;
 
-        context.Items["UserRoles"] = roles.ToList();
-        context.Items["UserPermissions"] = permissions.ToList();
-
-        // Add roles and permissions as claims for authorization
-        if (context.User?.Identity is ClaimsIdentity claimsIdentity)
+        if (isAdmin)
         {
-            foreach (var role in roles)
+            // For admin users, preserve existing roles from JWT token
+            // and only load additional permissions from database if needed
+            var existingRoles = context.User?.FindAll(ClaimTypes.Role)
+                .Select(c => c.Value)
+                .ToList() ?? new List<string>();
+
+            context.Items["UserRoles"] = existingRoles;
+            
+            // Try to get permissions from database, but don't fail if admin doesn't have entries in user_roles
+            try
             {
-                if (context.User != null && !context.User.HasClaim(ClaimTypes.Role, role))
+                var permissions = await roleService.GetUserPermissionsAsync(userId);
+                context.Items["UserPermissions"] = permissions.ToList();
+                
+                // Add permissions as claims
+                if (context.User?.Identity is ClaimsIdentity claimsIdentity)
                 {
-                    claimsIdentity.AddClaim(new Claim(ClaimTypes.Role, role));
+                    foreach (var permission in permissions)
+                    {
+                        if (!context.User.HasClaim("Permission", permission))
+                        {
+                            claimsIdentity.AddClaim(new Claim("Permission", permission));
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // If admin doesn't have entries in user_roles table, that's okay
+                // They still have roles from JWT token
+                context.Items["UserPermissions"] = new List<string>();
+            }
+        }
+        else
+        {
+            // For regular users, load roles and permissions from database
+            var roles = await roleService.GetUserRolesAsync(userId);
+            var permissions = await roleService.GetUserPermissionsAsync(userId);
+
+            context.Items["UserRoles"] = roles.ToList();
+            context.Items["UserPermissions"] = permissions.ToList();
+
+            // Add roles and permissions as claims for authorization
+            if (context.User?.Identity is ClaimsIdentity claimsIdentity)
+            {
+                foreach (var role in roles)
+                {
+                    if (context.User != null && !context.User.HasClaim(ClaimTypes.Role, role))
+                    {
+                        claimsIdentity.AddClaim(new Claim(ClaimTypes.Role, role));
+                    }
+                }
+                
+                foreach (var permission in permissions)
+                {
+                    if (!context.User.HasClaim("Permission", permission))
+                    {
+                        claimsIdentity.AddClaim(new Claim("Permission", permission));
+                    }
                 }
             }
         }
