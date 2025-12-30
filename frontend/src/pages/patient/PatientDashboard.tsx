@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 
 // Mock data - sẽ được thay thế bằng API call sau
@@ -40,6 +40,7 @@ const mockHealthData = {
 
 const PatientDashboard = () => {
   const { user, logout } = useAuthStore();
+  const navigate = useNavigate();
   const [selectedPeriod, setSelectedPeriod] = useState('6months');
 
   return (
@@ -65,6 +66,12 @@ const PatientDashboard = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                 </svg>
                 Tổng quan
+              </Link>
+              <Link to="/upload" className="text-slate-600 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-500 transition-colors text-sm font-medium leading-normal flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                Tải ảnh
               </Link>
               <Link to="/history" className="text-slate-600 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-500 transition-colors text-sm font-medium leading-normal flex items-center gap-2">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -234,10 +241,13 @@ const PatientDashboard = () => {
                   </div>
                   
                   <div className="mt-6 flex gap-3">
-                    <button className="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-md shadow-blue-500/20 transition-all active:scale-95 flex items-center gap-2">
-                      Xem báo cáo chi tiết
+                    <button 
+                      onClick={() => navigate('/upload')}
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-md shadow-blue-500/20 transition-all active:scale-95 flex items-center gap-2"
+                    >
+                      Tải ảnh mới để phân tích
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                       </svg>
                     </button>
                   </div>
@@ -373,7 +383,10 @@ const PatientDashboard = () => {
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">Cần quét hình ảnh mới?</h3>
                 <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">Tải lên hình ảnh đáy mắt mới để AI phân tích ngay lập tức.</p>
               </div>
-              <button className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 px-4 rounded-lg font-bold text-sm shadow-md transition-colors z-10 flex items-center justify-center gap-2">
+              <button 
+                onClick={() => navigate('/upload')}
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 px-4 rounded-lg font-bold text-sm shadow-md transition-colors z-10 flex items-center justify-center gap-2"
+              >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>

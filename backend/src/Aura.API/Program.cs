@@ -6,13 +6,24 @@ using Aura.Shared.Authorization;
 using Aura.Shared.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Kestrel for larger file uploads (up to 50MB)
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 50 * 1024 * 1024; // 50MB
+});
+
 // Add services to the container
-builder.Services.AddControllers()
+builder.Services.AddControllers(options =>
+{
+    // Configure multipart body length limit for file uploads
+    options.MaxModelBindingCollectionSize = int.MaxValue;
+})
     .AddJsonOptions(options =>
     {
         // Configure JSON serializer to use camelCase (matching frontend)
@@ -20,6 +31,14 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
     });
 builder.Services.AddEndpointsApiExplorer();
+
+// Configure form options for file uploads (up to 50MB)
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 50 * 1024 * 1024; // 50MB
+    options.ValueLengthLimit = int.MaxValue;
+    options.MultipartHeadersLengthLimit = int.MaxValue;
+});
 
 // Configure Swagger with JWT authentication
 builder.Services.AddSwaggerGen(options =>
@@ -135,6 +154,18 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddSingleton<IUserService, UserService>();
 
+// FR-2: Image Services
+builder.Services.AddScoped<Aura.Application.Services.Images.IImageService, Aura.Application.Services.Images.ImageService>();
+
+// FR-3: Analysis Services
+builder.Services.AddHttpClient<Aura.Application.Services.Analysis.AnalysisService>(client =>
+{
+    var timeoutValue = builder.Configuration["AICore:Timeout"];
+    client.Timeout = TimeSpan.FromMilliseconds(
+        int.TryParse(timeoutValue, out var timeout) ? timeout : 30000);
+});
+builder.Services.AddScoped<Aura.Application.Services.Analysis.IAnalysisService, Aura.Application.Services.Analysis.AnalysisService>();
+
 // Notifications (in-memory for now)
 builder.Services.AddSingleton<Aura.Application.Services.Notifications.INotificationService, Aura.Infrastructure.Services.Notifications.NotificationService>();
 // FR-32: RBAC Services
@@ -183,6 +214,13 @@ if (app.Configuration.GetValue<bool>("App:UseHttpsRedirection"))
 
 // Use CORS before authentication
 app.UseCors("AllowFrontend");
+
+// Enable request buffering for file uploads
+app.Use(async (context, next) =>
+{
+    context.Request.EnableBuffering(); // Enable request buffering for file uploads
+    await next();
+});
 
 // Add headers to support OAuth popups (fix Cross-Origin-Opener-Policy warning)
 app.Use(async (context, next) =>

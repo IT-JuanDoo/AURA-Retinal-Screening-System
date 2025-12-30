@@ -7,6 +7,8 @@ import AdminRbacPage from "../pages/admin/AdminRbacPage";
 import PatientProfilePage from "../pages/patient/PatientProfilePage";
 import HomePage from "../pages/HomePage";
 import PatientDashboard from "../pages/patient/PatientDashboard";
+import ImageUploadPage from "../pages/patient/ImageUploadPage";
+import AnalysisResultPage from "../pages/patient/AnalysisResultPage";
 import { useAuthStore } from "../store/authStore";
 import { useAdminAuthStore } from "../store/adminAuthStore";
 
@@ -116,6 +118,22 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <PatientProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/upload"
+        element={
+          <ProtectedRoute>
+            <ImageUploadPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/analysis/:analysisId"
+        element={
+          <ProtectedRoute>
+            <AnalysisResultPage />
           </ProtectedRoute>
         }
       />

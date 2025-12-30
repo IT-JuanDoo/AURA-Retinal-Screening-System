@@ -2,7 +2,7 @@
 # AURA - Makefile for Docker Commands
 # =============================================================================
 
-.PHONY: help build up down logs clean dev prod restart
+.PHONY: help build up down logs clean dev prod restart rebuild-frontend rebuild-backend
 
 # Default target
 help:
@@ -22,6 +22,8 @@ help:
 	@echo "  make shell-b    - Open shell in backend container"
 	@echo "  make shell-f    - Open shell in frontend container"
 	@echo "  make shell-db   - Open psql in database container"
+	@echo "  make rebuild-frontend - Rebuild frontend container (sau khi thêm code mới)"
+	@echo "  make rebuild-backend  - Rebuild backend container (sau khi thêm code mới)"
 	@echo ""
 
 # Development mode (only database for local backend/frontend development)
@@ -96,4 +98,21 @@ dev-down:
 # Clean development
 dev-clean:
 	docker-compose -f docker-compose.dev.yml down -v --rmi all --remove-orphans
+
+# Rebuild frontend (sau khi thêm code mới)
+rebuild-frontend:
+	@echo "Rebuilding frontend container..."
+	docker-compose build --no-cache frontend
+	docker-compose up -d frontend
+	@echo ""
+	@echo "Frontend rebuilt and restarted!"
+	@echo "Access at: http://localhost:3000/upload"
+
+# Rebuild backend (sau khi thêm code mới)
+rebuild-backend:
+	@echo "Rebuilding backend container..."
+	docker-compose build --no-cache backend
+	docker-compose up -d backend
+	@echo ""
+	@echo "Backend rebuilt and restarted!"
 
