@@ -67,7 +67,7 @@ export default function AdminAccountsPage() {
   }, [tab]);
 
   useEffect(() => {
-    if (selected?.id && tab === "users") {
+    if (selected?.id && (tab === "users" || tab === "doctors")) {
       loadUserRoles(selected.id);
     } else {
       setUserRoles([]);
@@ -98,6 +98,12 @@ export default function AdminAccountsPage() {
       const roles = await rolesApi.getUserRoles(userId);
       setUserRoles(roles);
     } catch (e: any) {
+      // If user not found (e.g., moved to doctors table), clear roles
+      if (e?.response?.status === 404 || e?.response?.status === 403) {
+        setUserRoles([]);
+        // Don't show error toast as this is expected when user is moved to another table
+        return;
+      }
       console.error("Failed to load user roles:", e);
       setUserRoles([]);
     }
@@ -105,12 +111,35 @@ export default function AdminAccountsPage() {
 
   const handleAssignRole = async (userId: string, roleId: string) => {
     try {
+      // Get role name for better notification
+      const role = allRoles.find((r) => r.id === roleId);
+      const roleName = role?.roleName || "role";
+
       await rolesApi.assignToUser({ userId, roleId, isPrimary: false });
-      toast.success("Đã gán role thành công");
+
+      // Show success message with role name
+      toast.success(`Đã gán role "${roleName}" thành công!`);
+
+      // Reload user roles
       await loadUserRoles(userId);
+
+      // Reload the main list to reflect changes
+      await load();
+
+      // If role is "Doctor", user will be moved to doctors table
+      // Close the edit panel and show info message
+      if (roleName === "Doctor") {
+        setSelected(null);
+        setUserRoles([]);
+        toast.success("Người dùng đã được chuyển sang danh sách Bác sĩ", {
+          duration: 4000,
+        });
+      }
     } catch (e: any) {
       toast.error(
-        e?.response?.data?.message || e?.message || "Không gán được role"
+        e?.response?.data?.message ||
+          e?.message ||
+          "Không thể gán role. Vui lòng thử lại."
       );
     }
   };
@@ -122,12 +151,29 @@ export default function AdminAccountsPage() {
         toast.error("Không tìm thấy role");
         return;
       }
+
       await rolesApi.removeFromUser(userId, role.id);
-      toast.success("Đã gỡ role thành công");
+
+      // Show success message with role name
+      toast.success(`Đã gỡ role "${roleName}" thành công!`);
+
+      // Reload user roles
       await loadUserRoles(userId);
+
+      // Reload the main list to reflect changes
+      await load();
+
+      // If removing "Doctor" role, user will be restored to users table
+      if (roleName === "Doctor") {
+        toast.success("Người dùng đã được chuyển về danh sách Người dùng", {
+          duration: 4000,
+        });
+      }
     } catch (e: any) {
       toast.error(
-        e?.response?.data?.message || e?.message || "Không gỡ được role"
+        e?.response?.data?.message ||
+          e?.message ||
+          "Không thể gỡ role. Vui lòng thử lại."
       );
     }
   };
@@ -999,8 +1045,8 @@ export default function AdminAccountsPage() {
                 </>
               )}
 
-              {/* Phân quyền (Roles) - chỉ hiển thị cho users */}
-              {tab === "users" && selected?.id && (
+              {/* Phân quyền (Roles) - hiển thị cho users và doctors */}
+              {(tab === "users" || tab === "doctors") && selected?.id && (
                 <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
                   <h4 className="text-md font-semibold text-slate-900 dark:text-white mb-3">
                     🔐 Phân quyền (Roles)
@@ -1072,6 +1118,55 @@ export default function AdminAccountsPage() {
                       </div>
                     </>
                   )}
+                </div>
+              )}
+
+              {/* Nút xóa cho doctors */}
+              {tab === "doctors" && selected?.id && (
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    onClick={async () => {
+                      if (
+                        !confirm(
+                          "Bạn có chắc muốn xóa bác sĩ này? Bác sĩ sẽ được chuyển về danh sách Người dùng."
+                        )
+                      ) {
+                        return;
+                      }
+                      try {
+                        // Gỡ role Doctor để restore về users
+                        const doctorRole = allRoles.find(
+                          (r) => r.roleName === "Doctor"
+                        );
+                        if (doctorRole) {
+                          await rolesApi.removeFromUser(
+                            selected.id,
+                            doctorRole.id
+                          );
+                          toast.success(
+                            "Đã xóa bác sĩ. Người dùng đã được chuyển về danh sách Người dùng",
+                            {
+                              duration: 4000,
+                            }
+                          );
+                          setSelected(null);
+                          setUserRoles([]);
+                          await load();
+                        } else {
+                          toast.error("Không tìm thấy role Doctor");
+                        }
+                      } catch (e: any) {
+                        toast.error(
+                          e?.response?.data?.message ||
+                            e?.message ||
+                            "Không thể xóa bác sĩ. Vui lòng thử lại."
+                        );
+                      }
+                    }}
+                    className="w-full px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors font-medium"
+                  >
+                    🗑️ Xóa bác sĩ (Chuyển về Người dùng)
+                  </button>
                 </div>
               )}
 
