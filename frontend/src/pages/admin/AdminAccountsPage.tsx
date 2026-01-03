@@ -267,6 +267,12 @@ export default function AdminAccountsPage() {
 
             <div className="flex items-center gap-4">
               <button
+                onClick={() => navigate("/admin/analytics")}
+                className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-sm font-medium"
+              >
+                Analytics
+              </button>
+              <button
                 onClick={() => navigate("/admin/rbac")}
                 className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-sm font-medium"
               >
@@ -1165,7 +1171,7 @@ export default function AdminAccountsPage() {
                     }}
                     className="w-full px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors font-medium"
                   >
-                    🗑️ Xóa bác sĩ (Chuyển về Người dùng)
+                    Xóa bác sĩ (Chuyển về Người dùng)
                   </button>
                 </div>
               )}

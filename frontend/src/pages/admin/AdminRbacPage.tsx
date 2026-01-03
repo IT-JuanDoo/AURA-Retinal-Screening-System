@@ -278,6 +278,12 @@ export default function AdminRbacPage() {
               >
                 Quản lý Tài khoản
               </button>
+              <button
+                onClick={() => navigate("/admin/analytics")}
+                className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-sm font-medium"
+              >
+                Analytics
+              </button>
               <div className="text-sm text-slate-600 dark:text-slate-400">
                 Xin chào,{" "}
                 <span className="font-semibold text-slate-900 dark:text-white">

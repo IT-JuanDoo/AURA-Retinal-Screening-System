@@ -182,6 +182,7 @@ builder.Services.AddScoped<Aura.API.Admin.AdminDb>(sp =>
 });
 builder.Services.AddScoped<Aura.API.Admin.AdminJwtService>();
 builder.Services.AddScoped<Aura.API.Admin.AdminAccountRepository>();
+builder.Services.AddScoped<Aura.API.Admin.AnalyticsRepository>();
 
 // TODO: Add database context when ready
 // builder.Services.AddDbContext<AuraDbContext>(options =>
