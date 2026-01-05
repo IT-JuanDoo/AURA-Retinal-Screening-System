@@ -3,6 +3,8 @@ using Aura.Application.Services.Analysis;
 using Aura.Application.Services.Images;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using Npgsql;
 using System.Security.Claims;
 
 namespace Aura.API.Controllers;
@@ -18,15 +20,18 @@ public class ClinicImagesController : ControllerBase
     private readonly IImageService _imageService;
     private readonly IAnalysisQueueService _analysisQueueService;
     private readonly ILogger<ClinicImagesController> _logger;
+    private readonly IConfiguration _configuration;
 
     public ClinicImagesController(
         IImageService imageService,
         IAnalysisQueueService analysisQueueService,
-        ILogger<ClinicImagesController> logger)
+        ILogger<ClinicImagesController> logger,
+        IConfiguration configuration)
     {
         _imageService = imageService;
         _analysisQueueService = analysisQueueService;
         _logger = logger;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -110,8 +115,14 @@ public class ClinicImagesController : ControllerBase
                 AutoStartAnalysis = autoStartAnalysis
             };
 
+            // Get uploaded by information from claims
+            var uploadedBy = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? clinicId;
+            var uploadedByType = User.IsInRole("Doctor") ? "Doctor" : 
+                                User.IsInRole("Admin") ? "Admin" : 
+                                "ClinicManager";
+
             // Perform bulk upload
-            var result = await _imageService.BulkUploadForClinicAsync(clinicId, fileData, options);
+            var result = await _imageService.BulkUploadForClinicAsync(clinicId, fileData, options, uploadedBy, uploadedByType);
 
             // Dispose streams
             foreach (var (stream, _, _) in fileData)
@@ -224,10 +235,197 @@ public class ClinicImagesController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Get status of a bulk upload batch
+    /// </summary>
+    [HttpGet("batches/{batchId}/status")]
+    [ProducesResponseType(typeof(BulkUploadBatchStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetBatchStatus(string batchId)
+    {
+        var clinicId = User.FindFirstValue("clinic_id") ?? 
+                       User.FindFirstValue("ClinicId") ?? 
+                       User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrEmpty(clinicId))
+        {
+            return Unauthorized(new { message = "Clinic ID not found" });
+        }
+
+        try
+        {
+            var batchStatus = await GetBulkUploadBatchStatusAsync(batchId, clinicId);
+            if (batchStatus == null)
+            {
+                return NotFound(new { message = "Batch not found" });
+            }
+
+            return Ok(batchStatus);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting batch status for batch {BatchId}", batchId);
+            return StatusCode(500, new { message = "Failed to get batch status", error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// List all bulk upload batches for the clinic
+    /// </summary>
+    [HttpGet("batches")]
+    [ProducesResponseType(typeof(List<BulkUploadBatchStatusDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListBatches(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? status = null)
+    {
+        var clinicId = User.FindFirstValue("clinic_id") ?? 
+                       User.FindFirstValue("ClinicId") ?? 
+                       User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrEmpty(clinicId))
+        {
+            return Unauthorized(new { message = "Clinic ID not found" });
+        }
+
+        try
+        {
+            var batches = await ListBulkUploadBatchesAsync(clinicId, page, pageSize, status);
+            return Ok(batches);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error listing batches for clinic {ClinicId}", clinicId);
+            return StatusCode(500, new { message = "Failed to list batches", error = ex.Message });
+        }
+    }
+
+    private async Task<BulkUploadBatchStatusDto?> GetBulkUploadBatchStatusAsync(string batchId, string clinicId)
+    {
+        using var connection = new Npgsql.NpgsqlConnection(
+            _configuration.GetConnectionString("DefaultConnection") 
+            ?? throw new InvalidOperationException("Database connection string not found"));
+        await connection.OpenAsync();
+
+        var sql = @"
+            SELECT Id, ClinicId, UploadedBy, UploadedByType, BatchName, TotalImages,
+                   ProcessedImages, FailedImages, ProcessingImages, UploadStatus,
+                   StartedAt, CompletedAt, FailureReason, Metadata, CreatedDate
+            FROM bulk_upload_batches
+            WHERE Id = @BatchId AND ClinicId = @ClinicId AND IsDeleted = false";
+
+        using var command = new Npgsql.NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("BatchId", batchId);
+        command.Parameters.AddWithValue("ClinicId", clinicId);
+
+        using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return null;
+        }
+
+        return new BulkUploadBatchStatusDto
+        {
+            BatchId = reader.GetString(0),
+            ClinicId = reader.GetString(1),
+            UploadedBy = reader.GetString(2),
+            UploadedByType = reader.GetString(3),
+            BatchName = reader.IsDBNull(4) ? null : reader.GetString(4),
+            TotalImages = reader.GetInt32(5),
+            ProcessedImages = reader.GetInt32(6),
+            FailedImages = reader.GetInt32(7),
+            ProcessingImages = reader.GetInt32(8),
+            UploadStatus = reader.GetString(9),
+            StartedAt = reader.IsDBNull(10) ? null : reader.GetDateTime(10),
+            CompletedAt = reader.IsDBNull(11) ? null : reader.GetDateTime(11),
+            FailureReason = reader.IsDBNull(12) ? null : reader.GetString(12),
+            Metadata = reader.IsDBNull(13) ? null : reader.GetString(13),
+            CreatedDate = reader.IsDBNull(14) ? null : reader.GetDateTime(14)
+        };
+    }
+
+    private async Task<List<BulkUploadBatchStatusDto>> ListBulkUploadBatchesAsync(
+        string clinicId, int page, int pageSize, string? status)
+    {
+        using var connection = new Npgsql.NpgsqlConnection(
+            _configuration.GetConnectionString("DefaultConnection") 
+            ?? throw new InvalidOperationException("Database connection string not found"));
+        await connection.OpenAsync();
+
+        var whereClause = "ClinicId = @ClinicId AND IsDeleted = false";
+        if (!string.IsNullOrEmpty(status))
+        {
+            whereClause += " AND UploadStatus = @Status";
+        }
+
+        var sql = $@"
+            SELECT Id, ClinicId, UploadedBy, UploadedByType, BatchName, TotalImages,
+                   ProcessedImages, FailedImages, ProcessingImages, UploadStatus,
+                   StartedAt, CompletedAt, FailureReason, Metadata, CreatedDate
+            FROM bulk_upload_batches
+            WHERE {whereClause}
+            ORDER BY StartedAt DESC
+            LIMIT @PageSize OFFSET @Offset";
+
+        using var command = new Npgsql.NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ClinicId", clinicId);
+        command.Parameters.AddWithValue("PageSize", pageSize);
+        command.Parameters.AddWithValue("Offset", (page - 1) * pageSize);
+        if (!string.IsNullOrEmpty(status))
+        {
+            command.Parameters.AddWithValue("Status", status);
+        }
+
+        var batches = new List<BulkUploadBatchStatusDto>();
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            batches.Add(new BulkUploadBatchStatusDto
+            {
+                BatchId = reader.GetString(0),
+                ClinicId = reader.GetString(1),
+                UploadedBy = reader.GetString(2),
+                UploadedByType = reader.GetString(3),
+                BatchName = reader.IsDBNull(4) ? null : reader.GetString(4),
+                TotalImages = reader.GetInt32(5),
+                ProcessedImages = reader.GetInt32(6),
+                FailedImages = reader.GetInt32(7),
+                ProcessingImages = reader.GetInt32(8),
+                UploadStatus = reader.GetString(9),
+                StartedAt = reader.IsDBNull(10) ? null : reader.GetDateTime(10),
+                CompletedAt = reader.IsDBNull(11) ? null : reader.GetDateTime(11),
+                FailureReason = reader.IsDBNull(12) ? null : reader.GetString(12),
+                Metadata = reader.IsDBNull(13) ? null : reader.GetString(13),
+                CreatedDate = reader.IsDBNull(14) ? null : reader.GetDateTime(14)
+            });
+        }
+
+        return batches;
+    }
+
     public class QueueAnalysisRequest
     {
         public List<string> ImageIds { get; set; } = new();
         public string? BatchId { get; set; }
     }
+}
+
+public class BulkUploadBatchStatusDto
+{
+    public string BatchId { get; set; } = string.Empty;
+    public string ClinicId { get; set; } = string.Empty;
+    public string UploadedBy { get; set; } = string.Empty;
+    public string UploadedByType { get; set; } = string.Empty;
+    public string? BatchName { get; set; }
+    public int TotalImages { get; set; }
+    public int ProcessedImages { get; set; }
+    public int FailedImages { get; set; }
+    public int ProcessingImages { get; set; }
+    public string UploadStatus { get; set; } = string.Empty;
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public string? FailureReason { get; set; }
+    public string? Metadata { get; set; }
+    public DateTime? CreatedDate { get; set; }
 }
 

@@ -255,7 +255,9 @@ public class ImageService : IImageService
     public async Task<ClinicBulkUploadResponseDto> BulkUploadForClinicAsync(
         string clinicId,
         List<(Stream FileStream, string Filename, ImageUploadDto? Metadata)> files,
-        ClinicBulkUploadDto? options = null)
+        ClinicBulkUploadDto? options = null,
+        string? uploadedBy = null,
+        string? uploadedByType = "ClinicManager")
     {
         var batchId = Guid.NewGuid().ToString();
         var response = new ClinicBulkUploadResponseDto
@@ -268,9 +270,18 @@ public class ImageService : IImageService
         _logger?.LogInformation("Starting bulk upload for clinic {ClinicId}, Batch: {BatchId}, Files: {Count}",
             clinicId, batchId, files.Count);
 
+        // Create bulk upload batch record
+        await CreateBulkUploadBatchAsync(batchId, clinicId, files.Count, options?.BatchName, uploadedBy, uploadedByType, options);
+
+        // Update batch status to Uploading
+        await UpdateBulkUploadBatchStatusAsync(batchId, "Uploading", null, null, null, null);
+
         // Process files in parallel batches (max 10 concurrent uploads to avoid overwhelming Cloudinary)
         const int batchSize = 10;
         var semaphore = new SemaphoreSlim(batchSize);
+        var processedCount = 0;
+        var successCount = 0;
+        var failedCount = 0;
 
         var uploadTasks = files.Select(async (file, index) =>
         {
@@ -297,8 +308,18 @@ public class ImageService : IImageService
                     options?.DoctorId
                 );
 
+                // Update image with batch ID
+                await UpdateImageBatchIdAsync(result.Id, batchId);
+
                 response.SuccessfullyUploaded.Add(result);
-                response.SuccessCount++;
+                Interlocked.Increment(ref successCount);
+                Interlocked.Increment(ref processedCount);
+
+                // Update batch progress periodically
+                if (processedCount % 10 == 0 || processedCount == files.Count)
+                {
+                    await UpdateBulkUploadBatchStatusAsync(batchId, "Uploading", processedCount, successCount, failedCount, null);
+                }
             }
             catch (Exception ex)
             {
@@ -308,7 +329,14 @@ public class ImageService : IImageService
                     Filename = file.Filename,
                     ErrorMessage = ex.Message
                 });
-                response.FailedCount++;
+                Interlocked.Increment(ref failedCount);
+                Interlocked.Increment(ref processedCount);
+
+                // Update batch progress
+                if (processedCount % 10 == 0 || processedCount == files.Count)
+                {
+                    await UpdateBulkUploadBatchStatusAsync(batchId, "Uploading", processedCount, successCount, failedCount, null);
+                }
             }
             finally
             {
@@ -318,8 +346,29 @@ public class ImageService : IImageService
 
         await Task.WhenAll(uploadTasks);
 
+        // Determine final status
+        string finalStatus;
+        if (failedCount == 0)
+        {
+            finalStatus = "Completed";
+        }
+        else if (successCount == 0)
+        {
+            finalStatus = "Failed";
+        }
+        else
+        {
+            finalStatus = "PartiallyCompleted";
+        }
+
+        // Update batch to completed
+        await UpdateBulkUploadBatchStatusAsync(batchId, finalStatus, processedCount, successCount, failedCount, DateTime.UtcNow);
+
+        response.SuccessCount = successCount;
+        response.FailedCount = failedCount;
+
         _logger?.LogInformation("Bulk upload completed for clinic {ClinicId}, Batch: {BatchId}, Success: {Success}, Failed: {Failed}",
-            clinicId, batchId, response.SuccessCount, response.FailedCount);
+            clinicId, batchId, successCount, failedCount);
 
         return response;
     }
@@ -444,12 +493,12 @@ public class ImageService : IImageService
                 Id, UserId, ClinicId, DoctorId, OriginalFilename, StoredFilename, FilePath, 
                 CloudinaryUrl, FileSize, ImageType, ImageFormat, 
                 CaptureDevice, CaptureDate, EyeSide, UploadStatus, 
-                UploadedAt, CreatedDate, IsDeleted
+                UploadedAt, CreatedDate, IsDeleted, BatchId
             ) VALUES (
                 @Id, @UserId, @ClinicId, @DoctorId, @OriginalFilename, @StoredFilename, @FilePath,
                 @CloudinaryUrl, @FileSize, @ImageType, @ImageFormat,
                 @CaptureDevice, @CaptureDate, @EyeSide, @UploadStatus,
-                @UploadedAt, @CreatedDate, @IsDeleted
+                @UploadedAt, @CreatedDate, @IsDeleted, @BatchId
             )";
 
         var imageFormat = DetermineImageFormat(originalFilename);
@@ -474,6 +523,7 @@ public class ImageService : IImageService
         command.Parameters.AddWithValue("UploadedAt", DateTime.UtcNow);
         command.Parameters.AddWithValue("CreatedDate", DateTime.UtcNow.Date);
         command.Parameters.AddWithValue("IsDeleted", false);
+        command.Parameters.AddWithValue("BatchId", DBNull.Value); // Will be updated later if part of batch
 
         await command.ExecuteNonQueryAsync();
     }
@@ -488,6 +538,102 @@ public class ImageService : IImageService
             ".dcm" or ".dicom" => "DICOM",
             _ => "JPEG"
         };
+    }
+
+    private async Task CreateBulkUploadBatchAsync(
+        string batchId,
+        string clinicId,
+        int totalImages,
+        string? batchName,
+        string? uploadedBy,
+        string? uploadedByType,
+        ClinicBulkUploadDto? options)
+    {
+        using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var metadataJson = options != null
+            ? System.Text.Json.JsonSerializer.Serialize(new
+            {
+                PatientUserId = options.PatientUserId,
+                DoctorId = options.DoctorId,
+                AutoStartAnalysis = options.AutoStartAnalysis,
+                CommonMetadata = options.CommonMetadata
+            })
+            : null;
+
+        var sql = @"
+            INSERT INTO bulk_upload_batches (
+                Id, ClinicId, UploadedBy, UploadedByType, BatchName, TotalImages,
+                ProcessedImages, FailedImages, ProcessingImages, UploadStatus,
+                StartedAt, Metadata, CreatedDate, IsDeleted
+            ) VALUES (
+                @Id, @ClinicId, @UploadedBy, @UploadedByType, @BatchName, @TotalImages,
+                @ProcessedImages, @FailedImages, @ProcessingImages, @UploadStatus,
+                @StartedAt, @Metadata::jsonb, @CreatedDate, @IsDeleted
+            )";
+
+        using var command = new Npgsql.NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("Id", batchId);
+        command.Parameters.AddWithValue("ClinicId", clinicId);
+        command.Parameters.AddWithValue("UploadedBy", uploadedBy ?? clinicId);
+        command.Parameters.AddWithValue("UploadedByType", uploadedByType ?? "ClinicManager");
+        command.Parameters.AddWithValue("BatchName", (object?)batchName ?? DBNull.Value);
+        command.Parameters.AddWithValue("TotalImages", totalImages);
+        command.Parameters.AddWithValue("ProcessedImages", 0);
+        command.Parameters.AddWithValue("FailedImages", 0);
+        command.Parameters.AddWithValue("ProcessingImages", 0);
+        command.Parameters.AddWithValue("UploadStatus", "Pending");
+        command.Parameters.AddWithValue("StartedAt", DateTime.UtcNow);
+        command.Parameters.AddWithValue("Metadata", (object?)metadataJson ?? DBNull.Value);
+        command.Parameters.AddWithValue("CreatedDate", DateTime.UtcNow.Date);
+        command.Parameters.AddWithValue("IsDeleted", false);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private async Task UpdateBulkUploadBatchStatusAsync(
+        string batchId,
+        string status,
+        int? processedImages,
+        int? successCount,
+        int? failedCount,
+        DateTime? completedAt)
+    {
+        using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var sql = @"
+            UPDATE bulk_upload_batches 
+            SET UploadStatus = @Status,
+                ProcessedImages = COALESCE(@ProcessedImages, ProcessedImages),
+                FailedImages = COALESCE(@FailedImages, FailedImages),
+                CompletedAt = COALESCE(@CompletedAt, CompletedAt),
+                UpdatedDate = CURRENT_DATE
+            WHERE Id = @Id";
+
+        using var command = new Npgsql.NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("Id", batchId);
+        command.Parameters.AddWithValue("Status", status);
+        command.Parameters.AddWithValue("ProcessedImages", (object?)processedImages ?? DBNull.Value);
+        command.Parameters.AddWithValue("FailedImages", (object?)failedCount ?? DBNull.Value);
+        command.Parameters.AddWithValue("CompletedAt", (object?)completedAt ?? DBNull.Value);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private async Task UpdateImageBatchIdAsync(string imageId, string batchId)
+    {
+        using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var sql = @"UPDATE retinal_images SET BatchId = @BatchId WHERE Id = @ImageId";
+
+        using var command = new Npgsql.NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ImageId", imageId);
+        command.Parameters.AddWithValue("BatchId", batchId);
+
+        await command.ExecuteNonQueryAsync();
     }
 }
 

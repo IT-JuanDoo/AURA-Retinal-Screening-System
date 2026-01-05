@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import clinicImageService, {
   ClinicBulkUploadResponse,
   BatchAnalysisStatus,
+  BulkUploadBatchStatus,
 } from "../../services/clinicImageService";
 import toast from "react-hot-toast";
 
@@ -16,6 +17,11 @@ const ClinicBulkUploadPage = () => {
   const [analysisStatus, setAnalysisStatus] =
     useState<BatchAnalysisStatus | null>(null);
   const [pollingInterval, setPollingInterval] = useState<number | null>(null);
+  const [batchStatus, setBatchStatus] =
+    useState<BulkUploadBatchStatus | null>(null);
+  const [batchPollingInterval, setBatchPollingInterval] = useState<number | null>(null);
+  const [batchList, setBatchList] = useState<BulkUploadBatchStatus[]>([]);
+  const [showBatchList, setShowBatchList] = useState(false);
 
   // Form options
   const [batchName, setBatchName] = useState("");
@@ -144,10 +150,18 @@ const ClinicBulkUploadPage = () => {
         toast.error(`${result.failedCount} file(s) upload thất bại`);
       }
 
+      // Start polling for batch status
+      if (result.batchId) {
+        startPollingBatchStatus(result.batchId);
+      }
+
       // If analysis was auto-started, start polling for status
       if (result.analysisJobId) {
         startPollingAnalysisStatus(result.analysisJobId);
       }
+
+      // Refresh batch list
+      loadBatchList();
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Upload thất bại");
       setUploadProgress(0);
@@ -186,13 +200,65 @@ const ClinicBulkUploadPage = () => {
     setPollingInterval(interval);
   };
 
+  const startPollingBatchStatus = (batchId: string) => {
+    // Clear existing interval
+    if (batchPollingInterval) {
+      clearInterval(batchPollingInterval);
+    }
+
+    const poll = async () => {
+      try {
+        const status = await clinicImageService.getBatchStatus(batchId);
+        setBatchStatus(status);
+
+        // Stop polling if batch is completed or failed
+        if (
+          status.uploadStatus === "Completed" ||
+          status.uploadStatus === "Failed"
+        ) {
+          if (batchPollingInterval) {
+            clearInterval(batchPollingInterval);
+            setBatchPollingInterval(null);
+          }
+        }
+      } catch (error) {
+        console.error("Error polling batch status:", error);
+      }
+    };
+
+    // Poll immediately
+    poll();
+
+    // Then poll every 3 seconds
+    const interval = setInterval(poll, 3000);
+    setBatchPollingInterval(interval);
+  };
+
+  const loadBatchList = async () => {
+    try {
+      const batches = await clinicImageService.listBatches({
+        page: 1,
+        pageSize: 10,
+      });
+      setBatchList(batches);
+    } catch (error) {
+      console.error("Error loading batch list:", error);
+    }
+  };
+
   useEffect(() => {
+    // Load batch list on mount
+    loadBatchList();
+
     return () => {
       if (pollingInterval) {
         clearInterval(pollingInterval);
       }
+      if (batchPollingInterval) {
+        clearInterval(batchPollingInterval);
+      }
     };
-  }, [pollingInterval]);
+  }, [pollingInterval, batchPollingInterval]);
 
   const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
 
@@ -483,6 +549,211 @@ const ClinicBulkUploadPage = () => {
                 <p className="text-sm text-blue-900 dark:text-blue-100">
                   Analysis Job ID: {uploadResult.analysisJobId}
                 </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Batch Status */}
+        {batchStatus && (
+          <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-6">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
+              Trạng thái Batch Upload
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between mb-2">
+                  <span className="text-sm text-slate-600 dark:text-slate-400">
+                    Trạng thái
+                  </span>
+                  <span
+                    className={`text-sm font-semibold ${
+                      batchStatus.uploadStatus === "Completed"
+                        ? "text-green-600"
+                        : batchStatus.uploadStatus === "Failed"
+                        ? "text-red-600"
+                        : batchStatus.uploadStatus === "PartiallyCompleted"
+                        ? "text-yellow-600"
+                        : "text-blue-600"
+                    }`}
+                  >
+                    {batchStatus.uploadStatus}
+                  </span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all"
+                    style={{
+                      width: `${
+                        batchStatus.totalImages > 0
+                          ? (batchStatus.processedImages / batchStatus.totalImages) * 100
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  {batchStatus.processedImages} / {batchStatus.totalImages} files
+                </p>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Tổng số file
+                  </p>
+                  <p className="text-xl font-bold text-slate-900 dark:text-white">
+                    {batchStatus.totalImages}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Đã xử lý
+                  </p>
+                  <p className="text-xl font-bold text-slate-900 dark:text-white">
+                    {batchStatus.processedImages}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Thành công
+                  </p>
+                  <p className="text-xl font-bold text-green-600">
+                    {batchStatus.processedImages - batchStatus.failedImages}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Thất bại
+                  </p>
+                  <p className="text-xl font-bold text-red-600">
+                    {batchStatus.failedImages}
+                  </p>
+                </div>
+              </div>
+              {batchStatus.batchName && (
+                <div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Tên Batch
+                  </p>
+                  <p className="text-sm font-medium text-slate-900 dark:text-white">
+                    {batchStatus.batchName}
+                  </p>
+                </div>
+              )}
+              {batchStatus.completedAt && (
+                <div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Hoàn thành lúc
+                  </p>
+                  <p className="text-sm text-slate-900 dark:text-white">
+                    {new Date(batchStatus.completedAt).toLocaleString("vi-VN")}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Batch List Toggle */}
+        <div className="mb-6">
+          <button
+            onClick={() => {
+              setShowBatchList(!showBatchList);
+              if (!showBatchList) {
+                loadBatchList();
+              }
+            }}
+            className="px-4 py-2 bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white rounded-lg hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
+          >
+            {showBatchList ? "Ẩn" : "Hiển thị"} Danh sách Batches
+          </button>
+        </div>
+
+        {/* Batch List */}
+        {showBatchList && (
+          <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-6">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
+              Danh sách Batches
+            </h2>
+            {batchList.length === 0 ? (
+              <p className="text-slate-600 dark:text-slate-400">
+                Chưa có batch nào
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {batchList.map((batch) => (
+                  <div
+                    key={batch.batchId}
+                    className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    onClick={() => {
+                      setBatchStatus(batch);
+                      startPollingBatchStatus(batch.batchId);
+                    }}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="font-medium text-slate-900 dark:text-white">
+                          {batch.batchName || `Batch ${batch.batchId.substring(0, 8)}`}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+                          {batch.batchId}
+                        </p>
+                      </div>
+                      <span
+                        className={`px-2 py-1 rounded text-xs font-semibold ${
+                          batch.uploadStatus === "Completed"
+                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                            : batch.uploadStatus === "Failed"
+                            ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                            : batch.uploadStatus === "PartiallyCompleted"
+                            ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                            : "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                        }`}
+                      >
+                        {batch.uploadStatus}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-4 mt-2">
+                      <div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                          Tổng
+                        </p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">
+                          {batch.totalImages}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                          Đã xử lý
+                        </p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">
+                          {batch.processedImages}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                          Thành công
+                        </p>
+                        <p className="text-sm font-bold text-green-600">
+                          {batch.processedImages - batch.failedImages}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                          Thất bại
+                        </p>
+                        <p className="text-sm font-bold text-red-600">
+                          {batch.failedImages}
+                        </p>
+                      </div>
+                    </div>
+                    {batch.startedAt && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                        Bắt đầu: {new Date(batch.startedAt).toLocaleString("vi-VN")}
+                      </p>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>

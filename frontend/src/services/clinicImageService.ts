@@ -129,7 +129,54 @@ const clinicImageService = {
     );
     return response.data;
   },
+
+  /**
+   * Get status of a bulk upload batch
+   */
+  async getBatchStatus(batchId: string): Promise<BulkUploadBatchStatus> {
+    const response = await api.get<BulkUploadBatchStatus>(
+      `/clinic/images/batches/${batchId}/status`
+    );
+    return response.data;
+  },
+
+  /**
+   * List all bulk upload batches for the clinic
+   */
+  async listBatches(options?: {
+    page?: number;
+    pageSize?: number;
+    status?: string;
+  }): Promise<BulkUploadBatchStatus[]> {
+    const params = new URLSearchParams();
+    if (options?.page) params.append("page", options.page.toString());
+    if (options?.pageSize) params.append("pageSize", options.pageSize.toString());
+    if (options?.status) params.append("status", options.status);
+
+    const response = await api.get<BulkUploadBatchStatus[]>(
+      `/clinic/images/batches?${params.toString()}`
+    );
+    return response.data;
+  },
 };
+
+export interface BulkUploadBatchStatus {
+  batchId: string;
+  clinicId: string;
+  uploadedBy: string;
+  uploadedByType: string;
+  batchName?: string;
+  totalImages: number;
+  processedImages: number;
+  failedImages: number;
+  processingImages: number;
+  uploadStatus: "Pending" | "Uploading" | "Processing" | "Completed" | "Failed" | "PartiallyCompleted";
+  startedAt?: string;
+  completedAt?: string;
+  failureReason?: string;
+  metadata?: string;
+  createdDate?: string;
+}
 
 export default clinicImageService;
 
