@@ -271,28 +271,32 @@ export default function AdminRbacPage() {
               </h2>
             </div>
 
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate("/admin/accounts")}
-                className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-sm font-medium"
-              >
-                Quản lý Tài khoản
-              </button>
-              <button
-                onClick={() => navigate("/admin/analytics")}
-                className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-sm font-medium"
-              >
-                Analytics
-              </button>
-              <div className="text-sm text-slate-600 dark:text-slate-400">
-                Xin chào,{" "}
-                <span className="font-semibold text-slate-900 dark:text-white">
-                  {admin?.firstName || admin?.email || "Admin"}
-                </span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 border-r border-slate-200 dark:border-slate-700 pr-2">
+                <button
+                  onClick={() => navigate("/admin/accounts")}
+                  className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-sm font-medium border border-slate-300 dark:border-slate-600"
+                >
+                  Quản lý Tài khoản
+                </button>
+                <button
+                  onClick={() => navigate("/admin/analytics")}
+                  className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-sm font-medium border border-slate-300 dark:border-slate-600"
+                >
+                  Analytics
+                </button>
+              </div>
+              <div className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                <div className="text-sm text-slate-600 dark:text-slate-400">
+                  Xin chào,{" "}
+                  <span className="font-semibold text-slate-900 dark:text-white">
+                    {admin?.firstName || admin?.email || "Admin"}
+                  </span>
+                </div>
               </div>
               <button
                 onClick={logoutAdmin}
-                className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors text-sm font-medium"
+                className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors text-sm font-medium border border-red-600"
               >
                 Đăng xuất
               </button>
