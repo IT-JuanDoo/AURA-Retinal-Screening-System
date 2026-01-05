@@ -16,5 +16,24 @@ public interface IImageService
     Task<MultipleImageUploadResponseDto> UploadMultipleImagesAsync(
         string userId,
         List<(Stream FileStream, string Filename, ImageUploadDto? Metadata)> files);
+
+    /// <summary>
+    /// Upload image for clinic with optional patient and doctor assignment
+    /// </summary>
+    Task<ImageUploadResponseDto> UploadImageForClinicAsync(
+        string clinicId,
+        Stream fileStream,
+        string originalFilename,
+        ImageUploadDto? metadata = null,
+        string? patientUserId = null,
+        string? doctorId = null);
+
+    /// <summary>
+    /// Bulk upload images for clinic (FR-24)
+    /// </summary>
+    Task<ClinicBulkUploadResponseDto> BulkUploadForClinicAsync(
+        string clinicId,
+        List<(Stream FileStream, string Filename, ImageUploadDto? Metadata)> files,
+        ClinicBulkUploadDto? options = null);
 }
 

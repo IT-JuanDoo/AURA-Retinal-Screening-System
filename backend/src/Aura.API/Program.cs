@@ -166,6 +166,9 @@ builder.Services.AddHttpClient<Aura.Application.Services.Analysis.AnalysisServic
 });
 builder.Services.AddScoped<Aura.Application.Services.Analysis.IAnalysisService, Aura.Application.Services.Analysis.AnalysisService>();
 
+// FR-24: Analysis Queue Service for batch processing (NFR-2: ≥100 images per batch)
+builder.Services.AddScoped<Aura.Application.Services.Analysis.IAnalysisQueueService, Aura.Application.Services.Analysis.AnalysisQueueService>();
+
 // Notifications (in-memory for now)
 builder.Services.AddSingleton<Aura.Application.Services.Notifications.INotificationService, Aura.Infrastructure.Services.Notifications.NotificationService>();
 // FR-32: RBAC Services

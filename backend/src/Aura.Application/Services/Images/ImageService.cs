@@ -192,6 +192,138 @@ public class ImageService : IImageService
         return $"https://res.cloudinary.com/{cloudName}/image/upload/v1/aura/retinal-images/{filename}";
     }
 
+    public async Task<ImageUploadResponseDto> UploadImageForClinicAsync(
+        string clinicId,
+        Stream fileStream,
+        string originalFilename,
+        ImageUploadDto? metadata = null,
+        string? patientUserId = null,
+        string? doctorId = null)
+    {
+        // Reset stream position to beginning
+        if (fileStream.CanSeek)
+        {
+            fileStream.Position = 0;
+        }
+
+        // Validate file
+        ValidateFile(originalFilename, fileStream.Length);
+
+        // Generate unique filename
+        var fileExtension = Path.GetExtension(originalFilename).ToLowerInvariant();
+        var storedFilename = GenerateUniqueFilename(fileExtension);
+        var imageId = Guid.NewGuid().ToString();
+
+        // Determine image type from metadata or filename
+        var imageType = DetermineImageType(originalFilename, metadata?.ImageType);
+
+        try
+        {
+            // Reset stream position again before upload
+            if (fileStream.CanSeek)
+            {
+                fileStream.Position = 0;
+            }
+
+            // Upload to Cloudinary
+            var cloudinaryUrl = await UploadToCloudinaryAsync(fileStream, storedFilename, imageType);
+
+            // Save to database with clinic info
+            await SaveImageToDatabaseForClinicAsync(imageId, clinicId, patientUserId, doctorId,
+                originalFilename, storedFilename, cloudinaryUrl, fileStream.Length, imageType, metadata);
+
+            _logger?.LogInformation("Image uploaded successfully for clinic: {ImageId}, Clinic: {ClinicId}", imageId, clinicId);
+
+            return new ImageUploadResponseDto
+            {
+                Id = imageId,
+                OriginalFilename = originalFilename,
+                CloudinaryUrl = cloudinaryUrl,
+                FileSize = fileStream.Length,
+                ImageType = imageType,
+                UploadStatus = "Uploaded",
+                UploadedAt = DateTime.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error uploading image for clinic: {Filename}", originalFilename);
+            throw new InvalidOperationException($"Failed to upload image: {ex.Message}", ex);
+        }
+    }
+
+    public async Task<ClinicBulkUploadResponseDto> BulkUploadForClinicAsync(
+        string clinicId,
+        List<(Stream FileStream, string Filename, ImageUploadDto? Metadata)> files,
+        ClinicBulkUploadDto? options = null)
+    {
+        var batchId = Guid.NewGuid().ToString();
+        var response = new ClinicBulkUploadResponseDto
+        {
+            BatchId = batchId,
+            TotalFiles = files.Count,
+            UploadedAt = DateTime.UtcNow
+        };
+
+        _logger?.LogInformation("Starting bulk upload for clinic {ClinicId}, Batch: {BatchId}, Files: {Count}",
+            clinicId, batchId, files.Count);
+
+        // Process files in parallel batches (max 10 concurrent uploads to avoid overwhelming Cloudinary)
+        const int batchSize = 10;
+        var semaphore = new SemaphoreSlim(batchSize);
+
+        var uploadTasks = files.Select(async (file, index) =>
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                // Merge common metadata with file-specific metadata
+                var metadata = options?.CommonMetadata ?? file.Metadata;
+                if (file.Metadata != null && metadata != null)
+                {
+                    // File-specific metadata overrides common metadata
+                    metadata.ImageType = file.Metadata.ImageType ?? metadata.ImageType;
+                    metadata.EyeSide = file.Metadata.EyeSide ?? metadata.EyeSide;
+                    metadata.CaptureDevice = file.Metadata.CaptureDevice ?? metadata.CaptureDevice;
+                    metadata.CaptureDate = file.Metadata.CaptureDate ?? metadata.CaptureDate;
+                }
+
+                var result = await UploadImageForClinicAsync(
+                    clinicId,
+                    file.FileStream,
+                    file.Filename,
+                    metadata,
+                    options?.PatientUserId,
+                    options?.DoctorId
+                );
+
+                response.SuccessfullyUploaded.Add(result);
+                response.SuccessCount++;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error uploading image in bulk: {Filename}", file.Filename);
+                response.Failed.Add(new ImageUploadErrorDto
+                {
+                    Filename = file.Filename,
+                    ErrorMessage = ex.Message
+                });
+                response.FailedCount++;
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        await Task.WhenAll(uploadTasks);
+
+        _logger?.LogInformation("Bulk upload completed for clinic {ClinicId}, Batch: {BatchId}, Success: {Success}, Failed: {Failed}",
+            clinicId, batchId, response.SuccessCount, response.FailedCount);
+
+        return response;
+    }
+
     private async Task SaveImageToDatabaseAsync(
         string imageId,
         string userId,
@@ -271,6 +403,63 @@ public class ImageService : IImageService
         using var command = new Npgsql.NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("Id", imageId);
         command.Parameters.AddWithValue("UserId", userId);
+        command.Parameters.AddWithValue("OriginalFilename", originalFilename);
+        command.Parameters.AddWithValue("StoredFilename", storedFilename);
+        command.Parameters.AddWithValue("FilePath", filePath);
+        command.Parameters.AddWithValue("CloudinaryUrl", cloudinaryUrl);
+        command.Parameters.AddWithValue("FileSize", fileSize);
+        command.Parameters.AddWithValue("ImageType", imageType);
+        command.Parameters.AddWithValue("ImageFormat", imageFormat);
+        command.Parameters.AddWithValue("CaptureDevice", (object?)metadata?.CaptureDevice ?? DBNull.Value);
+        command.Parameters.AddWithValue("CaptureDate", (object?)metadata?.CaptureDate ?? DBNull.Value);
+        command.Parameters.AddWithValue("EyeSide", (object?)metadata?.EyeSide ?? DBNull.Value);
+        command.Parameters.AddWithValue("UploadStatus", "Uploaded");
+        command.Parameters.AddWithValue("UploadedAt", DateTime.UtcNow);
+        command.Parameters.AddWithValue("CreatedDate", DateTime.UtcNow.Date);
+        command.Parameters.AddWithValue("IsDeleted", false);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private async Task SaveImageToDatabaseForClinicAsync(
+        string imageId,
+        string clinicId,
+        string? patientUserId,
+        string? doctorId,
+        string originalFilename,
+        string storedFilename,
+        string cloudinaryUrl,
+        long fileSize,
+        string imageType,
+        ImageUploadDto? metadata)
+    {
+        using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        // Use patientUserId if provided, otherwise create a placeholder user ID
+        var userId = patientUserId ?? Guid.NewGuid().ToString();
+
+        var sql = @"
+            INSERT INTO retinal_images (
+                Id, UserId, ClinicId, DoctorId, OriginalFilename, StoredFilename, FilePath, 
+                CloudinaryUrl, FileSize, ImageType, ImageFormat, 
+                CaptureDevice, CaptureDate, EyeSide, UploadStatus, 
+                UploadedAt, CreatedDate, IsDeleted
+            ) VALUES (
+                @Id, @UserId, @ClinicId, @DoctorId, @OriginalFilename, @StoredFilename, @FilePath,
+                @CloudinaryUrl, @FileSize, @ImageType, @ImageFormat,
+                @CaptureDevice, @CaptureDate, @EyeSide, @UploadStatus,
+                @UploadedAt, @CreatedDate, @IsDeleted
+            )";
+
+        var imageFormat = DetermineImageFormat(originalFilename);
+        var filePath = $"aura/retinal-images/{storedFilename}";
+
+        using var command = new Npgsql.NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("Id", imageId);
+        command.Parameters.AddWithValue("UserId", userId);
+        command.Parameters.AddWithValue("ClinicId", clinicId);
+        command.Parameters.AddWithValue("DoctorId", (object?)doctorId ?? DBNull.Value);
         command.Parameters.AddWithValue("OriginalFilename", originalFilename);
         command.Parameters.AddWithValue("StoredFilename", storedFilename);
         command.Parameters.AddWithValue("FilePath", filePath);

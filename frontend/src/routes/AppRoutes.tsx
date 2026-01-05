@@ -10,6 +10,7 @@ import HomePage from "../pages/HomePage";
 import PatientDashboard from "../pages/patient/PatientDashboard";
 import ImageUploadPage from "../pages/patient/ImageUploadPage";
 import AnalysisResultPage from "../pages/patient/AnalysisResultPage";
+import ClinicBulkUploadPage from "../pages/clinic/ClinicBulkUploadPage";
 import { useAuthStore } from "../store/authStore";
 import { useAdminAuthStore } from "../store/adminAuthStore";
 
@@ -143,6 +144,16 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <AnalysisResultPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Clinic routes */}
+      <Route
+        path="/clinic/bulk-upload"
+        element={
+          <ProtectedRoute>
+            <ClinicBulkUploadPage />
           </ProtectedRoute>
         }
       />
