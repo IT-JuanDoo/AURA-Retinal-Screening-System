@@ -117,12 +117,40 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      aicore:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
+
+  # ===========================================================================
+  # AI Core - Python FastAPI Microservice
+  # ===========================================================================
+  aicore:
+    build:
+      context: ./ai-core
+      dockerfile: Dockerfile
+    container_name: aura-ai-core
+    restart: unless-stopped
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - MODEL_VERSION=${AI_MODEL_VERSION:-v1.0.0}
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "${AI_CORE_PORT:-8000}:8000"
+    networks:
+      - aura-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    # Scaling: Use command line: docker-compose up -d --scale aicore=3
 
   # ===========================================================================
   # Frontend - React/Vite Application

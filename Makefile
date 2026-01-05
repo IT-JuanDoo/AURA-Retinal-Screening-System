@@ -18,12 +18,17 @@ help:
 	@echo "  make logs-b     - View backend logs"
 	@echo "  make logs-f     - View frontend logs"
 	@echo "  make logs-db    - View database logs"
+	@echo "  make logs-ai    - View AI Core logs"
 	@echo "  make clean      - Remove all containers, images, and volumes"
 	@echo "  make shell-b    - Open shell in backend container"
 	@echo "  make shell-f    - Open shell in frontend container"
 	@echo "  make shell-db   - Open psql in database container"
+	@echo "  make shell-ai   - Open shell in AI Core container"
 	@echo "  make rebuild-frontend - Rebuild frontend container (sau khi thêm code mới)"
 	@echo "  make rebuild-backend  - Rebuild backend container (sau khi thêm code mới)"
+	@echo "  make rebuild-ai      - Rebuild AI Core container (sau khi thêm code mới)"
+	@echo "  make scale-ai N=3    - Scale AI Core to N instances"
+	@echo "  make health-ai       - Check AI Core health status"
 	@echo ""
 
 # Development mode (only database for local backend/frontend development)
@@ -76,6 +81,9 @@ logs-f:
 logs-db:
 	docker-compose logs -f postgres
 
+logs-ai:
+	docker-compose logs -f aicore
+
 # Shell access
 shell-b:
 	docker-compose exec backend sh
@@ -85,6 +93,9 @@ shell-f:
 
 shell-db:
 	docker-compose exec postgres psql -U aura_user -d aura_db
+
+shell-ai:
+	docker-compose exec aicore /bin/bash
 
 # Clean everything
 clean:
@@ -115,4 +126,29 @@ rebuild-backend:
 	docker-compose up -d backend
 	@echo ""
 	@echo "Backend rebuilt and restarted!"
+
+# Rebuild AI Core (sau khi thêm code mới)
+rebuild-ai:
+	@echo "Rebuilding AI Core container..."
+	docker-compose build --no-cache aicore
+	docker-compose up -d aicore
+	@echo ""
+	@echo "AI Core rebuilt and restarted!"
+
+# Scale AI Core service
+scale-ai:
+	@if [ -z "$(N)" ]; then \
+		echo "Usage: make scale-ai N=3"; \
+		exit 1; \
+	fi
+	@echo "Scaling AI Core to $(N) instances..."
+	docker-compose up -d --scale aicore=$(N) --no-recreate aicore
+	@echo ""
+	@echo "AI Core scaled to $(N) instances!"
+	@docker-compose ps aicore
+
+# Check AI Core health
+health-ai:
+	@echo "Checking AI Core health..."
+	@curl -s http://localhost:8000/health | python -m json.tool || echo "AI Core health check failed!"
 

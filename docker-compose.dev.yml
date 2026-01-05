@@ -48,6 +48,34 @@ services:
     depends_on:
       - postgres
 
+  # ===========================================================================
+  # AI Core - Python FastAPI Microservice (Development)
+  # ===========================================================================
+  aicore:
+    build:
+      context: ./ai-core
+      dockerfile: Dockerfile
+    container_name: aura-ai-core-dev
+    restart: unless-stopped
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - MODEL_VERSION=v1.0.0
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8000:8000"
+    networks:
+      - aura-dev-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # For development, you can mount volumes for hot-reload
+    # volumes:
+    #   - ./ai-core/app:/app/app
+
 # =============================================================================
 # Networks
 # =============================================================================
