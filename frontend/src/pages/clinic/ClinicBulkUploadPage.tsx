@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import clinicImageService, {
   ClinicBulkUploadResponse,
   BatchAnalysisStatus,
@@ -7,15 +6,16 @@ import clinicImageService, {
 import toast from "react-hot-toast";
 
 const ClinicBulkUploadPage = () => {
-  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadResult, setUploadResult] = useState<ClinicBulkUploadResponse | null>(null);
-  const [analysisStatus, setAnalysisStatus] = useState<BatchAnalysisStatus | null>(null);
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [uploadResult, setUploadResult] =
+    useState<ClinicBulkUploadResponse | null>(null);
+  const [analysisStatus, setAnalysisStatus] =
+    useState<BatchAnalysisStatus | null>(null);
+  const [pollingInterval, setPollingInterval] = useState<number | null>(null);
 
   // Form options
   const [batchName, setBatchName] = useState("");
@@ -45,7 +45,11 @@ const ClinicBulkUploadPage = () => {
       const fileExtension = "." + file.name.split(".").pop()?.toLowerCase();
 
       if (!validExtensions.includes(fileExtension)) {
-        toast.error(`File ${file.name} không được hỗ trợ. Chỉ chấp nhận: ${validExtensions.join(", ")}`);
+        toast.error(
+          `File ${
+            file.name
+          } không được hỗ trợ. Chỉ chấp nhận: ${validExtensions.join(", ")}`
+        );
         continue;
       }
 
@@ -100,7 +104,9 @@ const ClinicBulkUploadPage = () => {
     }
 
     if (selectedFiles.length > 1000) {
-      toast.error("Tối đa 1000 ảnh mỗi lần upload. Vui lòng chia nhỏ thành nhiều batch.");
+      toast.error(
+        "Tối đa 1000 ảnh mỗi lần upload. Vui lòng chia nhỏ thành nhiều batch."
+      );
       return;
     }
 
@@ -199,7 +205,8 @@ const ClinicBulkUploadPage = () => {
             Bulk Upload Retinal Images (FR-24)
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
-            Upload và phân tích hàng loạt ảnh võng mạc (hỗ trợ ≥100 ảnh mỗi batch)
+            Upload và phân tích hàng loạt ảnh võng mạc (hỗ trợ ≥100 ảnh mỗi
+            batch)
           </p>
         </div>
 
@@ -342,7 +349,8 @@ const ClinicBulkUploadPage = () => {
                   Kéo thả file vào đây hoặc click để chọn
                 </p>
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Hỗ trợ: JPG, PNG, DICOM (tối đa 50MB/file, tối đa 1000 files/batch)
+                  Hỗ trợ: JPG, PNG, DICOM (tối đa 50MB/file, tối đa 1000
+                  files/batch)
                 </p>
               </div>
               <button
@@ -359,7 +367,8 @@ const ClinicBulkUploadPage = () => {
             <div className="mt-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Đã chọn: {selectedFiles.length} file(s) ({formatFileSize(totalSize)})
+                  Đã chọn: {selectedFiles.length} file(s) (
+                  {formatFileSize(totalSize)})
                 </h3>
                 <button
                   onClick={clearAllFiles}
@@ -403,7 +412,9 @@ const ClinicBulkUploadPage = () => {
               disabled={isUploading}
               className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors font-medium"
             >
-              {isUploading ? `Đang upload... ${uploadProgress}%` : "Bắt đầu Upload"}
+              {isUploading
+                ? `Đang upload... ${uploadProgress}%`
+                : "Bắt đầu Upload"}
             </button>
           </div>
         )}
@@ -416,21 +427,33 @@ const ClinicBulkUploadPage = () => {
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
               <div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Tổng số file</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Tổng số file
+                </p>
                 <p className="text-2xl font-bold text-slate-900 dark:text-white">
                   {uploadResult.totalFiles}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Thành công</p>
-                <p className="text-2xl font-bold text-green-600">{uploadResult.successCount}</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Thành công
+                </p>
+                <p className="text-2xl font-bold text-green-600">
+                  {uploadResult.successCount}
+                </p>
               </div>
               <div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Thất bại</p>
-                <p className="text-2xl font-bold text-red-600">{uploadResult.failedCount}</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Thất bại
+                </p>
+                <p className="text-2xl font-bold text-red-600">
+                  {uploadResult.failedCount}
+                </p>
               </div>
               <div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Batch ID</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Batch ID
+                </p>
                 <p className="text-sm font-mono text-slate-900 dark:text-white">
                   {uploadResult.batchId.substring(0, 8)}...
                 </p>
@@ -439,10 +462,15 @@ const ClinicBulkUploadPage = () => {
 
             {uploadResult.failed.length > 0 && (
               <div className="mt-4">
-                <h3 className="text-sm font-semibold text-red-600 mb-2">Files thất bại:</h3>
+                <h3 className="text-sm font-semibold text-red-600 mb-2">
+                  Files thất bại:
+                </h3>
                 <ul className="space-y-1">
                   {uploadResult.failed.map((fail, index) => (
-                    <li key={index} className="text-sm text-slate-600 dark:text-slate-400">
+                    <li
+                      key={index}
+                      className="text-sm text-slate-600 dark:text-slate-400"
+                    >
                       {fail.filename}: {fail.errorMessage}
                     </li>
                   ))}
@@ -469,7 +497,9 @@ const ClinicBulkUploadPage = () => {
             <div className="space-y-4">
               <div>
                 <div className="flex justify-between mb-2">
-                  <span className="text-sm text-slate-600 dark:text-slate-400">Trạng thái</span>
+                  <span className="text-sm text-slate-600 dark:text-slate-400">
+                    Trạng thái
+                  </span>
                   <span
                     className={`text-sm font-semibold ${
                       analysisStatus.status === "Completed"
@@ -487,7 +517,9 @@ const ClinicBulkUploadPage = () => {
                     className="bg-blue-600 h-2 rounded-full transition-all"
                     style={{
                       width: `${
-                        (analysisStatus.processedCount / analysisStatus.totalImages) * 100
+                        (analysisStatus.processedCount /
+                          analysisStatus.totalImages) *
+                        100
                       }%`,
                     }}
                   />
@@ -495,26 +527,36 @@ const ClinicBulkUploadPage = () => {
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">Tổng số ảnh</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Tổng số ảnh
+                  </p>
                   <p className="text-xl font-bold text-slate-900 dark:text-white">
                     {analysisStatus.totalImages}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">Đã xử lý</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Đã xử lý
+                  </p>
                   <p className="text-xl font-bold text-slate-900 dark:text-white">
                     {analysisStatus.processedCount}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">Thành công</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Thành công
+                  </p>
                   <p className="text-xl font-bold text-green-600">
                     {analysisStatus.successCount}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">Thất bại</p>
-                  <p className="text-xl font-bold text-red-600">{analysisStatus.failedCount}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Thất bại
+                  </p>
+                  <p className="text-xl font-bold text-red-600">
+                    {analysisStatus.failedCount}
+                  </p>
                 </div>
               </div>
             </div>
@@ -526,4 +568,3 @@ const ClinicBulkUploadPage = () => {
 };
 
 export default ClinicBulkUploadPage;
-

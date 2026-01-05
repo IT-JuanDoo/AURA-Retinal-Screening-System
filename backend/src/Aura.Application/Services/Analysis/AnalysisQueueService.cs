@@ -241,7 +241,7 @@ public class AnalysisQueueService : IAnalysisQueueService
         command.Parameters.AddWithValue("Id", jobId);
         command.Parameters.AddWithValue("Status", status);
         command.Parameters.AddWithValue("StartedAt", (object?)startedAt ?? DBNull.Value);
-        command.Parameters.AddWithValue("ProcessedCount", (object?)successCount + failedCount ?? DBNull.Value);
+        command.Parameters.AddWithValue("ProcessedCount", (successCount.HasValue && failedCount.HasValue) ? (object?)(successCount.Value + failedCount.Value) : DBNull.Value);
         command.Parameters.AddWithValue("SuccessCount", (object?)successCount ?? DBNull.Value);
         command.Parameters.AddWithValue("FailedCount", (object?)failedCount ?? DBNull.Value);
 
