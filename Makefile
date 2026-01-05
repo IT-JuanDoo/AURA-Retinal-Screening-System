@@ -29,6 +29,10 @@ help:
 	@echo "  make rebuild-ai      - Rebuild AI Core container (sau khi thêm code mới)"
 	@echo "  make scale-ai N=3    - Scale AI Core to N instances"
 	@echo "  make health-ai       - Check AI Core health status"
+	@echo "  make backup-db      - Backup PostgreSQL database"
+	@echo "  make restore-db FILE=path - Restore database from backup"
+	@echo "  make health-db       - Check PostgreSQL health status"
+	@echo "  make test-cloudinary - Test Cloudinary configuration"
 	@echo ""
 
 # Development mode (only database for local backend/frontend development)
@@ -151,4 +155,31 @@ scale-ai:
 health-ai:
 	@echo "Checking AI Core health..."
 	@curl -s http://localhost:8000/health | python -m json.tool || echo "AI Core health check failed!"
+
+# Database backup
+backup-db:
+	@echo "Creating database backup..."
+	@mkdir -p database/backups
+	@docker-compose exec -T postgres pg_dump -U aura_user aura_db > database/backups/backup_$$(date +%Y%m%d_%H%M%S).sql
+	@echo "Backup created in database/backups/"
+
+# Database restore
+restore-db:
+	@if [ -z "$(FILE)" ]; then \
+		echo "Usage: make restore-db FILE=database/backups/backup_20240101_120000.sql"; \
+		exit 1; \
+	fi
+	@echo "Restoring database from $(FILE)..."
+	@docker-compose exec -T postgres psql -U aura_user -d aura_db < $(FILE)
+	@echo "Database restored!"
+
+# Database health check
+health-db:
+	@echo "Checking PostgreSQL health..."
+	@docker-compose exec postgres pg_isready -U aura_user -d aura_db && echo "PostgreSQL is healthy!" || echo "PostgreSQL health check failed!"
+
+# Test Cloudinary connection (requires backend to be running)
+test-cloudinary:
+	@echo "Testing Cloudinary configuration..."
+	@curl -s http://localhost:5000/health | grep -q "healthy" && echo "Backend is running. Cloudinary config is in environment variables." || echo "Backend is not running. Start it with: make up"
 

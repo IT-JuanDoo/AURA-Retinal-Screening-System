@@ -16,6 +16,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aura_password_2024}
       POSTGRES_DB: ${POSTGRES_DB:-aura_db}
       PGDATA: /var/lib/postgresql/data/pgdata
+      # Performance tuning
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      # Connection settings
+      POSTGRES_MAX_CONNECTIONS: ${POSTGRES_MAX_CONNECTIONS:-100}
+      POSTGRES_SHARED_BUFFERS: ${POSTGRES_SHARED_BUFFERS:-256MB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./aura_database_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
@@ -33,6 +38,14 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    # Resource limits for production
+    # Uncomment if needed:
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 2G
+    #     reservations:
+    #       memory: 512M
 
   # ===========================================================================
   # pgAdmin - Database Management Tool
