@@ -23,13 +23,49 @@ public class RbacRepository : IRbacRepository
                 r.RoleName,
                 r.Note as Description,
                 r.CreatedDate,
-                COALESCE(COUNT(DISTINCT ur.UserId), 0) as UserCount,
-                COALESCE(COUNT(DISTINCT rp.PermissionId), 0) as PermissionCount
+                CASE 
+                    -- For Doctor role: count from doctors table (users with Doctor role are moved to doctors table)
+                    WHEN r.RoleName = 'Doctor' THEN
+                        (
+                            SELECT COUNT(DISTINCT d.Id)
+                            FROM doctors d
+                            WHERE COALESCE(d.IsDeleted, false) = false
+                        )
+                    -- For Admin/SuperAdmin roles: count from admins table
+                    WHEN r.RoleName IN ('Admin', 'SuperAdmin') THEN
+                        (
+                            SELECT COUNT(DISTINCT a.Id)
+                            FROM admins a
+                            WHERE a.RoleId = r.Id
+                                AND COALESCE(a.IsDeleted, false) = false
+                        )
+                    -- For Clinic role: count from clinics table
+                    WHEN r.RoleName = 'Clinic' THEN
+                        (
+                            SELECT COUNT(DISTINCT c.Id)
+                            FROM clinics c
+                            WHERE COALESCE(c.IsDeleted, false) = false
+                        )
+                    -- For User role and others: count from user_roles table (only active, non-deleted users)
+                    ELSE
+                        (
+                            SELECT COUNT(DISTINCT ur.UserId)
+                            FROM user_roles ur
+                            INNER JOIN users u ON ur.UserId = u.Id
+                            WHERE ur.RoleId = r.Id 
+                                AND COALESCE(ur.IsDeleted, false) = false
+                                AND COALESCE(u.IsDeleted, false) = false
+                        )
+                END as UserCount,
+                -- Count permissions directly from role_permissions table
+                (
+                    SELECT COUNT(DISTINCT rp.PermissionId)
+                    FROM role_permissions rp
+                    WHERE rp.RoleId = r.Id
+                        AND COALESCE(rp.IsDeleted, false) = false
+                ) as PermissionCount
             FROM roles r
-            LEFT JOIN user_roles ur ON r.Id = ur.RoleId AND COALESCE(ur.IsDeleted, false) = false
-            LEFT JOIN role_permissions rp ON r.Id = rp.RoleId AND COALESCE(rp.IsDeleted, false) = false
             WHERE COALESCE(r.IsDeleted, false) = false
-            GROUP BY r.Id, r.RoleName, r.Note, r.CreatedDate
             ORDER BY r.RoleName;", conn);
         
         using var reader = await cmd.ExecuteReaderAsync();
@@ -60,13 +96,49 @@ public class RbacRepository : IRbacRepository
                 r.RoleName,
                 r.Note as Description,
                 r.CreatedDate,
-                COALESCE(COUNT(DISTINCT ur.UserId), 0) as UserCount,
-                COALESCE(COUNT(DISTINCT rp.PermissionId), 0) as PermissionCount
+                CASE 
+                    -- For Doctor role: count from doctors table (users with Doctor role are moved to doctors table)
+                    WHEN r.RoleName = 'Doctor' THEN
+                        (
+                            SELECT COUNT(DISTINCT d.Id)
+                            FROM doctors d
+                            WHERE COALESCE(d.IsDeleted, false) = false
+                        )
+                    -- For Admin/SuperAdmin roles: count from admins table
+                    WHEN r.RoleName IN ('Admin', 'SuperAdmin') THEN
+                        (
+                            SELECT COUNT(DISTINCT a.Id)
+                            FROM admins a
+                            WHERE a.RoleId = r.Id
+                                AND COALESCE(a.IsDeleted, false) = false
+                        )
+                    -- For Clinic role: count from clinics table
+                    WHEN r.RoleName = 'Clinic' THEN
+                        (
+                            SELECT COUNT(DISTINCT c.Id)
+                            FROM clinics c
+                            WHERE COALESCE(c.IsDeleted, false) = false
+                        )
+                    -- For User role and others: count from user_roles table (only active, non-deleted users)
+                    ELSE
+                        (
+                            SELECT COUNT(DISTINCT ur.UserId)
+                            FROM user_roles ur
+                            INNER JOIN users u ON ur.UserId = u.Id
+                            WHERE ur.RoleId = r.Id 
+                                AND COALESCE(ur.IsDeleted, false) = false
+                                AND COALESCE(u.IsDeleted, false) = false
+                        )
+                END as UserCount,
+                -- Count permissions directly from role_permissions table
+                (
+                    SELECT COUNT(DISTINCT rp.PermissionId)
+                    FROM role_permissions rp
+                    WHERE rp.RoleId = r.Id
+                        AND COALESCE(rp.IsDeleted, false) = false
+                ) as PermissionCount
             FROM roles r
-            LEFT JOIN user_roles ur ON r.Id = ur.RoleId AND COALESCE(ur.IsDeleted, false) = false
-            LEFT JOIN role_permissions rp ON r.Id = rp.RoleId AND COALESCE(rp.IsDeleted, false) = false
-            WHERE r.Id = @id AND COALESCE(r.IsDeleted, false) = false
-            GROUP BY r.Id, r.RoleName, r.Note, r.CreatedDate;", conn);
+            WHERE r.Id = @id AND COALESCE(r.IsDeleted, false) = false;", conn);
         
         cmd.Parameters.AddWithValue("id", id);
         using var reader = await cmd.ExecuteReaderAsync();
@@ -433,76 +505,135 @@ public class RbacRepository : IRbacRepository
     public async Task<bool> AssignRoleToUserAsync(string userId, string roleId, bool isPrimary = false, string? assignedBy = null)
     {
         using var conn = _db.OpenConnection();
-        
-        // Get role name to check if it's "Doctor"
-        string? roleName = null;
-        using (var roleCmd = new NpgsqlCommand(@"SELECT RoleName FROM roles WHERE Id = @roleId AND COALESCE(IsDeleted, false) = false;", conn))
-        {
-            roleCmd.Parameters.AddWithValue("roleId", roleId);
-            var roleResult = await roleCmd.ExecuteScalarAsync();
-            if (roleResult != null)
-            {
-                roleName = roleResult.ToString();
-            }
-        }
-        
-        // If setting as primary, remove primary flag from other roles
-        if (isPrimary)
-        {
-            using var updateCmd = new NpgsqlCommand(@"
-                UPDATE user_roles 
-                SET IsPrimary = false, UpdatedDate = CURRENT_DATE
-                WHERE UserId = @userId AND COALESCE(IsDeleted, false) = false;", conn);
-            updateCmd.Parameters.AddWithValue("userId", userId);
-            await updateCmd.ExecuteNonQueryAsync();
-        }
-        
-        // Assign role to user
-        using var cmd = new NpgsqlCommand(@"
-            INSERT INTO user_roles (Id, UserId, RoleId, IsPrimary, CreatedDate, CreatedBy, IsDeleted)
-            VALUES (@id, @userId, @roleId, @isPrimary, CURRENT_DATE, @createdBy, false)
-            ON CONFLICT (UserId, RoleId) DO UPDATE 
-            SET IsPrimary = @isPrimary, IsDeleted = false, UpdatedDate = CURRENT_DATE;", conn);
-        
-        cmd.Parameters.AddWithValue("id", Guid.NewGuid().ToString());
-        cmd.Parameters.AddWithValue("userId", userId);
-        cmd.Parameters.AddWithValue("roleId", roleId);
-        cmd.Parameters.AddWithValue("isPrimary", isPrimary);
-        cmd.Parameters.AddWithValue("createdBy", (object?)assignedBy ?? DBNull.Value);
+        using var transaction = conn.BeginTransaction();
         
         try
         {
-            await cmd.ExecuteNonQueryAsync();
-            
-            // If role is "Doctor", create/update doctor record and mark user as deleted
-            if (roleName?.Equals("Doctor", StringComparison.OrdinalIgnoreCase) == true)
+            // Get role name to determine which table to use
+            string? roleName = null;
+            using (var roleCmd = new NpgsqlCommand(@"SELECT RoleName FROM roles WHERE Id = @roleId AND COALESCE(IsDeleted, false) = false;", conn, transaction))
             {
-                await CreateOrUpdateDoctorFromUserAsync(conn, userId, assignedBy);
+                roleCmd.Parameters.AddWithValue("roleId", roleId);
+                var roleResult = await roleCmd.ExecuteScalarAsync();
+                if (roleResult != null)
+                {
+                    roleName = roleResult.ToString();
+                }
+            }
+            
+            if (string.IsNullOrEmpty(roleName))
+            {
+                transaction.Rollback();
+                return false;
+            }
+            
+            // Step 1: Remove all existing roles from user_roles (delete old roles)
+            using var deleteOldRolesCmd = new NpgsqlCommand(@"
+                UPDATE user_roles 
+                SET IsDeleted = true, UpdatedDate = CURRENT_DATE
+                WHERE UserId = @userId AND COALESCE(IsDeleted, false) = false;", conn, transaction);
+            deleteOldRolesCmd.Parameters.AddWithValue("userId", userId);
+            await deleteOldRolesCmd.ExecuteNonQueryAsync();
+            
+            // Step 2: Remove from other role tables if exists
+            // Remove from doctors table
+            using var deleteDoctorCmd = new NpgsqlCommand(@"
+                UPDATE doctors 
+                SET IsDeleted = true, UpdatedDate = CURRENT_DATE
+                WHERE Id = @userId AND COALESCE(IsDeleted, false) = false;", conn, transaction);
+            deleteDoctorCmd.Parameters.AddWithValue("userId", userId);
+            await deleteDoctorCmd.ExecuteNonQueryAsync();
+            
+            // Remove from admins table
+            using var deleteAdminCmd = new NpgsqlCommand(@"
+                UPDATE admins 
+                SET IsDeleted = true, UpdatedDate = CURRENT_DATE
+                WHERE Id = @userId AND COALESCE(IsDeleted, false) = false;", conn, transaction);
+            deleteAdminCmd.Parameters.AddWithValue("userId", userId);
+            await deleteAdminCmd.ExecuteNonQueryAsync();
+            
+            // Step 3: Assign new role based on role type
+            if (roleName.Equals("Doctor", StringComparison.OrdinalIgnoreCase))
+            {
+                // For Doctor role: save to doctors table
+                await CreateOrUpdateDoctorFromUserAsync(conn, transaction, userId, assignedBy);
                 
-                // Mark user as deleted so they don't appear in users list anymore
+                // Mark user as deleted so they don't appear in users list
                 using var deleteUserCmd = new NpgsqlCommand(@"
                     UPDATE users 
                     SET IsDeleted = true, UpdatedDate = CURRENT_DATE
-                    WHERE Id = @userId AND COALESCE(IsDeleted, false) = false;", conn);
+                    WHERE Id = @userId;", conn, transaction);
                 deleteUserCmd.Parameters.AddWithValue("userId", userId);
                 await deleteUserCmd.ExecuteNonQueryAsync();
             }
+            else if (roleName.Equals("Admin", StringComparison.OrdinalIgnoreCase) || 
+                     roleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+            {
+                // For Admin/SuperAdmin role: save to admins table
+                await CreateOrUpdateAdminFromUserAsync(conn, transaction, userId, roleId, roleName, assignedBy);
+                
+                // Mark user as deleted so they don't appear in users list
+                using var deleteUserCmd = new NpgsqlCommand(@"
+                    UPDATE users 
+                    SET IsDeleted = true, UpdatedDate = CURRENT_DATE
+                    WHERE Id = @userId;", conn, transaction);
+                deleteUserCmd.Parameters.AddWithValue("userId", userId);
+                await deleteUserCmd.ExecuteNonQueryAsync();
+            }
+            else if (roleName.Equals("Clinic", StringComparison.OrdinalIgnoreCase))
+            {
+                // For Clinic role: save to clinics table (if user exists as clinic)
+                // Note: This assumes the user ID matches a clinic ID, otherwise create new clinic
+                // For now, we'll just save the role in user_roles
+                using var insertRoleCmd = new NpgsqlCommand(@"
+                    INSERT INTO user_roles (Id, UserId, RoleId, IsPrimary, CreatedDate, CreatedBy, IsDeleted)
+                    VALUES (@id, @userId, @roleId, @isPrimary, CURRENT_DATE, @createdBy, false);", conn, transaction);
+                insertRoleCmd.Parameters.AddWithValue("id", Guid.NewGuid().ToString());
+                insertRoleCmd.Parameters.AddWithValue("userId", userId);
+                insertRoleCmd.Parameters.AddWithValue("roleId", roleId);
+                insertRoleCmd.Parameters.AddWithValue("isPrimary", isPrimary);
+                insertRoleCmd.Parameters.AddWithValue("createdBy", (object?)assignedBy ?? DBNull.Value);
+                await insertRoleCmd.ExecuteNonQueryAsync();
+            }
+            else
+            {
+                // For User role and others: save to user_roles table
+                using var insertRoleCmd = new NpgsqlCommand(@"
+                    INSERT INTO user_roles (Id, UserId, RoleId, IsPrimary, CreatedDate, CreatedBy, IsDeleted)
+                    VALUES (@id, @userId, @roleId, @isPrimary, CURRENT_DATE, @createdBy, false);", conn, transaction);
+                insertRoleCmd.Parameters.AddWithValue("id", Guid.NewGuid().ToString());
+                insertRoleCmd.Parameters.AddWithValue("userId", userId);
+                insertRoleCmd.Parameters.AddWithValue("roleId", roleId);
+                insertRoleCmd.Parameters.AddWithValue("isPrimary", isPrimary);
+                insertRoleCmd.Parameters.AddWithValue("createdBy", (object?)assignedBy ?? DBNull.Value);
+                await insertRoleCmd.ExecuteNonQueryAsync();
+                
+                // Ensure user is not deleted (restore if was deleted)
+                using var restoreUserCmd = new NpgsqlCommand(@"
+                    UPDATE users 
+                    SET IsDeleted = false, UpdatedDate = CURRENT_DATE
+                    WHERE Id = @userId;", conn, transaction);
+                restoreUserCmd.Parameters.AddWithValue("userId", userId);
+                await restoreUserCmd.ExecuteNonQueryAsync();
+            }
             
+            transaction.Commit();
             return true;
         }
         catch
         {
+            transaction.Rollback();
             return false;
         }
     }
     
-    private async Task CreateOrUpdateDoctorFromUserAsync(NpgsqlConnection conn, string userId, string? createdBy)
+    private async Task CreateOrUpdateDoctorFromUserAsync(NpgsqlConnection conn, NpgsqlTransaction transaction, string userId, string? createdBy)
     {
-        // Get user information
+        // Get user information (try from users table first, then doctors if user was already moved)
         using var userCmd = new NpgsqlCommand(@"
             SELECT Id, Email, Username, FirstName, LastName, Phone
             FROM users
-            WHERE Id = @userId AND COALESCE(IsDeleted, false) = false;", conn);
+            WHERE Id = @userId;", conn, transaction);
         userCmd.Parameters.AddWithValue("userId", userId);
         
         string? email = null;
@@ -529,7 +660,7 @@ public class RbacRepository : IRbacRepository
         
         // Check if doctor already exists
         using var checkCmd = new NpgsqlCommand(@"
-            SELECT Id FROM doctors WHERE Id = @userId OR Email = @email;", conn);
+            SELECT Id FROM doctors WHERE Id = @userId OR Email = @email;", conn, transaction);
         checkCmd.Parameters.AddWithValue("userId", userId);
         checkCmd.Parameters.AddWithValue("email", email);
         
@@ -549,7 +680,7 @@ public class RbacRepository : IRbacRepository
                 VALUES (
                     @id, @email, @username, @firstName, @lastName, @phone,
                     @licenseNumber, false, true, CURRENT_DATE, @createdBy, false
-                );", conn);
+                );", conn, transaction);
             
             insertCmd.Parameters.AddWithValue("id", userId);
             insertCmd.Parameters.AddWithValue("email", email);
@@ -575,7 +706,7 @@ public class RbacRepository : IRbacRepository
                     IsDeleted = false,
                     UpdatedDate = CURRENT_DATE,
                     UpdatedBy = @updatedBy
-                WHERE Id = @id;", conn);
+                WHERE Id = @id;", conn, transaction);
             
             updateCmd.Parameters.AddWithValue("id", existingId.ToString()!);
             updateCmd.Parameters.AddWithValue("email", email);
@@ -583,6 +714,121 @@ public class RbacRepository : IRbacRepository
             updateCmd.Parameters.AddWithValue("firstName", (object?)firstName ?? DBNull.Value);
             updateCmd.Parameters.AddWithValue("lastName", (object?)lastName ?? DBNull.Value);
             updateCmd.Parameters.AddWithValue("phone", (object?)phone ?? DBNull.Value);
+            updateCmd.Parameters.AddWithValue("updatedBy", (object?)createdBy ?? DBNull.Value);
+            
+            await updateCmd.ExecuteNonQueryAsync();
+        }
+    }
+    
+    private async Task CreateOrUpdateAdminFromUserAsync(NpgsqlConnection conn, NpgsqlTransaction transaction, string userId, string roleId, string roleName, string? createdBy)
+    {
+        // Get user information (try from users table first, then admins if user was already moved)
+        using var userCmd = new NpgsqlCommand(@"
+            SELECT Id, Email, Username, FirstName, LastName, Phone
+            FROM users
+            WHERE Id = @userId;", conn, transaction);
+        userCmd.Parameters.AddWithValue("userId", userId);
+        
+        string? email = null;
+        string? username = null;
+        string? firstName = null;
+        string? lastName = null;
+        string? phone = null;
+        
+        using (var reader = await userCmd.ExecuteReaderAsync())
+        {
+            if (await reader.ReadAsync())
+            {
+                email = reader.GetString(1);
+                username = reader.IsDBNull(2) ? null : reader.GetString(2);
+                firstName = reader.IsDBNull(3) ? null : reader.GetString(3);
+                lastName = reader.IsDBNull(4) ? null : reader.GetString(4);
+                phone = reader.IsDBNull(5) ? null : reader.GetString(5);
+            }
+            else
+            {
+                // Try to get from admins table if user was already moved
+                using var adminCmd = new NpgsqlCommand(@"
+                    SELECT Id, Email, Username, FirstName, LastName, Phone
+                    FROM admins
+                    WHERE Id = @userId;", conn, transaction);
+                adminCmd.Parameters.AddWithValue("userId", userId);
+                using (var adminReader = await adminCmd.ExecuteReaderAsync())
+                {
+                    if (await adminReader.ReadAsync())
+                    {
+                        email = adminReader.GetString(1);
+                        username = adminReader.IsDBNull(2) ? null : adminReader.GetString(2);
+                        firstName = adminReader.IsDBNull(3) ? null : adminReader.GetString(3);
+                        lastName = adminReader.IsDBNull(4) ? null : adminReader.GetString(4);
+                        phone = adminReader.IsDBNull(5) ? null : adminReader.GetString(5);
+                    }
+                    else
+                    {
+                        return; // User not found
+                    }
+                }
+            }
+        }
+        
+        // Check if admin already exists
+        using var checkCmd = new NpgsqlCommand(@"
+            SELECT Id FROM admins WHERE Id = @userId OR Email = @email;", conn, transaction);
+        checkCmd.Parameters.AddWithValue("userId", userId);
+        checkCmd.Parameters.AddWithValue("email", email);
+        
+        var existingId = await checkCmd.ExecuteScalarAsync();
+        
+        if (existingId == null)
+        {
+            // Create new admin record
+            using var insertCmd = new NpgsqlCommand(@"
+                INSERT INTO admins (
+                    Id, Email, Username, FirstName, LastName, Phone, 
+                    RoleId, IsSuperAdmin, IsActive, CreatedDate, CreatedBy, IsDeleted
+                )
+                VALUES (
+                    @id, @email, @username, @firstName, @lastName, @phone,
+                    @roleId, @isSuperAdmin, true, CURRENT_DATE, @createdBy, false
+                );", conn, transaction);
+            
+            insertCmd.Parameters.AddWithValue("id", userId);
+            insertCmd.Parameters.AddWithValue("email", email);
+            insertCmd.Parameters.AddWithValue("username", (object?)username ?? DBNull.Value);
+            insertCmd.Parameters.AddWithValue("firstName", (object?)firstName ?? DBNull.Value);
+            insertCmd.Parameters.AddWithValue("lastName", (object?)lastName ?? DBNull.Value);
+            insertCmd.Parameters.AddWithValue("phone", (object?)phone ?? DBNull.Value);
+            insertCmd.Parameters.AddWithValue("roleId", roleId);
+            insertCmd.Parameters.AddWithValue("isSuperAdmin", roleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase));
+            insertCmd.Parameters.AddWithValue("createdBy", (object?)createdBy ?? DBNull.Value);
+            
+            await insertCmd.ExecuteNonQueryAsync();
+        }
+        else
+        {
+            // Update existing admin record (restore if deleted)
+            using var updateCmd = new NpgsqlCommand(@"
+                UPDATE admins 
+                SET Email = @email,
+                    Username = COALESCE(@username, Username),
+                    FirstName = COALESCE(@firstName, FirstName),
+                    LastName = COALESCE(@lastName, LastName),
+                    Phone = COALESCE(@phone, Phone),
+                    RoleId = @roleId,
+                    IsSuperAdmin = @isSuperAdmin,
+                    IsDeleted = false,
+                    UpdatedDate = CURRENT_DATE,
+                    UpdatedBy = @updatedBy
+                WHERE Id = @id;", conn, transaction);
+            
+            updateCmd.Parameters.AddWithValue("id", existingId.ToString()!);
+            updateCmd.Parameters.AddWithValue("email", email);
+            updateCmd.Parameters.AddWithValue("username", (object?)username ?? DBNull.Value);
+            updateCmd.Parameters.AddWithValue("firstName", (object?)firstName ?? DBNull.Value);
+            updateCmd.Parameters.AddWithValue("lastName", (object?)lastName ?? DBNull.Value);
+            updateCmd.Parameters.AddWithValue("phone", (object?)phone ?? DBNull.Value);
+            updateCmd.Parameters.AddWithValue("roleId", roleId);
+            updateCmd.Parameters.AddWithValue("isSuperAdmin", roleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase));
             updateCmd.Parameters.AddWithValue("updatedBy", (object?)createdBy ?? DBNull.Value);
             
             await updateCmd.ExecuteNonQueryAsync();
