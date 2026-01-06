@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Aura.API.Clinic;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -150,6 +151,10 @@ builder.Services.AddScoped<Aura.API.Admin.AdminDb>(sp =>
 });
 builder.Services.AddScoped<Aura.API.Admin.AdminJwtService>();
 builder.Services.AddScoped<Aura.API.Admin.AdminAccountRepository>();
+
+// FR-22: Clinic Management
+builder.Services.AddScoped<ClinicDb>();
+builder.Services.AddScoped<ClinicRepository>();
 
 // TODO: Add database context when ready
 // builder.Services.AddDbContext<AuraDbContext>(options =>

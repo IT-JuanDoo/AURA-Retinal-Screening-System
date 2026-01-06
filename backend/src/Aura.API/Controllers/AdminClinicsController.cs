@@ -53,10 +53,12 @@ public class AdminClinicsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] AdminCreateClinicDto dto)
     {
-        if (string.IsNullOrWhiteSpace(dto.Id) || string.IsNullOrWhiteSpace(dto.ClinicName) || 
-            string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Address))
+        
+              if (string.IsNullOrWhiteSpace(dto.ClinicName) || 
+                 string.IsNullOrWhiteSpace(dto.Email) || 
+                  string.IsNullOrWhiteSpace(dto.Address))
         {
-            return BadRequest(new { message = "Id, ClinicName, Email và Address là bắt buộc" });
+    return BadRequest(new { message = "Tên, Email và Địa chỉ là bắt buộc" });
         }
 
         try
