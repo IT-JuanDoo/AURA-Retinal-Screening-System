@@ -255,9 +255,7 @@ public class ImageService : IImageService
     public async Task<ClinicBulkUploadResponseDto> BulkUploadForClinicAsync(
         string clinicId,
         List<(Stream FileStream, string Filename, ImageUploadDto? Metadata)> files,
-        ClinicBulkUploadDto? options = null,
-        string? uploadedBy = null,
-        string? uploadedByType = "ClinicManager")
+        ClinicBulkUploadDto? options = null)
     {
         var batchId = Guid.NewGuid().ToString();
         var response = new ClinicBulkUploadResponseDto
@@ -270,8 +268,19 @@ public class ImageService : IImageService
         _logger?.LogInformation("Starting bulk upload for clinic {ClinicId}, Batch: {BatchId}, Files: {Count}",
             clinicId, batchId, files.Count);
 
+        // Determine uploader information (default to clinic manager)
+        var uploaderId = clinicId;
+        var uploaderType = "ClinicManager";
+
         // Create bulk upload batch record
-        await CreateBulkUploadBatchAsync(batchId, clinicId, files.Count, options?.BatchName, uploadedBy, uploadedByType, options);
+        await CreateBulkUploadBatchAsync(
+            batchId,
+            clinicId,
+            files.Count,
+            options?.BatchName,
+            uploaderId,
+            uploaderType,
+            options);
 
         // Update batch status to Uploading
         await UpdateBulkUploadBatchStatusAsync(batchId, "Uploading", null, null, null, null);

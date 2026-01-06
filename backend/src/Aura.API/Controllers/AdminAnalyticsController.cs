@@ -111,5 +111,71 @@ public class AdminAnalyticsController : ControllerBase
             return StatusCode(500, new { message = $"Lỗi khi lấy phân bổ rủi ro: {ex.Message}" });
         }
     }
+
+    [HttpGet("revenue")]
+    public async Task<ActionResult<RevenueDashboardDto>> GetRevenueDashboard(
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate)
+    {
+        try
+        {
+            var revenue = await _repo.GetRevenueDashboardAsync(startDate, endDate);
+            return Ok(revenue);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error getting revenue dashboard");
+            return StatusCode(500, new { message = $"Lỗi khi lấy dữ liệu revenue: {ex.Message}" });
+        }
+    }
+
+    [HttpGet("ai-performance")]
+    public async Task<ActionResult<AiPerformanceDashboardDto>> GetAiPerformanceDashboard(
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate)
+    {
+        try
+        {
+            var performance = await _repo.GetAiPerformanceDashboardAsync(startDate, endDate);
+            return Ok(performance);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error getting AI performance dashboard");
+            return StatusCode(500, new { message = $"Lỗi khi lấy dữ liệu AI performance: {ex.Message}" });
+        }
+    }
+
+    [HttpGet("system-health")]
+    public async Task<ActionResult<SystemHealthDashboardDto>> GetSystemHealthDashboard()
+    {
+        try
+        {
+            var health = await _repo.GetSystemHealthDashboardAsync();
+            return Ok(health);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error getting system health dashboard");
+            return StatusCode(500, new { message = $"Lỗi khi lấy dữ liệu system health: {ex.Message}" });
+        }
+    }
+
+    [HttpGet("global")]
+    public async Task<ActionResult<GlobalDashboardDto>> GetGlobalDashboard(
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate)
+    {
+        try
+        {
+            var dashboard = await _repo.GetGlobalDashboardAsync(startDate, endDate);
+            return Ok(dashboard);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error getting global dashboard");
+            return StatusCode(500, new { message = $"Lỗi khi lấy dữ liệu global dashboard: {ex.Message}" });
+        }
+    }
 }
 

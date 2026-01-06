@@ -115,14 +115,11 @@ public class ClinicImagesController : ControllerBase
                 AutoStartAnalysis = autoStartAnalysis
             };
 
-            // Get uploaded by information from claims
-            var uploadedBy = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? clinicId;
-            var uploadedByType = User.IsInRole("Doctor") ? "Doctor" : 
-                                User.IsInRole("Admin") ? "Admin" : 
-                                "ClinicManager";
-
             // Perform bulk upload
-            var result = await _imageService.BulkUploadForClinicAsync(clinicId, fileData, options, uploadedBy, uploadedByType);
+            var result = await _imageService.BulkUploadForClinicAsync(
+                clinicId,
+                fileData,
+                options);
 
             // Dispose streams
             foreach (var (stream, _, _) in fileData)

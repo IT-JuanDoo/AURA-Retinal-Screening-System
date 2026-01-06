@@ -5,6 +5,7 @@ import AdminLoginPage from "../pages/admin/AdminLoginPage";
 import AdminAccountsPage from "../pages/admin/AdminAccountsPage";
 import AdminRbacPage from "../pages/admin/AdminRbacPage";
 import AdminAnalyticsPage from "../pages/admin/AdminAnalyticsPage";
+import AdminDashboardPage from "../pages/admin/AdminDashboardPage";
 import PatientProfilePage from "../pages/patient/PatientProfilePage";
 import HomePage from "../pages/HomePage";
 import PatientDashboard from "../pages/patient/PatientDashboard";
@@ -110,6 +111,14 @@ const AppRoutes = () => {
         element={
           <AdminProtectedRoute>
             <AdminAnalyticsPage />
+          </AdminProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/dashboard"
+        element={
+          <AdminProtectedRoute>
+            <AdminDashboardPage />
           </AdminProtectedRoute>
         }
       />
