@@ -8,7 +8,7 @@ namespace Aura.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,SuperAdmin")]
 public class PermissionsController : ControllerBase
 {
     private readonly IPermissionService _permissionService;
@@ -47,7 +47,7 @@ public class PermissionsController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    public async Task<ActionResult<PermissionDto>> UpdatePermission(string id, [FromBody] CreatePermissionDto dto)
+    public async Task<ActionResult<PermissionDto>> UpdatePermission(string id, [FromBody] UpdatePermissionDto dto)
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
