@@ -8,12 +8,13 @@ import analyticsService, {
   SystemHealthDashboardDto,
 } from "../../services/analyticsService";
 import { useAdminAuthStore } from "../../store/adminAuthStore";
+import AdminHeader from "../../components/admin/AdminHeader";
 
 type Tab = "overview" | "revenue" | "ai-performance" | "system-health";
 
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
-  const { admin, isAdminAuthenticated, logoutAdmin } = useAdminAuthStore();
+  const { isAdminAuthenticated, logoutAdmin } = useAdminAuthStore();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState<GlobalDashboardDto | null>(null);
@@ -95,74 +96,15 @@ export default function AdminDashboardPage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Header */}
-      <header className="sticky top-0 z-50 w-full bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm transition-colors duration-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <div className="size-8 text-blue-500 flex items-center justify-center bg-blue-500/10 rounded-lg">
-                <svg
-                  className="w-5 h-5"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" />
-                </svg>
-              </div>
-              <h2 className="text-slate-900 dark:text-white text-lg font-bold tracking-tight">
-                AURA Admin Dashboard
-              </h2>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 border-r border-slate-200 dark:border-slate-700 pr-2">
-                <button
-                  onClick={() => navigate("/admin/accounts")}
-                  className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-sm font-medium border border-slate-300 dark:border-slate-600"
-                >
-                  Quản lý Tài khoản
-                </button>
-                <button
-                  onClick={() => navigate("/admin/rbac")}
-                  className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-sm font-medium border border-slate-300 dark:border-slate-600"
-                >
-                  Phân quyền (RBAC)
-                </button>
-                <button
-                  onClick={() => navigate("/admin/analytics")}
-                  className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-sm font-medium border border-slate-300 dark:border-slate-600"
-                >
-                  Analytics
-                </button>
-              </div>
-              <div className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                <div className="text-sm text-slate-600 dark:text-slate-400">
-                  Xin chào,{" "}
-                  <span className="font-semibold text-slate-900 dark:text-white">
-                    {admin?.firstName || admin?.email || "Admin"}
-                  </span>
-                </div>
-              </div>
-              <button
-                onClick={logoutAdmin}
-                className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors text-sm font-medium border border-red-600"
-              >
-                Đăng xuất
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <AdminHeader />
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
         {/* Page Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-            Global Dashboard (FR-35)
+            Tổng quan hệ thống
           </h1>
-          <p className="text-slate-600 dark:text-slate-400">
-            Tổng quan hệ thống, Revenue, AI Performance và System Health
-          </p>
           <div className="mt-4 flex items-center gap-4">
             <div className="flex items-center gap-2">
               <label className="text-sm text-slate-700 dark:text-slate-300">
@@ -224,9 +166,7 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Tab Content */}
-        {activeTab === "overview" && (
-          <OverviewTab dashboard={dashboard} />
-        )}
+        {activeTab === "overview" && <OverviewTab dashboard={dashboard} />}
         {activeTab === "revenue" && (
           <RevenueTab revenue={dashboard.revenueDashboard} />
         )}
@@ -258,7 +198,10 @@ function OverviewTab({ dashboard }: { dashboard: GlobalDashboardDto }) {
         />
         <MetricCard
           title="Tổng Revenue"
-          value={`$${dashboard.revenueDashboard.totalRevenue.toLocaleString("vi-VN", { minimumFractionDigits: 2 })}`}
+          value={`$${dashboard.revenueDashboard.totalRevenue.toLocaleString(
+            "vi-VN",
+            { minimumFractionDigits: 2 }
+          )}`}
           subtitle={`${dashboard.revenueDashboard.totalTransactions} transactions`}
           icon="💰"
           color="green"
@@ -273,7 +216,9 @@ function OverviewTab({ dashboard }: { dashboard: GlobalDashboardDto }) {
         <MetricCard
           title="System Status"
           value={dashboard.systemHealthDashboard.systemStatus.overallStatus}
-          subtitle={`CPU: ${dashboard.systemHealthDashboard.systemStatus.cpuUsagePercent.toFixed(1)}%`}
+          subtitle={`CPU: ${dashboard.systemHealthDashboard.systemStatus.cpuUsagePercent.toFixed(
+            1
+          )}%`}
           icon="⚡"
           color={
             dashboard.systemHealthDashboard.systemStatus.overallStatus ===
@@ -333,28 +278,36 @@ function RevenueTab({ revenue }: { revenue: RevenueDashboardDto }) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title="Total Revenue"
-          value={`$${revenue.totalRevenue.toLocaleString("vi-VN", { minimumFractionDigits: 2 })}`}
+          value={`$${revenue.totalRevenue.toLocaleString("vi-VN", {
+            minimumFractionDigits: 2,
+          })}`}
           subtitle="All time"
           icon="💰"
           color="green"
         />
         <MetricCard
           title="Monthly Revenue"
-          value={`$${revenue.monthlyRevenue.toLocaleString("vi-VN", { minimumFractionDigits: 2 })}`}
+          value={`$${revenue.monthlyRevenue.toLocaleString("vi-VN", {
+            minimumFractionDigits: 2,
+          })}`}
           subtitle="This month"
           icon="📅"
           color="blue"
         />
         <MetricCard
           title="Weekly Revenue"
-          value={`$${revenue.weeklyRevenue.toLocaleString("vi-VN", { minimumFractionDigits: 2 })}`}
+          value={`$${revenue.weeklyRevenue.toLocaleString("vi-VN", {
+            minimumFractionDigits: 2,
+          })}`}
           subtitle="This week"
           icon="📊"
           color="purple"
         />
         <MetricCard
           title="Daily Revenue"
-          value={`$${revenue.dailyRevenue.toLocaleString("vi-VN", { minimumFractionDigits: 2 })}`}
+          value={`$${revenue.dailyRevenue.toLocaleString("vi-VN", {
+            minimumFractionDigits: 2,
+          })}`}
           subtitle="Today"
           icon="📈"
           color="orange"
@@ -564,11 +517,7 @@ function AiPerformanceTab({
 }
 
 // System Health Tab Component
-function SystemHealthTab({
-  health,
-}: {
-  health: SystemHealthDashboardDto;
-}) {
+function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
   return (
     <div className="space-y-6">
       {/* System Status Cards */}
@@ -576,25 +525,33 @@ function SystemHealthTab({
         <HealthMetricCard
           title="CPU Usage"
           value={`${health.systemStatus.cpuUsagePercent.toFixed(1)}%`}
-          status={health.systemStatus.cpuUsagePercent > 80 ? "warning" : "healthy"}
+          status={
+            health.systemStatus.cpuUsagePercent > 80 ? "warning" : "healthy"
+          }
           icon="💻"
         />
         <HealthMetricCard
           title="Memory Usage"
           value={`${health.systemStatus.memoryUsagePercent.toFixed(1)}%`}
-          status={health.systemStatus.memoryUsagePercent > 85 ? "warning" : "healthy"}
+          status={
+            health.systemStatus.memoryUsagePercent > 85 ? "warning" : "healthy"
+          }
           icon="🧠"
         />
         <HealthMetricCard
           title="Disk Usage"
           value={`${health.systemStatus.diskUsagePercent.toFixed(1)}%`}
-          status={health.systemStatus.diskUsagePercent > 90 ? "warning" : "healthy"}
+          status={
+            health.systemStatus.diskUsagePercent > 90 ? "warning" : "healthy"
+          }
           icon="💾"
         />
         <HealthMetricCard
           title="Network Latency"
           value={`${health.systemStatus.networkLatencyMs.toFixed(1)}ms`}
-          status={health.systemStatus.networkLatencyMs > 100 ? "warning" : "healthy"}
+          status={
+            health.systemStatus.networkLatencyMs > 100 ? "warning" : "healthy"
+          }
           icon="🌐"
         />
       </div>
@@ -607,26 +564,37 @@ function SystemHealthTab({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">Status</p>
-            <p className={`text-lg font-semibold mt-1 ${
-              health.databaseHealth.status === "Healthy" ? "text-green-600" : "text-red-600"
-            }`}>
+            <p
+              className={`text-lg font-semibold mt-1 ${
+                health.databaseHealth.status === "Healthy"
+                  ? "text-green-600"
+                  : "text-red-600"
+              }`}
+            >
               {health.databaseHealth.status}
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Response Time</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Response Time
+            </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.databaseHealth.responseTimeMs.toFixed(1)}ms
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Active Connections</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Active Connections
+            </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
-              {health.databaseHealth.activeConnections}/{health.databaseHealth.maxConnections}
+              {health.databaseHealth.activeConnections}/
+              {health.databaseHealth.maxConnections}
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Total Queries</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Total Queries
+            </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.databaseHealth.totalQueries.toLocaleString("vi-VN")}
             </p>
@@ -642,34 +610,51 @@ function SystemHealthTab({
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">Status</p>
-            <p className={`text-lg font-semibold mt-1 ${
-              health.apiHealth.status === "Healthy" ? "text-green-600" : "text-red-600"
-            }`}>
+            <p
+              className={`text-lg font-semibold mt-1 ${
+                health.apiHealth.status === "Healthy"
+                  ? "text-green-600"
+                  : "text-red-600"
+              }`}
+            >
               {health.apiHealth.status}
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Total Requests</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Total Requests
+            </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.apiHealth.totalRequests.toLocaleString("vi-VN")}
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Success Rate</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Success Rate
+            </p>
             <p className="text-lg font-semibold text-green-600 mt-1">
               {health.apiHealth.totalRequests > 0
-                ? ((health.apiHealth.successfulRequests / health.apiHealth.totalRequests) * 100).toFixed(1)
-                : 0}%
+                ? (
+                    (health.apiHealth.successfulRequests /
+                      health.apiHealth.totalRequests) *
+                    100
+                  ).toFixed(1)
+                : 0}
+              %
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Avg Response Time</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Avg Response Time
+            </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.apiHealth.averageResponseTimeMs.toFixed(1)}ms
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Requests/sec</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Requests/sec
+            </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.apiHealth.requestsPerSecond.toFixed(2)}
             </p>
@@ -685,26 +670,37 @@ function SystemHealthTab({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">Status</p>
-            <p className={`text-lg font-semibold mt-1 ${
-              health.aiServiceHealth.status === "Healthy" ? "text-green-600" : "text-red-600"
-            }`}>
+            <p
+              className={`text-lg font-semibold mt-1 ${
+                health.aiServiceHealth.status === "Healthy"
+                  ? "text-green-600"
+                  : "text-red-600"
+              }`}
+            >
               {health.aiServiceHealth.status}
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Queue Length</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Queue Length
+            </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.aiServiceHealth.queueLength}
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Active Workers</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Active Workers
+            </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
-              {health.aiServiceHealth.activeWorkers}/{health.aiServiceHealth.maxWorkers}
+              {health.aiServiceHealth.activeWorkers}/
+              {health.aiServiceHealth.maxWorkers}
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Avg Response Time</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Avg Response Time
+            </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.aiServiceHealth.averageResponseTimeMs.toFixed(0)}ms
             </p>
@@ -719,25 +715,33 @@ function SystemHealthTab({
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Uptime Percentage</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Uptime Percentage
+            </p>
             <p className="text-3xl font-bold text-green-600 mt-2">
               {health.uptime.uptimePercentage.toFixed(2)}%
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Total Uptime</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Total Uptime
+            </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-2">
               {health.uptime.totalUptime || "N/A"}
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Incidents</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Incidents
+            </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-2">
               {health.uptime.incidentsCount}
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Last Incident</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Last Incident
+            </p>
             <p className="text-sm font-semibold text-slate-900 dark:text-white mt-2">
               {new Date(health.uptime.lastIncident).toLocaleDateString("vi-VN")}
             </p>
@@ -885,7 +889,9 @@ function SimpleLineChart({
           className={colorClasses[color as keyof typeof colorClasses]}
         />
         <polygon
-          points={`${points[0]},${height} ${pathData.replace("M ", "")} ${points[points.length - 1]},${height}`}
+          points={`${points[0]},${height} ${pathData.replace("M ", "")} ${
+            points[points.length - 1]
+          },${height}`}
           className={colorClasses[color as keyof typeof colorClasses]}
           opacity="0.1"
         />
@@ -995,4 +1001,3 @@ function AccuracyBar({
     </div>
   );
 }
-
