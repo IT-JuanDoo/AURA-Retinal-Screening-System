@@ -43,24 +43,27 @@ export default function AdminHeader() {
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 border-r border-slate-200 dark:border-slate-700 pr-2">
+            <nav className="flex items-center gap-1 border-r border-slate-200 dark:border-slate-700 pr-2">
               {navItems.map((item) => {
                 const active = activePath === item.path;
                 return (
                   <button
                     key={item.path}
                     onClick={() => navigate(item.path)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                       active
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 border-slate-300 dark:border-slate-600"
+                        ? "bg-blue-600 text-white shadow-md scale-105"
+                        : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200"
                     }`}
                   >
                     {item.label}
+                    {active && (
+                      <span className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-white rounded-full" />
+                    )}
                   </button>
                 );
               })}
-            </div>
+            </nav>
             <div className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
               <div className="text-sm text-slate-600 dark:text-slate-400">
                 Xin chào,{" "}
@@ -81,4 +84,3 @@ export default function AdminHeader() {
     </header>
   );
 }
-

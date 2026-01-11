@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useAdminAuthStore } from "../../store/adminAuthStore";
 import AdminHeader from "../../components/admin/AdminHeader";
+import LoadingSpinner from "../../components/admin/LoadingSpinner";
+import ConfirmationModal from "../../components/admin/ConfirmationModal";
+import EmptyState from "../../components/admin/EmptyState";
 import {
   rolesApi,
   permissionsApi,
@@ -34,6 +37,18 @@ export default function AdminRbacPage() {
     permissionDescription: "",
     resourceType: "",
   });
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    type: "role" | "permission";
+    id: string | null;
+    name: string;
+  }>({
+    isOpen: false,
+    type: "role",
+    id: null,
+    name: "",
+  });
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!isAdminAuthenticated) {
@@ -130,18 +145,44 @@ export default function AdminRbacPage() {
   };
 
   const handleDeleteRole = async (id: string) => {
-    if (!confirm("Bạn có chắc muốn xóa role này?")) return;
+    const role = roles.find((r) => r.id === id);
+    if (role) {
+      setDeleteConfirm({
+        isOpen: true,
+        type: "role",
+        id,
+        name: role.roleName,
+      });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirm.id) return;
+    setDeleting(true);
     try {
-      await rolesApi.delete(id);
-      toast.success("Đã xóa role thành công");
-      await loadData();
-      if (selectedRole?.id === id) {
-        setSelectedRole(null);
+      if (deleteConfirm.type === "role") {
+        await rolesApi.delete(deleteConfirm.id);
+        toast.success("Đã xóa role thành công");
+        if (selectedRole?.id === deleteConfirm.id) {
+          setSelectedRole(null);
+        }
+      } else {
+        await permissionsApi.delete(deleteConfirm.id);
+        toast.success("Đã xóa permission thành công");
+        if (selectedPermission?.id === deleteConfirm.id) {
+          setSelectedPermission(null);
+        }
       }
+      setDeleteConfirm({ isOpen: false, type: "role", id: null, name: "" });
+      await loadData();
     } catch (e: any) {
       toast.error(
-        e?.response?.data?.message || e?.message || "Không xóa được role"
+        e?.response?.data?.message ||
+          e?.message ||
+          `Không xóa được ${deleteConfirm.type}`
       );
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -202,18 +243,14 @@ export default function AdminRbacPage() {
   };
 
   const handleDeletePermission = async (id: string) => {
-    if (!confirm("Bạn có chắc muốn xóa permission này?")) return;
-    try {
-      await permissionsApi.delete(id);
-      toast.success("Đã xóa permission thành công");
-      await loadData();
-      if (selectedPermission?.id === id) {
-        setSelectedPermission(null);
-      }
-    } catch (e: any) {
-      toast.error(
-        e?.response?.data?.message || e?.message || "Không xóa được permission"
-      );
+    const permission = permissions.find((p) => p.id === id);
+    if (permission) {
+      setDeleteConfirm({
+        isOpen: true,
+        type: "permission",
+        id,
+        name: permission.permissionName,
+      });
     }
   };
 
@@ -253,7 +290,7 @@ export default function AdminRbacPage() {
 
   return (
     <div className="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 font-sans antialiased min-h-screen flex flex-col transition-colors duration-200">
-      <AdminHeader />
+      uu <AdminHeader />
       {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
@@ -538,9 +575,29 @@ export default function AdminRbacPage() {
                 </div>
 
                 {loading ? (
-                  <div className="text-center py-8 text-slate-500">
-                    Đang tải...
+                  <div className="flex items-center justify-center py-12">
+                    <LoadingSpinner size="lg" />
                   </div>
+                ) : permissions.length === 0 ? (
+                  <EmptyState
+                    title="Chưa có permission nào"
+                    message="Bắt đầu tạo permission đầu tiên để định nghĩa các quyền trong hệ thống"
+                    icon="🔑"
+                    action={{
+                      label: "Tạo Permission mới",
+                      onClick: () => {
+                        setEditingPermission(null);
+                        setFormData({
+                          roleName: "",
+                          description: "",
+                          permissionName: "",
+                          permissionDescription: "",
+                          resourceType: "",
+                        });
+                        setShowPermissionForm(true);
+                      },
+                    }}
+                  />
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {permissions.map((perm) => (
@@ -702,6 +759,27 @@ export default function AdminRbacPage() {
           </div>
         </div>
       </main>
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={deleteConfirm.isOpen}
+        onClose={() =>
+          setDeleteConfirm({
+            isOpen: false,
+            type: "role",
+            id: null,
+            name: "",
+          })
+        }
+        onConfirm={confirmDelete}
+        title={`Xóa ${deleteConfirm.type === "role" ? "Role" : "Permission"}`}
+        message={`Bạn có chắc muốn xóa ${
+          deleteConfirm.type === "role" ? "role" : "permission"
+        } "${deleteConfirm.name}"? Hành động này không thể hoàn tác.`}
+        confirmText="Xóa"
+        cancelText="Hủy"
+        variant="danger"
+        isLoading={deleting}
+      />
     </div>
   );
 }
