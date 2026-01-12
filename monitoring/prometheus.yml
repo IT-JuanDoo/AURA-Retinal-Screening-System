@@ -1,0 +1,61 @@
+# Prometheus Configuration for AURA Microservices
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Backend API (Monolith)
+  - job_name: 'backend'
+    static_configs:
+      - targets: ['backend:5000']
+        labels:
+          service: 'backend-api'
+
+  # Auth Service
+  - job_name: 'auth-service'
+    static_configs:
+      - targets: ['auth-service:5001']
+        labels:
+          service: 'auth-service'
+
+  # User Service
+  - job_name: 'user-service'
+    static_configs:
+      - targets: ['user-service:5002']
+        labels:
+          service: 'user-service'
+
+  # Image Service
+  - job_name: 'image-service'
+    static_configs:
+      - targets: ['image-service:5003']
+        labels:
+          service: 'image-service'
+
+  # Analysis Service
+  - job_name: 'analysis-service'
+    static_configs:
+      - targets: ['analysis-service:5004']
+        labels:
+          service: 'analysis-service'
+
+  # Notification Service
+  - job_name: 'notification-service'
+    static_configs:
+      - targets: ['notification-service:5005']
+        labels:
+          service: 'notification-service'
+
+  # Admin Service
+  - job_name: 'admin-service'
+    static_configs:
+      - targets: ['admin-service:5006']
+        labels:
+          service: 'admin-service'
+
+  # AI Core Service
+  - job_name: 'ai-core'
+    static_configs:
+      - targets: ['aicore:8000']
+        labels:
+          service: 'ai-core'

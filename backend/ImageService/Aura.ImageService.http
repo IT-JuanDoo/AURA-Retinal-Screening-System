@@ -1,0 +1,6 @@
+@Aura.ImageService_HostAddress = http://localhost:5287
+
+GET {{Aura.ImageService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

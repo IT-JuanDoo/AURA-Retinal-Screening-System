@@ -270,29 +270,73 @@ public class AnalysisService : IAnalysisService
 
     private async Task<Dictionary<string, object>> CallAICoreServiceAsync(string imageUrl, string imageType)
     {
-        var aiCoreBaseUrl = _configuration["AICore:BaseUrl"] ?? "http://localhost:8000/api";
-        var endpoint = $"{aiCoreBaseUrl}/analyze";
+        // Gọi qua Analysis Microservice thay vì gọi thẳng AI Core
+        var analysisServiceBaseUrl = _configuration["AnalysisService:BaseUrl"] ?? "http://analysis-service:5004";
+        var endpoint = $"{analysisServiceBaseUrl}/api/analysis/analyze";
 
         var requestBody = new
         {
-            image_url = imageUrl,
-            image_type = imageType
+            imageUrl = imageUrl,
+            imageType = imageType,
+            modelVersion = "v1.0.0"
         };
 
         try
         {
+            _logger?.LogInformation("Calling analysis-service: {Endpoint}", endpoint);
+            
             var response = await _httpClient.PostAsJsonAsync(endpoint, requestBody);
             response.EnsureSuccessStatusCode();
 
             var result = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
-            return result ?? new Dictionary<string, object>();
+            
+            if (result == null)
+            {
+                _logger?.LogWarning("Analysis-service returned null result, using mock data");
+                return GenerateMockAnalysisResult();
+            }
+
+            // Convert analysis-service response format to expected format
+            return ConvertAnalysisServiceResponse(result);
         }
         catch (HttpRequestException ex)
         {
-            _logger?.LogWarning(ex, "AI Core service unavailable, using mock data");
+            _logger?.LogWarning(ex, "Analysis-service unavailable, using mock data");
             // Return mock data for development
             return GenerateMockAnalysisResult();
         }
+    }
+
+    private Dictionary<string, object> ConvertAnalysisServiceResponse(Dictionary<string, object> response)
+    {
+        // Convert từ format của analysis-service sang format mong đợi
+        // Analysis-service trả về format từ AI Core, cần map lại
+        var converted = new Dictionary<string, object>();
+        
+        // Map các field từ AI Core response format
+        if (response.TryGetValue("risk_level", out var riskLevel))
+            converted["overall_risk_level"] = riskLevel;
+        else if (response.TryGetValue("overallRiskLevel", out var riskLevel2))
+            converted["overall_risk_level"] = riskLevel2;
+        
+        if (response.TryGetValue("risk_score", out var riskScore))
+            converted["risk_score"] = riskScore;
+        else if (response.TryGetValue("riskScore", out var riskScore2))
+            converted["risk_score"] = riskScore2;
+        
+        if (response.TryGetValue("confidence", out var confidence))
+            converted["ai_confidence_score"] = confidence;
+        
+        if (response.TryGetValue("findings", out var findings))
+            converted["findings"] = findings;
+        
+        if (response.TryGetValue("heatmap_url", out var heatmap))
+            converted["heatmap_url"] = heatmap;
+        else if (response.TryGetValue("heatmapUrl", out var heatmap2))
+            converted["heatmap_url"] = heatmap2;
+        
+        // Nếu không có field nào được map, trả về response gốc
+        return converted.Count > 0 ? converted : response;
     }
 
     private Dictionary<string, object> GenerateMockAnalysisResult()

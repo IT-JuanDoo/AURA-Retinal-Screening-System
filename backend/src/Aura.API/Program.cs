@@ -159,13 +159,23 @@ builder.Services.AddSingleton<IUserService, UserService>();
 builder.Services.AddScoped<Aura.Application.Services.Images.IImageService, Aura.Application.Services.Images.ImageService>();
 
 // FR-3: Analysis Services
+// HttpClient cho AnalysisService (để gọi analysis-service microservice)
 builder.Services.AddHttpClient<Aura.Application.Services.Analysis.AnalysisService>(client =>
 {
-    var timeoutValue = builder.Configuration["AICore:Timeout"];
+    var timeoutValue = builder.Configuration["AnalysisService:Timeout"] ?? "30000";
     client.Timeout = TimeSpan.FromMilliseconds(
         int.TryParse(timeoutValue, out var timeout) ? timeout : 30000);
 });
 builder.Services.AddScoped<Aura.Application.Services.Analysis.IAnalysisService, Aura.Application.Services.Analysis.AnalysisService>();
+
+// HttpClient cho AnalysisServiceClient (để gọi analysis-service từ controllers nếu cần)
+builder.Services.AddHttpClient<Aura.API.Services.AnalysisServiceClient>(client =>
+{
+    var baseUrl = builder.Configuration["AnalysisService:BaseUrl"] ?? "http://analysis-service:5004";
+    client.BaseAddress = new Uri(baseUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddScoped<Aura.API.Services.AnalysisServiceClient>();
 
 // FR-24: Analysis Queue Service for batch processing (NFR-2: ≥100 images per batch)
 builder.Services.AddScoped<Aura.Application.Services.Analysis.IAnalysisQueueService, Aura.Application.Services.Analysis.AnalysisQueueService>();

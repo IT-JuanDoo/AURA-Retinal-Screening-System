@@ -1,0 +1,6 @@
+@Aura.AuthService_HostAddress = http://localhost:5260
+
+GET {{Aura.AuthService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
