@@ -2,14 +2,17 @@ using System.Text;
 using Aura.Application.Services.Auth;
 using Aura.Application.Services.Users;
 using Aura.Application.Services.RBAC;
+using Aura.Application.Services.Messages;
 using Aura.Shared.Authorization;
 using Aura.Shared.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Aura.API.Clinic;
+using Aura.API.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +21,9 @@ builder.WebHost.ConfigureKestrel(options =>
 {
     options.Limits.MaxRequestBodySize = 50 * 1024 * 1024; // 50MB
 });
+
+// Add SignalR for real-time messaging (FR-10)
+builder.Services.AddSignalR();
 
 // Add services to the container
 builder.Services.AddControllers(options =>
@@ -101,6 +107,7 @@ builder.Services.AddAuthentication(options =>
         ClockSkew = TimeSpan.Zero // No tolerance for token expiration
     };
 
+    // Configure SignalR JWT authentication
     options.Events = new JwtBearerEvents
     {
         OnAuthenticationFailed = context =>
@@ -108,6 +115,17 @@ builder.Services.AddAuthentication(options =>
             if (context.Exception.GetType() == typeof(SecurityTokenExpiredException))
             {
                 context.Response.Headers.Append("Token-Expired", "true");
+            }
+            return Task.CompletedTask;
+        },
+        OnMessageReceived = context =>
+        {
+            // Support JWT token in query string for SignalR (WebSocket doesn't support headers)
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            {
+                context.Token = accessToken;
             }
             return Task.CompletedTask;
         }
@@ -182,6 +200,10 @@ builder.Services.AddScoped<Aura.Application.Services.Analysis.IAnalysisQueueServ
 
 // Notifications (in-memory for now)
 builder.Services.AddSingleton<Aura.Application.Services.Notifications.INotificationService, Aura.Infrastructure.Services.Notifications.NotificationService>();
+
+// FR-10: Messaging Services
+builder.Services.AddScoped<IMessageService, MessageService>();
+
 // FR-32: RBAC Services
 builder.Services.AddScoped<Aura.Application.Repositories.IRbacRepository, Aura.API.Admin.RbacRepository>();
 builder.Services.AddScoped<IRoleService, RoleService>();
@@ -259,6 +281,9 @@ app.UseMiddleware<RbacAuthorizationMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Map SignalR Hub for real-time messaging (FR-10)
+app.MapHub<ChatHub>("/hubs/chat");
 
 // Health check endpoint with database connection test
 app.MapGet("/health", async (IConfiguration config) =>
