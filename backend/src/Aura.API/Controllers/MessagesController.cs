@@ -181,5 +181,37 @@ public class MessagesController : ControllerBase
             return StatusCode(500, new { message = "Failed to get unread count", error = ex.Message });
         }
     }
+
+    /// <summary>
+    /// Search messages in a conversation (FR-20)
+    /// </summary>
+    [HttpGet("conversation/{conversationId}/search")]
+    [ProducesResponseType(typeof(List<MessageDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> SearchMessages(
+        string conversationId,
+        [FromQuery] string query)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized(new { message = "User not authenticated" });
+        }
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return Ok(new List<MessageDto>());
+        }
+
+        try
+        {
+            var messages = await _messageService.SearchMessagesAsync(userId, conversationId, query);
+            return Ok(messages);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching messages");
+            return StatusCode(500, new { message = "Failed to search messages", error = ex.Message });
+        }
+    }
 }
 

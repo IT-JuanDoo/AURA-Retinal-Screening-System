@@ -20,8 +20,12 @@ class SignalRService {
       throw new Error("No authentication token available");
     }
 
+    // In Docker, VITE_API_URL is /api, so SignalR should use /hubs/chat (not /api/hubs/chat)
+    // SignalR hub is proxied separately through nginx at /hubs
     const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
-    const hubUrl = `${apiUrl}/hubs/chat`;
+    const hubUrl = apiUrl.startsWith("/") 
+      ? `${window.location.origin}/hubs/chat`  // Use relative path for Docker
+      : `${apiUrl}/hubs/chat`;  // Use full URL for local dev
 
     this.connection = new signalR.HubConnectionBuilder()
       .withUrl(hubUrl, {

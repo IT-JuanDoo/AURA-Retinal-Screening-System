@@ -10,5 +10,6 @@ public interface IMessageService
     Task MarkMessagesAsReadAsync(string userId, List<string> messageIds);
     Task<int> GetUnreadCountAsync(string userId);
     Task<string> GetOrCreateConversationIdAsync(string userId1, string userType1, string userId2, string userType2);
+    Task<List<MessageDto>> SearchMessagesAsync(string userId, string conversationId, string searchQuery);
 }
 

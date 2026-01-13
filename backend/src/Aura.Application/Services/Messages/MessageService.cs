@@ -245,6 +245,63 @@ public class MessageService : IMessageService
         return conversationId;
     }
 
+    public async Task<List<MessageDto>> SearchMessagesAsync(string userId, string conversationId, string searchQuery)
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery))
+        {
+            return new List<MessageDto>();
+        }
+
+        using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var sql = @"
+            SELECT m.Id, m.ConversationId, m.SendById, m.SendByType, m.ReceiverId, m.ReceiverType,
+                   m.Subject, m.Content, m.AttachmentUrl, m.IsRead, m.ReadAt, 
+                   COALESCE(m.CreatedDate::timestamp, CURRENT_TIMESTAMP) as CreatedAt
+            FROM messages m
+            WHERE m.ConversationId = @ConversationId 
+              AND m.IsDeleted = false
+              AND (m.SendById = @UserId OR m.ReceiverId = @UserId)
+              AND (LOWER(m.Content) LIKE LOWER(@SearchQuery) OR LOWER(m.Subject) LIKE LOWER(@SearchQuery))
+            ORDER BY CreatedAt DESC
+            LIMIT 100";
+
+        using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ConversationId", conversationId);
+        command.Parameters.AddWithValue("UserId", userId);
+        command.Parameters.AddWithValue("SearchQuery", $"%{searchQuery}%");
+
+        var messages = new List<MessageDto>();
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var message = new MessageDto
+            {
+                Id = reader.GetString(0),
+                ConversationId = reader.GetString(1),
+                SendById = reader.GetString(2),
+                SendByType = reader.GetString(3),
+                ReceiverId = reader.GetString(4),
+                ReceiverType = reader.GetString(5),
+                Subject = reader.IsDBNull(6) ? null : reader.GetString(6),
+                Content = reader.GetString(7),
+                AttachmentUrl = reader.IsDBNull(8) ? null : reader.GetString(8),
+                IsRead = reader.GetBoolean(9),
+                ReadAt = reader.IsDBNull(10) ? null : reader.GetDateTime(10),
+                CreatedAt = reader.GetDateTime(11)
+            };
+
+            // Get sender name
+            message.SendByName = await GetUserNameAsync(message.SendById, message.SendByType);
+            message.SendByAvatar = await GetUserAvatarAsync(message.SendById, message.SendByType);
+
+            messages.Add(message);
+        }
+
+        return messages.OrderBy(m => m.CreatedAt).ToList();
+    }
+
     private async Task<MessageDto> GetMessageByIdAsync(string messageId)
     {
         using var connection = new NpgsqlConnection(_connectionString);

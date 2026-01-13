@@ -1,8 +1,19 @@
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { useEffect, useState } from 'react';
+import messageService from '../services/messageService';
 
 const HomePage = () => {
   const { isAuthenticated } = useAuthStore();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      messageService.getUnreadCount()
+        .then(count => setUnreadCount(count))
+        .catch(() => {});
+    }
+  }, [isAuthenticated]);
 
   return (
     <div className="relative flex min-h-screen w-full flex-col overflow-x-hidden bg-background-light dark:bg-background-dark font-display antialiased text-text-main dark:text-text-main-dark transition-colors duration-200">
@@ -28,6 +39,20 @@ const HomePage = () => {
             <a className="text-sm font-medium hover:text-primary transition-colors" href="#contact">
               Liên hệ
             </a>
+            {isAuthenticated && (
+              <Link
+                to="/chat"
+                className="text-sm font-medium hover:text-primary transition-colors flex items-center gap-1"
+              >
+                <span className="material-symbols-outlined text-base">chat</span>
+                Tư vấn
+                {unreadCount > 0 && (
+                  <span className="ml-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </Link>
+            )}
           </nav>
           <div className="flex gap-3">
             {!isAuthenticated ? (
@@ -383,6 +408,20 @@ const HomePage = () => {
           </div>
         </div>
       </footer>
+
+      {/* Floating Chat Button - Always visible, redirects to login if not authenticated */}
+      <Link
+        to={isAuthenticated ? "/chat" : "/login"}
+        className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-14 h-14 bg-primary text-white rounded-full shadow-lg shadow-primary/30 hover:bg-primary-dark transition-all hover:scale-110 group animate-bounce hover:animate-none"
+        title={isAuthenticated ? "Chat tư vấn" : "Đăng nhập để chat"}
+      >
+        <span className="material-symbols-outlined text-2xl">chat</span>
+        {isAuthenticated && unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center ring-2 ring-white dark:ring-slate-900 animate-pulse">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
+      </Link>
     </div>
   );
 };

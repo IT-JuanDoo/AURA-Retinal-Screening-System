@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import messageService from '../../services/messageService';
 
 // Mock data - sẽ được thay thế bằng API call sau
 const mockHealthData = {
@@ -42,6 +43,22 @@ const PatientDashboard = () => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [selectedPeriod, setSelectedPeriod] = useState('6months');
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    messageService.getUnreadCount()
+      .then(count => setUnreadCount(count))
+      .catch(() => {});
+    
+    // Refresh unread count every 30 seconds
+    const interval = setInterval(() => {
+      messageService.getUnreadCount()
+        .then(count => setUnreadCount(count))
+        .catch(() => {});
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 font-sans antialiased min-h-screen flex flex-col transition-colors duration-200">
@@ -480,6 +497,20 @@ const PatientDashboard = () => {
           <p className="text-xs text-slate-300 dark:text-slate-600">© 2024 AURA AI Inc.</p>
         </div>
       </footer>
+
+      {/* Floating Chat Button */}
+      <Link
+        to="/chat"
+        className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-14 h-14 bg-primary text-white rounded-full shadow-lg shadow-primary/30 hover:bg-primary-dark transition-all hover:scale-110 group"
+        title="Chat tư vấn với bác sĩ"
+      >
+        <span className="material-symbols-outlined text-2xl">chat</span>
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center ring-2 ring-white dark:ring-slate-900 animate-pulse">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
+      </Link>
     </div>
   );
 };

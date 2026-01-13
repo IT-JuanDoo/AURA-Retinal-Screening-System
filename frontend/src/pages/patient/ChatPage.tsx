@@ -15,8 +15,13 @@ const ChatPage = () => {
   const [otherUserTyping, setOtherUserTyping] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [messageSearchQuery, setMessageSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Message[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Initialize SignalR connection
@@ -113,6 +118,60 @@ const ChatPage = () => {
       toast.error("Không thể tải tin nhắn");
     }
   };
+
+  // Search messages in conversation
+  const handleSearchMessages = async (query: string) => {
+    if (!selectedConversation || !query.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const results = await messageService.searchMessages(selectedConversation.conversationId, query);
+      setSearchResults(results);
+      
+      // Highlight first result
+      if (results.length > 0) {
+        setHighlightedMessageId(results[0].id);
+        // Scroll to first result
+        setTimeout(() => {
+          const element = document.getElementById(`message-${results[0].id}`);
+          if (element) {
+            element.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }, 100);
+      }
+    } catch (error) {
+      console.error("Failed to search messages:", error);
+      toast.error("Không thể tìm kiếm tin nhắn");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Debounced search
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (messageSearchQuery.trim()) {
+      searchTimeoutRef.current = setTimeout(() => {
+        handleSearchMessages(messageSearchQuery);
+      }, 500);
+    } else {
+      setSearchResults([]);
+      setHighlightedMessageId(null);
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [messageSearchQuery, selectedConversation]);
 
   const handleSelectConversation = async (conversation: Conversation) => {
     if (selectedConversation) {
@@ -346,34 +405,73 @@ const ChatPage = () => {
           {selectedConversation ? (
             <>
               {/* Chat Header */}
-              <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="flex flex-col">
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                      {selectedConversation.otherUserName}
-                      <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] font-bold uppercase tracking-wide">
-                        {selectedConversation.otherUserType === "Doctor" ? "Bác sĩ" : "Bệnh nhân"}
-                      </span>
-                    </h3>
-                    {selectedConversation.isOnline && (
-                      <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>
-                        Đang hoạt động
-                      </p>
-                    )}
+              <div className="flex flex-col bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
+                <div className="flex items-center justify-between px-6 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex flex-col">
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        {selectedConversation.otherUserName}
+                        <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] font-bold uppercase tracking-wide">
+                          {selectedConversation.otherUserType === "Doctor" ? "Bác sĩ" : "Bệnh nhân"}
+                        </span>
+                      </h3>
+                      {selectedConversation.isOnline && (
+                        <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>
+                          Đang hoạt động
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button className="p-2 text-slate-500 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors" title="Gọi điện">
+                      <span className="material-symbols-outlined">call</span>
+                    </button>
+                    <button className="p-2 text-slate-500 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors" title="Gọi video">
+                      <span className="material-symbols-outlined">videocam</span>
+                    </button>
+                    <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                    <button className="p-2 text-slate-500 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                      <span className="material-symbols-outlined">more_vert</span>
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button className="p-2 text-slate-500 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors" title="Gọi điện">
-                    <span className="material-symbols-outlined">call</span>
-                  </button>
-                  <button className="p-2 text-slate-500 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors" title="Gọi video">
-                    <span className="material-symbols-outlined">videocam</span>
-                  </button>
-                  <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
-                  <button className="p-2 text-slate-500 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
-                    <span className="material-symbols-outlined">more_vert</span>
-                  </button>
+                
+                {/* Message Search Bar */}
+                <div className="px-6 pb-3">
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <span className="material-symbols-outlined text-slate-400 text-[18px]">
+                        {isSearching ? "hourglass_empty" : "search"}
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      value={messageSearchQuery}
+                      onChange={(e) => setMessageSearchQuery(e.target.value)}
+                      className="block w-full pl-10 pr-10 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-primary text-sm"
+                      placeholder="Tìm kiếm trong cuộc trò chuyện..."
+                    />
+                    {messageSearchQuery && (
+                      <button
+                        onClick={() => {
+                          setMessageSearchQuery("");
+                          setSearchResults([]);
+                          setHighlightedMessageId(null);
+                        }}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                      >
+                        <span className="material-symbols-outlined text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-[18px]">
+                          close
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                  {searchResults.length > 0 && (
+                    <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      Tìm thấy {searchResults.length} kết quả
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -388,12 +486,20 @@ const ChatPage = () => {
                   </div>
                 )}
 
-                {messages.map((message) => {
+                {(messageSearchQuery ? searchResults : messages).map((message) => {
                   const isOwn = message.sendById === user.id;
+                  const isHighlighted = highlightedMessageId === message.id;
+                  const searchMatch = messageSearchQuery 
+                    ? message.content.toLowerCase().includes(messageSearchQuery.toLowerCase())
+                    : false;
+                  
                   return (
                     <div
+                      id={`message-${message.id}`}
                       key={message.id}
-                      className={`flex gap-4 max-w-[80%] group ${isOwn ? "ml-auto flex-row-reverse" : ""}`}
+                      className={`flex gap-4 max-w-[80%] group ${isOwn ? "ml-auto flex-row-reverse" : ""} ${
+                        isHighlighted ? "animate-pulse" : ""
+                      }`}
                     >
                       {/* Avatar */}
                       <div className="w-8 h-8 rounded-full bg-slate-300 dark:bg-slate-700 flex items-center justify-center shrink-0 self-end mb-1 overflow-hidden">
@@ -427,7 +533,7 @@ const ChatPage = () => {
                             isOwn
                               ? "rounded-br-none bg-primary text-white shadow-primary/20"
                               : "rounded-bl-none bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700"
-                          }`}
+                          } ${isHighlighted ? "ring-2 ring-primary ring-offset-2" : ""}`}
                         >
                           {message.attachmentUrl && (
                             <div className="mb-3 flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer group/file">
@@ -448,7 +554,18 @@ const ChatPage = () => {
                             </div>
                           )}
                           <p className={`text-sm leading-relaxed ${isOwn ? "" : "text-slate-700 dark:text-slate-200"}`}>
-                            {message.content}
+                            {searchMatch && messageSearchQuery ? (
+                              <span
+                                dangerouslySetInnerHTML={{
+                                  __html: message.content.replace(
+                                    new RegExp(`(${messageSearchQuery})`, "gi"),
+                                    '<mark class="bg-yellow-300 dark:bg-yellow-600">$1</mark>'
+                                  ),
+                                }}
+                              />
+                            ) : (
+                              message.content
+                            )}
                           </p>
                         </div>
                         <span className={`text-[10px] text-slate-400 mr-1 opacity-0 group-hover:opacity-100 transition-opacity ${isOwn ? "" : "ml-1"}`}>

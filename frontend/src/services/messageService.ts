@@ -84,6 +84,19 @@ const messageService = {
     );
     return response.data.unreadCount;
   },
+
+  /**
+   * Search messages in a conversation (FR-20)
+   */
+  async searchMessages(
+    conversationId: string,
+    query: string
+  ): Promise<Message[]> {
+    const response = await api.get<Message[]>(
+      `/messages/conversation/${conversationId}/search?query=${encodeURIComponent(query)}`
+    );
+    return response.data;
+  },
 };
 
 export default messageService;
