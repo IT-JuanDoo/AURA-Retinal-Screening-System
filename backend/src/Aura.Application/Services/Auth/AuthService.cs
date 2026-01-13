@@ -98,9 +98,9 @@ public class AuthService : IAuthService
 
             // Read the newly created user
             var getUserQuery = @"
-                SELECT id, email, firstname, lastname, phone, authenticationprovider, 
+                SELECT id, email, password, firstname, lastname, phone, authenticationprovider, 
                        isemailverified, isactive, lastloginat, createddate, profileimageurl,
-                       provideruserid, username, country
+                       provideruserid, username, country, dob, gender, address
                 FROM users 
                 WHERE id = @id AND isdeleted = false";
             
@@ -167,7 +167,7 @@ public class AuthService : IAuthService
             var getUserQuery = @"
                 SELECT id, email, password, firstname, lastname, phone, authenticationprovider, 
                        isemailverified, isactive, lastloginat, createddate, profileimageurl,
-                       provideruserid, username, country
+                       provideruserid, username, country, dob, gender, address
                 FROM users 
                 WHERE email = @email AND isdeleted = false";
             
@@ -473,10 +473,43 @@ public class AuthService : IAuthService
         }
     }
 
-    public Task<UserInfoDto?> GetCurrentUserAsync(string userId)
+    public async Task<UserInfoDto?> GetCurrentUserAsync(string userId)
     {
-        var user = _users.FirstOrDefault(u => u.Id == userId && !u.IsDeleted);
-        return Task.FromResult(user != null ? MapToUserInfo(user) : null);
+        try
+        {
+            using var conn = OpenConnection();
+            
+            var getUserQuery = @"
+                SELECT id, email, password, firstname, lastname, phone, authenticationprovider, 
+                       isemailverified, isactive, lastloginat, createddate, profileimageurl,
+                       provideruserid, username, country, dob, gender, address
+                FROM users 
+                WHERE id = @userId AND isdeleted = false";
+            
+            User? user = null;
+            using (var cmd = new NpgsqlCommand(getUserQuery, conn))
+            {
+                cmd.Parameters.AddWithValue("userId", userId);
+                using var reader = cmd.ExecuteReader();
+                if (reader.Read())
+                {
+                    user = MapUserFromReader(reader);
+                }
+            }
+            
+            if (user == null)
+            {
+                _logger.LogWarning("User not found: {UserId}", userId);
+                return null;
+            }
+            
+            return MapToUserInfo(user);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting current user: {UserId}", userId);
+            return null;
+        }
     }
 
     public Task<bool> LogoutAsync(string userId, string? refreshToken = null)
@@ -504,28 +537,127 @@ public class AuthService : IAuthService
         return Task.FromResult(true);
     }
 
-    public Task<UserInfoDto?> UpdateProfileAsync(string userId, string? firstName, string? lastName, string? phone, string? gender, string? address, string? profileImageUrl, DateTime? dob)
+    public async Task<UserInfoDto?> UpdateProfileAsync(string userId, string? firstName, string? lastName, string? phone, string? gender, string? address, string? profileImageUrl, DateTime? dob)
     {
-        var user = _users.FirstOrDefault(u => u.Id == userId && !u.IsDeleted);
-        if (user == null)
+        try
         {
-            _logger.LogWarning("User not found for profile update: {UserId}", userId);
-            return Task.FromResult<UserInfoDto?>(null);
+            using var conn = OpenConnection();
+            
+            // First, check if user exists
+            var checkUserQuery = @"
+                SELECT id FROM users WHERE id = @userId AND isdeleted = false";
+            
+            using (var checkCmd = new NpgsqlCommand(checkUserQuery, conn))
+            {
+                checkCmd.Parameters.AddWithValue("userId", userId);
+                var exists = await checkCmd.ExecuteScalarAsync();
+                if (exists == null)
+                {
+                    _logger.LogWarning("User not found for profile update: {UserId}", userId);
+                    return null;
+                }
+            }
+            
+            // Build update query dynamically based on provided fields
+            var updateFields = new List<string>();
+            var parameters = new List<NpgsqlParameter>();
+            
+            if (!string.IsNullOrEmpty(firstName))
+            {
+                updateFields.Add("firstname = @firstname");
+                parameters.Add(new NpgsqlParameter("firstname", firstName));
+            }
+            if (!string.IsNullOrEmpty(lastName))
+            {
+                updateFields.Add("lastname = @lastname");
+                parameters.Add(new NpgsqlParameter("lastname", lastName));
+            }
+            if (!string.IsNullOrEmpty(phone))
+            {
+                updateFields.Add("phone = @phone");
+                parameters.Add(new NpgsqlParameter("phone", phone));
+            }
+            if (!string.IsNullOrEmpty(gender))
+            {
+                updateFields.Add("gender = @gender");
+                parameters.Add(new NpgsqlParameter("gender", gender));
+            }
+            if (!string.IsNullOrEmpty(address))
+            {
+                updateFields.Add("address = @address");
+                parameters.Add(new NpgsqlParameter("address", address));
+            }
+            if (!string.IsNullOrEmpty(profileImageUrl))
+            {
+                updateFields.Add("profileimageurl = @profileimageurl");
+                parameters.Add(new NpgsqlParameter("profileimageurl", profileImageUrl));
+            }
+            if (dob.HasValue)
+            {
+                updateFields.Add("dob = @dob");
+                parameters.Add(new NpgsqlParameter("dob", dob.Value));
+            }
+            
+            // Always update UpdatedDate
+            updateFields.Add("updateddate = @updateddate");
+            parameters.Add(new NpgsqlParameter("updateddate", DateTime.UtcNow.Date));
+            
+            if (updateFields.Count == 1) // Only UpdatedDate
+            {
+                _logger.LogWarning("No fields to update for user: {UserId}", userId);
+                // Still return the user info
+            }
+            else
+            {
+                var updateQuery = $@"
+                    UPDATE users 
+                    SET {string.Join(", ", updateFields)}
+                    WHERE id = @userId AND isdeleted = false";
+                
+                using (var updateCmd = new NpgsqlCommand(updateQuery, conn))
+                {
+                    updateCmd.Parameters.AddWithValue("userId", userId);
+                    foreach (var param in parameters)
+                    {
+                        updateCmd.Parameters.Add(param);
+                    }
+                    await updateCmd.ExecuteNonQueryAsync();
+                }
+            }
+            
+            // Read updated user
+            var getUserQuery = @"
+                SELECT id, email, password, firstname, lastname, phone, authenticationprovider, 
+                       isemailverified, isactive, lastloginat, createddate, profileimageurl,
+                       provideruserid, username, country, dob, gender, address
+                FROM users 
+                WHERE id = @userId AND isdeleted = false";
+            
+            User? user = null;
+            using (var cmd = new NpgsqlCommand(getUserQuery, conn))
+            {
+                cmd.Parameters.AddWithValue("userId", userId);
+                using var reader = cmd.ExecuteReader();
+                if (reader.Read())
+                {
+                    user = MapUserFromReader(reader);
+                }
+            }
+            
+            if (user == null)
+            {
+                _logger.LogWarning("User not found after update: {UserId}", userId);
+                return null;
+            }
+            
+            _logger.LogInformation("Profile updated for user: {UserId}", userId);
+            return MapToUserInfo(user);
         }
-
-        // Update fields if provided
-        if (!string.IsNullOrEmpty(firstName)) user.FirstName = firstName;
-        if (!string.IsNullOrEmpty(lastName)) user.LastName = lastName;
-        if (!string.IsNullOrEmpty(phone)) user.Phone = phone;
-        if (!string.IsNullOrEmpty(gender)) user.Gender = gender;
-        if (!string.IsNullOrEmpty(address)) user.Address = address;
-        if (!string.IsNullOrEmpty(profileImageUrl)) user.ProfileImageUrl = profileImageUrl;
-        if (dob.HasValue) user.Dob = dob.Value;
-        
-        user.UpdatedDate = DateTime.UtcNow;
-
-        _logger.LogInformation("Profile updated for user: {UserId}", userId);
-        return Task.FromResult<UserInfoDto?>(MapToUserInfo(user));
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating profile for user: {UserId}", userId);
+            return null;
+        }
     }
 
     #region Private Methods
@@ -538,9 +670,9 @@ public class AuthService : IAuthService
             
             // Check if user exists with this provider
             var checkUserQuery = @"
-                SELECT id, email, firstname, lastname, phone, authenticationprovider, 
+                SELECT id, email, password, firstname, lastname, phone, authenticationprovider, 
                        isemailverified, isactive, lastloginat, createddate, profileimageurl,
-                       provideruserid, username, country
+                       provideruserid, username, country, dob, gender, address
                 FROM users 
                 WHERE authenticationprovider = @provider AND provideruserid = @provideruserid AND isdeleted = false";
             
@@ -629,25 +761,51 @@ public class AuthService : IAuthService
             else
             {
                 // Update user info if provided (avatar, name might have changed)
-                var updateQuery = @"
-                    UPDATE users 
-                    SET profileimageurl = @profileimageurl,
-                        firstname = @firstname,
-                        lastname = @lastname,
-                        lastloginat = @lastloginat,
-                        updateddate = @updateddate
-                    WHERE id = @id";
+                // Only update ProfileImageUrl if it's provided and not empty
+                var updateFields = new List<string>();
+                var parameters = new List<NpgsqlParameter>();
                 
-                using (var cmd = new NpgsqlCommand(updateQuery, conn))
+                // Only update ProfileImageUrl if social provider has a new one
+                if (!string.IsNullOrEmpty(socialUser.ProfileImageUrl))
                 {
-                    cmd.Parameters.AddWithValue("id", user.Id);
-                    cmd.Parameters.AddWithValue("profileimageurl", (object?)socialUser.ProfileImageUrl ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("firstname", (object?)socialUser.FirstName ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("lastname", (object?)socialUser.LastName ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("lastloginat", DateTime.UtcNow);
-                    cmd.Parameters.AddWithValue("updateddate", DateTime.UtcNow.Date);
+                    updateFields.Add("profileimageurl = @profileimageurl");
+                    parameters.Add(new NpgsqlParameter("profileimageurl", socialUser.ProfileImageUrl));
+                }
+                
+                if (!string.IsNullOrEmpty(socialUser.FirstName))
+                {
+                    updateFields.Add("firstname = @firstname");
+                    parameters.Add(new NpgsqlParameter("firstname", socialUser.FirstName));
+                }
+                
+                if (!string.IsNullOrEmpty(socialUser.LastName))
+                {
+                    updateFields.Add("lastname = @lastname");
+                    parameters.Add(new NpgsqlParameter("lastname", socialUser.LastName));
+                }
+                
+                // Always update last login and updated date
+                updateFields.Add("lastloginat = @lastloginat");
+                parameters.Add(new NpgsqlParameter("lastloginat", DateTime.UtcNow));
+                updateFields.Add("updateddate = @updateddate");
+                parameters.Add(new NpgsqlParameter("updateddate", DateTime.UtcNow.Date));
+                
+                if (updateFields.Count > 0)
+                {
+                    var updateQuery = $@"
+                        UPDATE users 
+                        SET {string.Join(", ", updateFields)}
+                        WHERE id = @id";
                     
-                    cmd.ExecuteNonQuery();
+                    using (var cmd = new NpgsqlCommand(updateQuery, conn))
+                    {
+                        cmd.Parameters.AddWithValue("id", user.Id);
+                        foreach (var param in parameters)
+                        {
+                            cmd.Parameters.Add(param);
+                        }
+                        cmd.ExecuteNonQuery();
+                    }
                 }
 
                 // Update local user object
@@ -925,6 +1083,9 @@ public class AuthService : IAuthService
             ProfileImageUrl = reader.IsDBNull(reader.GetOrdinal("profileimageurl")) ? null : reader.GetString(reader.GetOrdinal("profileimageurl")),
             ProviderUserId = reader.IsDBNull(reader.GetOrdinal("provideruserid")) ? null : reader.GetString(reader.GetOrdinal("provideruserid")),
             Username = reader.IsDBNull(reader.GetOrdinal("username")) ? null : reader.GetString(reader.GetOrdinal("username")),
+            Dob = reader.IsDBNull(reader.GetOrdinal("dob")) ? null : reader.GetDateTime(reader.GetOrdinal("dob")),
+            Gender = reader.IsDBNull(reader.GetOrdinal("gender")) ? null : reader.GetString(reader.GetOrdinal("gender")),
+            Address = reader.IsDBNull(reader.GetOrdinal("address")) ? null : reader.GetString(reader.GetOrdinal("address")),
             Password = null // Not needed for social login
         };
     }

@@ -112,8 +112,16 @@ public class AnalysisController : ControllerBase
             return Unauthorized(new { message = "User not authenticated" });
         }
 
-        // TODO: Implement GetUserAnalysisResultsAsync in AnalysisService
-        return Ok(new List<AnalysisResultDto>());
+        try
+        {
+            var results = await _analysisService.GetUserAnalysisResultsAsync(userId);
+            return Ok(results);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting user analysis results for user: {UserId}", userId);
+            return StatusCode(500, new { message = "Failed to retrieve analysis results" });
+        }
     }
 }
 

@@ -8,11 +8,14 @@ using Aura.Shared.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Npgsql;
 using Aura.API.Clinic;
 using Aura.API.Hubs;
+using Aura.API.Swagger;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -57,15 +60,25 @@ builder.Services.AddSwaggerGen(options =>
         Description = "API cho Hệ thống Sàng lọc Sức khỏe Mạch máu Võng mạc AURA"
     });
 
+    // Map IFormFile to file input in Swagger
+    options.MapType<IFormFile>(() => new OpenApiSchema
+    {
+        Type = "string",
+        Format = "binary"
+    });
+
+    // Add operation filter to handle file uploads properly
+    options.OperationFilter<FileUploadOperationFilter>();
+
     // Add JWT authentication to Swagger
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
-        Type = SecuritySchemeType.ApiKey,
+        Type = SecuritySchemeType.Http,
         Scheme = "Bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Nhập 'Bearer' [space] và token của bạn.\n\nVí dụ: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        Description = "Nhập token của bạn (Swagger sẽ tự động thêm 'Bearer ' prefix).\n\nVí dụ: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
     });
 
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -143,9 +156,6 @@ builder.Services.AddAuthorization(options =>
 
 // Add HttpContextAccessor for PermissionAuthorizationHandler
 builder.Services.AddHttpContextAccessor();
-
-// Register authorization handlers for RBAC
-builder.Services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
 
 // Register authorization handlers for RBAC
 builder.Services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
@@ -293,9 +303,9 @@ app.MapGet("/health", async (IConfiguration config) =>
         var cs = config.GetConnectionString("DefaultConnection");
         if (!string.IsNullOrWhiteSpace(cs))
         {
-            using var conn = new Npgsql.NpgsqlConnection(cs);
+            using var conn = new NpgsqlConnection(cs);
             await conn.OpenAsync();
-            using var cmd = new Npgsql.NpgsqlCommand("SELECT 1", conn);
+            using var cmd = new NpgsqlCommand("SELECT 1", conn);
             await cmd.ExecuteScalarAsync();
         }
         return Results.Ok(new { status = "healthy", database = "connected", timestamp = DateTime.UtcNow });

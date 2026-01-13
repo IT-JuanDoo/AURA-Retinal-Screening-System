@@ -1,4 +1,6 @@
 using Aura.Application.DTOs.Images;
+using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -177,19 +179,48 @@ public class ImageService : IImageService
             return $"https://placeholder.aura-health.com/{filename}";
         }
 
-        // TODO: Implement actual Cloudinary upload
-        // For now, return a placeholder URL
-        // In production, use Cloudinary .NET SDK:
-        // var uploadParams = new ImageUploadParams { File = new FileDescription(filename, fileStream) };
-        // var uploadResult = await cloudinary.UploadAsync(uploadParams);
-        // return uploadResult.SecureUrl;
+        try
+        {
+            // Initialize Cloudinary
+            var account = new Account(cloudName, apiKey, apiSecret);
+            var cloudinary = new Cloudinary(account);
 
-        _logger?.LogInformation("Uploading to Cloudinary: {Filename}", filename);
-        
-        // Placeholder - replace with actual Cloudinary SDK call
-        await Task.Delay(100); // Simulate upload delay
-        
-        return $"https://res.cloudinary.com/{cloudName}/image/upload/v1/aura/retinal-images/{filename}";
+            _logger?.LogInformation("Uploading to Cloudinary: {Filename}", filename);
+
+            // Reset stream position to beginning
+            if (fileStream.CanSeek)
+            {
+                fileStream.Position = 0;
+            }
+
+            // Prepare upload parameters
+            var uploadParams = new ImageUploadParams
+            {
+                File = new FileDescription(filename, fileStream),
+                Folder = "aura/retinal-images",
+                PublicId = Path.GetFileNameWithoutExtension(filename),
+                Overwrite = false // Don't overwrite existing files
+            };
+
+            // Upload to Cloudinary
+            var uploadResult = await cloudinary.UploadAsync(uploadParams);
+
+            if (uploadResult.StatusCode == System.Net.HttpStatusCode.OK)
+            {
+                _logger?.LogInformation("Successfully uploaded to Cloudinary: {Url}", uploadResult.SecureUrl);
+                return uploadResult.SecureUrl.ToString();
+            }
+            else
+            {
+                _logger?.LogError("Cloudinary upload failed: {Error}", uploadResult.Error?.Message);
+                throw new InvalidOperationException($"Cloudinary upload failed: {uploadResult.Error?.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error uploading to Cloudinary: {Filename}", filename);
+            throw new InvalidOperationException($"Failed to upload image to Cloudinary: {ex.Message}", ex);
+        }
     }
 
     public async Task<ImageUploadResponseDto> UploadImageForClinicAsync(
@@ -643,6 +674,43 @@ public class ImageService : IImageService
         command.Parameters.AddWithValue("BatchId", batchId);
 
         await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task<List<ImageUploadResponseDto>> GetUserImagesAsync(string userId)
+    {
+        using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var sql = @"
+            SELECT 
+                Id, OriginalFilename, CloudinaryUrl, FileSize, ImageType, 
+                UploadStatus, UploadedAt
+            FROM retinal_images
+            WHERE UserId = @UserId AND IsDeleted = false
+            ORDER BY UploadedAt DESC";
+
+        using var command = new Npgsql.NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("UserId", userId);
+
+        var images = new List<ImageUploadResponseDto>();
+
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            images.Add(new ImageUploadResponseDto
+            {
+                Id = reader.GetString(0),
+                OriginalFilename = reader.GetString(1),
+                CloudinaryUrl = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                FileSize = reader.IsDBNull(3) ? 0 : reader.GetInt64(3),
+                ImageType = reader.IsDBNull(4) ? "Fundus" : reader.GetString(4),
+                UploadStatus = reader.IsDBNull(5) ? "Uploaded" : reader.GetString(5),
+                UploadedAt = reader.IsDBNull(6) ? DateTime.UtcNow : reader.GetDateTime(6)
+            });
+        }
+
+        _logger?.LogInformation("Retrieved {Count} images for user: {UserId}", images.Count, userId);
+        return images;
     }
 }
 

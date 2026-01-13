@@ -35,5 +35,10 @@ public interface IImageService
         string clinicId,
         List<(Stream FileStream, string Filename, ImageUploadDto? Metadata)> files,
         ClinicBulkUploadDto? options = null);
+
+    /// <summary>
+    /// Get all images uploaded by a user (FR-6)
+    /// </summary>
+    Task<List<ImageUploadResponseDto>> GetUserImagesAsync(string userId);
 }
 

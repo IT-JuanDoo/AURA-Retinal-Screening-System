@@ -24,10 +24,11 @@ public class ImagesController : ControllerBase
     /// Upload a single retinal image
     /// </summary>
     [HttpPost("upload")]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ImageUploadResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> UploadImage([FromForm] IFormFile file, [FromForm] ImageUploadDto? metadata)
+    public async Task<IActionResult> UploadImage([FromForm(Name = "file")] IFormFile file, [FromForm] ImageUploadDto? metadata)
     {
         if (file == null || file.Length == 0)
         {
@@ -47,24 +48,33 @@ public class ImagesController : ControllerBase
 
         try
         {
-            using var stream = file.OpenReadStream();
-            // Reset stream position to beginning in case it was read before
-            if (stream.CanSeek)
+            // Open stream and ensure it's at the beginning
+            var stream = file.OpenReadStream();
+            try
             {
-                stream.Position = 0;
-            }
-            
-            var result = await _imageService.UploadImageAsync(
-                userId,
-                stream,
-                file.FileName,
-                metadata,
-                userEmail,
-                firstName,
-                lastName
-            );
+                // Reset stream position to beginning in case it was read before
+                if (stream.CanSeek)
+                {
+                    stream.Position = 0;
+                }
+                
+                var result = await _imageService.UploadImageAsync(
+                    userId,
+                    stream,
+                    file.FileName,
+                    metadata,
+                    userEmail,
+                    firstName,
+                    lastName
+                );
 
-            return Ok(result);
+                return Ok(result);
+            }
+            finally
+            {
+                // Dispose stream after upload completes
+                await stream.DisposeAsync();
+            }
         }
         catch (ArgumentException ex)
         {
@@ -82,6 +92,7 @@ public class ImagesController : ControllerBase
     /// Upload multiple retinal images
     /// </summary>
     [HttpPost("upload-multiple")]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(MultipleImageUploadResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -142,8 +153,16 @@ public class ImagesController : ControllerBase
             return Unauthorized(new { message = "User not authenticated" });
         }
 
-        // TODO: Implement GetUserImagesAsync in ImageService
-        return Ok(new List<ImageUploadResponseDto>());
+        try
+        {
+            var images = await _imageService.GetUserImagesAsync(userId);
+            return Ok(images);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting user images for user: {UserId}", userId);
+            return StatusCode(500, new { message = "Failed to retrieve user images" });
+        }
     }
 }
 
