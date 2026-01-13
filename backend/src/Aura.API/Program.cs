@@ -196,6 +196,9 @@ builder.Services.AddHttpClient<Aura.Application.Services.Analysis.AnalysisServic
 });
 builder.Services.AddScoped<Aura.Application.Services.Analysis.IAnalysisService, Aura.Application.Services.Analysis.AnalysisService>();
 
+// FR-7: Export Services (PDF/CSV/JSON)
+builder.Services.AddScoped<Aura.Application.Services.Export.IExportService, Aura.Application.Services.Export.ExportService>();
+
 // HttpClient cho AnalysisServiceClient (để gọi analysis-service từ controllers nếu cần)
 builder.Services.AddHttpClient<Aura.API.Services.AnalysisServiceClient>(client =>
 {
