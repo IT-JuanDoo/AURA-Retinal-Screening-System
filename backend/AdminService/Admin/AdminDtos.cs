@@ -114,4 +114,50 @@ public class AdminUpdateClinicDto
     public string? Note { get; set; }
 }
 
+// =====================================================
+// AI Configuration DTOs (FR-33)
+// =====================================================
+
+public record AIConfigurationRowDto(
+    string Id,
+    string ConfigurationName,
+    string ConfigurationType,
+    string? ModelVersionId,
+    string ParameterKey,
+    string ParameterValue,
+    string? ParameterDataType,
+    string? Description,
+    bool IsActive,
+    DateTime? AppliedAt,
+    string? AppliedBy,
+    DateTime? CreatedDate,
+    string? CreatedBy
+);
+
+public class CreateAIConfigurationDto
+{
+    public string ConfigurationName { get; set; } = string.Empty;
+    public string ConfigurationType { get; set; } = string.Empty; // Threshold, Parameter, Policy, Retraining
+    public string? ModelVersionId { get; set; }
+    public string ParameterKey { get; set; } = string.Empty;
+    public string ParameterValue { get; set; } = string.Empty;
+    public string? ParameterDataType { get; set; } // Number, String, Boolean, JSON
+    public string? Description { get; set; }
+    public bool IsActive { get; set; } = true;
+    public string? Note { get; set; }
+}
+
+public class UpdateAIConfigurationDto
+{
+    public string? ConfigurationName { get; set; }
+    public string? ConfigurationType { get; set; }
+    public string? ModelVersionId { get; set; }
+    public string? ParameterKey { get; set; }
+    public string? ParameterValue { get; set; }
+    public string? ParameterDataType { get; set; }
+    public string? Description { get; set; }
+    public bool? IsActive { get; set; }
+    public string? Note { get; set; }
+}
+
 

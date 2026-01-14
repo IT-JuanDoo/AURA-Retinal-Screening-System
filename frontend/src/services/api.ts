@@ -95,7 +95,13 @@ api.interceptors.response.use(
         // Clear tokens and redirect to login
         localStorage.removeItem("token");
         localStorage.removeItem("refreshToken");
-        window.location.href = "/login";
+        // Also clear persisted auth store to avoid redirect loops (PublicRoute -> /dashboard)
+        localStorage.removeItem("auth-storage");
+
+        // Avoid infinite reload loop if we're already on /login
+        if (window.location.pathname !== "/login") {
+          window.location.replace("/login");
+        }
 
         return Promise.reject(refreshError);
       } finally {

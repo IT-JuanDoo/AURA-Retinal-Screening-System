@@ -95,6 +95,7 @@ builder.Services.AddScoped<AdminDb>(sp =>
 builder.Services.AddScoped<AdminJwtService>();
 builder.Services.AddScoped<AdminAccountRepository>();
 builder.Services.AddScoped<AnalyticsRepository>();
+builder.Services.AddScoped<AIConfigurationRepository>();
 
 var app = builder.Build();
 

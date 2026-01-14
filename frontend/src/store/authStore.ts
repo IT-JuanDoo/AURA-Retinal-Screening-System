@@ -176,7 +176,19 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({ 
         user: state.user, 
         isAuthenticated: state.isAuthenticated 
-      })
+      }),
+      onRehydrateStorage: () => (state) => {
+        // Re-check token when rehydrating from storage to prevent redirect loops
+        if (state) {
+          const hasToken = authService.isAuthenticated();
+          if (!hasToken && state.isAuthenticated) {
+            state.isAuthenticated = false;
+            state.user = null;
+          } else if (hasToken && !state.isAuthenticated) {
+            state.isAuthenticated = true;
+          }
+        }
+      },
     }
   )
 );

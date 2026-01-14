@@ -12,6 +12,7 @@ const navItems: NavItem[] = [
   { label: "Analytics", path: "/admin/analytics" },
   { label: "Accounts", path: "/admin/accounts" },
   { label: "RBAC", path: "/admin/rbac" },
+  { label: "AI Config", path: "/admin/ai-config" },
 ];
 
 export default function AdminHeader() {

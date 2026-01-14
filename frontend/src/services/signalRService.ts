@@ -23,20 +23,25 @@ class SignalRService {
     // In Docker, VITE_API_URL is /api, so SignalR should use /hubs/chat (not /api/hubs/chat)
     // SignalR hub is proxied separately through nginx at /hubs
     const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
-    const hubUrl = apiUrl.startsWith("/") 
-      ? `${window.location.origin}/hubs/chat`  // Use relative path for Docker
-      : `${apiUrl}/hubs/chat`;  // Use full URL for local dev
+    const hubUrl = apiUrl.startsWith("/")
+      ? `${window.location.origin}/hubs/chat` // Use relative path for Docker
+      : `${apiUrl}/hubs/chat`; // Use full URL for local dev
 
     this.connection = new signalR.HubConnectionBuilder()
       .withUrl(hubUrl, {
         accessTokenFactory: () => authToken,
         skipNegotiation: false,
-        transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.LongPolling,
+        transport:
+          signalR.HttpTransportType.WebSockets |
+          signalR.HttpTransportType.LongPolling,
       })
       .withAutomaticReconnect({
-        nextRetryDelayInMilliseconds: (retryContext) => {
+        nextRetryDelayInMilliseconds: (retryContext: signalR.RetryContext) => {
           if (retryContext.previousRetryCount < this.maxReconnectAttempts) {
-            return Math.min(1000 * Math.pow(2, retryContext.previousRetryCount), 30000);
+            return Math.min(
+              1000 * Math.pow(2, retryContext.previousRetryCount),
+              30000
+            );
           }
           return null;
         },
@@ -45,16 +50,16 @@ class SignalRService {
       .build();
 
     // Connection event handlers
-    this.connection.onclose((error) => {
+    this.connection.onclose((error?: Error) => {
       console.log("SignalR connection closed", error);
       this.reconnectAttempts++;
     });
 
-    this.connection.onreconnecting((error) => {
+    this.connection.onreconnecting((error?: Error) => {
       console.log("SignalR reconnecting...", error);
     });
 
-    this.connection.onreconnected((connectionId) => {
+    this.connection.onreconnected((connectionId?: string) => {
       console.log("SignalR reconnected", connectionId);
       this.reconnectAttempts = 0;
     });
@@ -108,9 +113,16 @@ class SignalRService {
   /**
    * Mark message as read
    */
-  async markMessageRead(conversationId: string, messageId: string): Promise<void> {
+  async markMessageRead(
+    conversationId: string,
+    messageId: string
+  ): Promise<void> {
     if (this.connection?.state === signalR.HubConnectionState.Connected) {
-      await this.connection.invoke("MarkMessageRead", conversationId, messageId);
+      await this.connection.invoke(
+        "MarkMessageRead",
+        conversationId,
+        messageId
+      );
     }
   }
 
@@ -126,7 +138,13 @@ class SignalRService {
   /**
    * Subscribe to message read events
    */
-  onMessageRead(callback: (data: { messageId: string; readBy: string; readAt: string }) => void): void {
+  onMessageRead(
+    callback: (data: {
+      messageId: string;
+      readBy: string;
+      readAt: string;
+    }) => void
+  ): void {
     if (this.connection) {
       this.connection.on("MessageRead", callback);
     }
@@ -135,7 +153,9 @@ class SignalRService {
   /**
    * Subscribe to typing indicators
    */
-  onUserTyping(callback: (data: { userId: string; isTyping: boolean }) => void): void {
+  onUserTyping(
+    callback: (data: { userId: string; isTyping: boolean }) => void
+  ): void {
     if (this.connection) {
       this.connection.on("UserTyping", callback);
     }
@@ -179,4 +199,3 @@ class SignalRService {
 
 export const signalRService = new SignalRService();
 export default signalRService;
-
