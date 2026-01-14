@@ -160,4 +160,49 @@ public class UpdateAIConfigurationDto
     public string? Note { get; set; }
 }
 
+// =====================================================
+// Service Package DTOs (FR-34)
+// =====================================================
+
+public record ServicePackageRowDto(
+    string Id,
+    string PackageName,
+    string PackageType,
+    string? Description,
+    int NumberOfAnalyses,
+    decimal Price,
+    string Currency,
+    int? ValidityDays,
+    bool IsActive,
+    DateTime? CreatedDate,
+    string? CreatedBy
+);
+
+public class CreateServicePackageDto
+{
+    public string PackageName { get; set; } = string.Empty;
+    public string PackageType { get; set; } = "Individual"; // Individual, Clinic, Enterprise
+    public string? Description { get; set; }
+    public int NumberOfAnalyses { get; set; }
+    public decimal Price { get; set; }
+    public string Currency { get; set; } = "VND";
+    public int? ValidityDays { get; set; }
+    public bool IsActive { get; set; } = true;
+    public string? Note { get; set; }
+}
+
+public class UpdateServicePackageDto
+{
+    public string? PackageName { get; set; }
+    public string? PackageType { get; set; }
+    public string? Description { get; set; }
+    public int? NumberOfAnalyses { get; set; }
+    public decimal? Price { get; set; }
+    public string? Currency { get; set; }
+    public int? ValidityDays { get; set; }
+    public bool? IsActive { get; set; }
+    public string? Note { get; set; }
+}
+
+
 

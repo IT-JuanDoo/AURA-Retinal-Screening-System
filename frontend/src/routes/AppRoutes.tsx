@@ -7,6 +7,7 @@ import AdminRbacPage from "../pages/admin/AdminRbacPage";
 import AdminAnalyticsPage from "../pages/admin/AdminAnalyticsPage";
 import AdminDashboardPage from "../pages/admin/AdminDashboardPage";
 import AdminAIConfigPage from "../pages/admin/AdminAIConfigPage";
+import AdminPackagesPage from "../pages/admin/AdminPackagesPage";
 import PatientProfilePage from "../pages/patient/PatientProfilePage";
 import HomePage from "../pages/HomePage";
 import PatientDashboard from "../pages/patient/PatientDashboard";
@@ -129,6 +130,14 @@ const AppRoutes = () => {
         element={
           <AdminProtectedRoute>
             <AdminAIConfigPage />
+          </AdminProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/packages"
+        element={
+          <AdminProtectedRoute>
+            <AdminPackagesPage />
           </AdminProtectedRoute>
         }
       />
