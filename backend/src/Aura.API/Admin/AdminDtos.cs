@@ -204,5 +204,84 @@ public class UpdateServicePackageDto
     public string? Note { get; set; }
 }
 
+// =====================================================
+// Audit Log DTOs (FR-37)
+// =====================================================
+
+public record AuditLogRowDto(
+    string Id,
+    string? UserId,
+    string? DoctorId,
+    string? AdminId,
+    string ActionType,
+    string ResourceType,
+    string? ResourceId,
+    string? OldValues,
+    string? NewValues,
+    string? IpAddress,
+    string? UserAgent,
+    DateTime? CreatedDate,
+    string? CreatedBy
+);
+
+public class AuditLogFilterDto
+{
+    public string? UserId { get; set; }
+    public string? DoctorId { get; set; }
+    public string? AdminId { get; set; }
+    public string? ActionType { get; set; }
+    public string? ResourceType { get; set; }
+    public string? ResourceId { get; set; }
+    public DateTime? StartDate { get; set; }
+    public DateTime? EndDate { get; set; }
+    public string? IpAddress { get; set; }
+}
+
+// =====================================================
+// Compliance DTOs (FR-37)
+// =====================================================
+
+public record ComplianceReportDto(
+    int TotalAuditLogs,
+    int LogsLast30Days,
+    int LogsLast7Days,
+    int UniqueUsers,
+    int UniqueAdmins,
+    Dictionary<string, int> ActionTypeCounts,
+    Dictionary<string, int> ResourceTypeCounts,
+    List<ComplianceIssueDto> Issues
+);
+
+public record ComplianceIssueDto(
+    string IssueType,
+    string Description,
+    string Severity,
+    int Count,
+    DateTime? LastOccurrence
+);
+
+public record PrivacySettingsDto(
+    bool EnableAuditLogging,
+    int AuditLogRetentionDays,
+    bool AnonymizeOldLogs,
+    bool RequireConsentForDataSharing,
+    bool EnableGdprCompliance,
+    int DataRetentionDays,
+    bool AllowDataExport,
+    bool RequireTwoFactorForSensitiveActions
+);
+
+public class UpdatePrivacySettingsDto
+{
+    public bool? EnableAuditLogging { get; set; }
+    public int? AuditLogRetentionDays { get; set; }
+    public bool? AnonymizeOldLogs { get; set; }
+    public bool? RequireConsentForDataSharing { get; set; }
+    public bool? EnableGdprCompliance { get; set; }
+    public int? DataRetentionDays { get; set; }
+    public bool? AllowDataExport { get; set; }
+    public bool? RequireTwoFactorForSensitiveActions { get; set; }
+}
+
 
 
