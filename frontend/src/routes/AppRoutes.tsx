@@ -10,6 +10,7 @@ import AdminAIConfigPage from "../pages/admin/AdminAIConfigPage";
 import AdminPackagesPage from "../pages/admin/AdminPackagesPage";
 import AdminAuditLogsPage from "../pages/admin/AdminAuditLogsPage";
 import AdminCompliancePage from "../pages/admin/AdminCompliancePage";
+import AdminClinicsPage from "../pages/admin/AdminClinicsPage";
 import PatientProfilePage from "../pages/patient/PatientProfilePage";
 import HomePage from "../pages/HomePage";
 import PatientDashboard from "../pages/patient/PatientDashboard";
@@ -156,6 +157,14 @@ const AppRoutes = () => {
         element={
           <AdminProtectedRoute>
             <AdminCompliancePage />
+          </AdminProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/clinics"
+        element={
+          <AdminProtectedRoute>
+            <AdminClinicsPage />
           </AdminProtectedRoute>
         }
       />

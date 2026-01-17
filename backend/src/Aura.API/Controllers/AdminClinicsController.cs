@@ -1,20 +1,26 @@
 using Aura.API.Admin;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
+using System.Security.Claims;
 
 namespace Aura.API.Controllers;
 
+/// <summary>
+/// Controller quản lý Clinic Registration Approval và Suspension (FR-38)
+/// </summary>
 [ApiController]
 [Route("api/admin/clinics")]
 [Authorize(Policy = "AdminOnly")]
 public class AdminClinicsController : ControllerBase
 {
-    private readonly AdminAccountRepository _repo;
+    private readonly ClinicRepository _repo;
     private readonly IConfiguration _config;
     private readonly ILogger<AdminClinicsController>? _logger;
 
-    public AdminClinicsController(AdminAccountRepository repo, IConfiguration config, ILogger<AdminClinicsController>? logger = null)
+    public AdminClinicsController(
+        ClinicRepository repo,
+        IConfiguration config,
+        ILogger<AdminClinicsController>? logger = null)
     {
         _repo = repo;
         _config = config;
@@ -23,59 +29,130 @@ public class AdminClinicsController : ControllerBase
 
     private bool UseDemoMode => _config.GetValue<bool>("Admin:UseDemoMode", false);
 
-    private static List<AdminClinicRowDto> DemoClinics => new()
+    private string? GetCurrentAdminId()
     {
-        new("clinic-1", "Phòng khám Mắt Sài Gòn", "matsg@clinic.vn", "028-1234-5678", "123 Nguyễn Huệ, Q1, TP.HCM", "Verified", true),
-        new("clinic-2", "Bệnh viện Mắt Hà Nội", "mathn@clinic.vn", "024-9876-5432", "456 Phố Huế, Hai Bà Trưng, HN", "Verified", true),
-        new("clinic-3", "Phòng khám Đa khoa ABC", "abc@clinic.vn", "028-1111-2222", "789 Lê Lợi, Q3, TP.HCM", "Pending", false),
-    };
+        return User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("sub")
+            ?? User.FindFirstValue("id");
+    }
 
     [HttpGet]
-    public async Task<ActionResult<List<AdminClinicRowDto>>> List([FromQuery] string? search, [FromQuery] bool? isActive)
+    public async Task<ActionResult<List<AdminClinicRowDto>>> List(
+        [FromQuery] string? search,
+        [FromQuery] string? verificationStatus,
+        [FromQuery] bool? isActive)
     {
         try
         {
-            var result = await _repo.ListClinicsAsync(search, isActive);
+            var result = await _repo.ListAsync(search, verificationStatus, isActive);
             return Ok(result);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error listing clinics from database");
+            _logger?.LogError(ex, "Error listing clinics");
             if (UseDemoMode)
             {
-                _logger?.LogWarning("Using demo data due to database connection failure and UseDemoMode=true");
-                return Ok(DemoClinics);
+                _logger?.LogWarning("Using empty list for demo mode due to DB error");
+                return Ok(new List<AdminClinicRowDto>());
             }
             return StatusCode(500, new { message = $"Không kết nối được database: {ex.Message}" });
         }
     }
 
-    [HttpPost]
-    public async Task<IActionResult> Create([FromBody] AdminCreateClinicDto dto)
+    [HttpGet("{id}")]
+    public async Task<ActionResult<AdminClinicRowDto>> GetById(string id)
     {
-        
-              if (string.IsNullOrWhiteSpace(dto.ClinicName) || 
-                 string.IsNullOrWhiteSpace(dto.Email) || 
-                  string.IsNullOrWhiteSpace(dto.Address))
-        {
-    return BadRequest(new { message = "Tên, Email và Địa chỉ là bắt buộc" });
-        }
-
         try
         {
-            var n = await _repo.CreateClinicAsync(dto);
-            return n > 0 ? CreatedAtAction(nameof(List), new { id = dto.Id }, dto) 
-                         : StatusCode(500, new { message = "Không thể tạo clinic" });
+            var clinic = await _repo.GetByIdAsync(id);
+            return clinic == null
+                ? NotFound(new { message = "Không tìm thấy clinic" })
+                : Ok(clinic);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error creating clinic");
-            if (UseDemoMode)
+            _logger?.LogError(ex, "Error getting clinic {Id}", id);
+            return StatusCode(500, new { message = $"Lỗi khi lấy clinic: {ex.Message}" });
+        }
+    }
+
+    [HttpPost("{id}/approve")]
+    public async Task<IActionResult> Approve(string id, [FromBody] ApprovalActionDto? dto = null)
+    {
+        try
+        {
+            var adminId = GetCurrentAdminId();
+            var success = await _repo.ApproveAsync(id, adminId, dto?.Note);
+            if (!success)
             {
-                _logger?.LogWarning("Using demo mode for create operation");
-                return CreatedAtAction(nameof(List), new { id = dto.Id }, dto);
+                return NotFound(new { message = "Không tìm thấy clinic để approve" });
             }
-            return StatusCode(500, new { message = $"Không kết nối được database: {ex.Message}" });
+            return Ok(new { message = "Đã approve clinic thành công" });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error approving clinic {Id}", id);
+            return StatusCode(500, new { message = $"Lỗi khi approve clinic: {ex.Message}" });
+        }
+    }
+
+    [HttpPost("{id}/reject")]
+    public async Task<IActionResult> Reject(string id, [FromBody] ApprovalActionDto? dto = null)
+    {
+        try
+        {
+            var adminId = GetCurrentAdminId();
+            var success = await _repo.RejectAsync(id, adminId, dto?.Note);
+            if (!success)
+            {
+                return NotFound(new { message = "Không tìm thấy clinic để reject" });
+            }
+            return Ok(new { message = "Đã reject clinic thành công" });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error rejecting clinic {Id}", id);
+            return StatusCode(500, new { message = $"Lỗi khi reject clinic: {ex.Message}" });
+        }
+    }
+
+    [HttpPost("{id}/suspend")]
+    public async Task<IActionResult> Suspend(string id, [FromBody] SuspensionActionDto? dto = null)
+    {
+        try
+        {
+            var adminId = GetCurrentAdminId();
+            var success = await _repo.SuspendAsync(id, adminId, dto?.Note);
+            if (!success)
+            {
+                return NotFound(new { message = "Không tìm thấy clinic để suspend" });
+            }
+            return Ok(new { message = "Đã suspend clinic thành công" });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error suspending clinic {Id}", id);
+            return StatusCode(500, new { message = $"Lỗi khi suspend clinic: {ex.Message}" });
+        }
+    }
+
+    [HttpPost("{id}/activate")]
+    public async Task<IActionResult> Activate(string id, [FromBody] ActivationActionDto? dto = null)
+    {
+        try
+        {
+            var adminId = GetCurrentAdminId();
+            var success = await _repo.ActivateAsync(id, adminId, dto?.Note);
+            if (!success)
+            {
+                return NotFound(new { message = "Không tìm thấy clinic để activate" });
+            }
+            return Ok(new { message = "Đã activate clinic thành công" });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error activating clinic {Id}", id);
+            return StatusCode(500, new { message = $"Lỗi khi activate clinic: {ex.Message}" });
         }
     }
 
@@ -84,41 +161,34 @@ public class AdminClinicsController : ControllerBase
     {
         try
         {
-            var n = await _repo.UpdateClinicAsync(id, dto);
-            return n == 0 ? NotFound(new { message = "Không tìm thấy clinic" }) : NoContent();
+            var adminId = GetCurrentAdminId();
+            var success = await _repo.UpdateAsync(id, dto, adminId);
+            if (!success)
+            {
+                return NotFound(new { message = "Không tìm thấy clinic để update" });
+            }
+            return Ok(new { message = "Đã cập nhật clinic thành công" });
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error updating clinic {ClinicId}", id);
-            if (UseDemoMode)
-            {
-                _logger?.LogWarning("Using demo mode for update operation");
-                return NoContent();
-            }
-            return StatusCode(500, new { message = $"Không kết nối được database: {ex.Message}" });
-        }
-    }
-
-    [HttpPatch("{id}/status")]
-    public async Task<IActionResult> SetStatus(string id, [FromBody] AdminUpdateClinicDto dto)
-    {
-        if (!dto.IsActive.HasValue) return BadRequest(new { message = "Thiếu IsActive" });
-        try
-        {
-            var n = await _repo.SetClinicActiveAsync(id, dto.IsActive.Value);
-            return n == 0 ? NotFound(new { message = "Không tìm thấy clinic" }) : NoContent();
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error setting clinic status {ClinicId}", id);
-            if (UseDemoMode)
-            {
-                _logger?.LogWarning("Using demo mode for set status operation");
-                return NoContent();
-            }
-            return StatusCode(500, new { message = $"Không kết nối được database: {ex.Message}" });
+            _logger?.LogError(ex, "Error updating clinic {Id}", id);
+            return StatusCode(500, new { message = $"Lỗi khi cập nhật clinic: {ex.Message}" });
         }
     }
 }
 
+// DTOs for action requests
+public class ApprovalActionDto
+{
+    public string? Note { get; set; }
+}
 
+public class SuspensionActionDto
+{
+    public string? Note { get; set; }
+}
+
+public class ActivationActionDto
+{
+    public string? Note { get; set; }
+}

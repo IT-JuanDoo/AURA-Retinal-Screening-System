@@ -235,6 +235,7 @@ builder.Services.AddScoped<Aura.API.Admin.AnalyticsRepository>();
 builder.Services.AddScoped<Aura.API.Admin.AIConfigurationRepository>();
 builder.Services.AddScoped<Aura.API.Admin.ServicePackageRepository>();
 builder.Services.AddScoped<Aura.API.Admin.AuditLogRepository>();
+builder.Services.AddScoped<Aura.API.Admin.ClinicRepository>();
 
 // FR-22: Clinic Management
 builder.Services.AddScoped<ClinicDb>();
