@@ -9,15 +9,10 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", path: "/admin/dashboard" },
-  { label: "Analytics", path: "/admin/analytics" },
-  { label: "Accounts", path: "/admin/accounts" },
+  { label: "Người dùng", path: "/admin/users" },
+  { label: "Hệ thống", path: "/admin/system" },
+  { label: "Bảo mật", path: "/admin/security" },
   { label: "RBAC", path: "/admin/rbac" },
-  { label: "AI Config", path: "/admin/ai-config" },
-  { label: "Packages", path: "/admin/packages" },
-  { label: "Audit Logs", path: "/admin/audit-logs" },
-  { label: "Compliance", path: "/admin/compliance" },
-  { label: "Clinics", path: "/admin/clinics" },
-  { label: "Templates", path: "/admin/notification-templates" },
 ];
 
 export default function AdminHeader() {

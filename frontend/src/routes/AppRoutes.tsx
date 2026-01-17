@@ -6,12 +6,10 @@ import AdminAccountsPage from "../pages/admin/AdminAccountsPage";
 import AdminRbacPage from "../pages/admin/AdminRbacPage";
 import AdminAnalyticsPage from "../pages/admin/AdminAnalyticsPage";
 import AdminDashboardPage from "../pages/admin/AdminDashboardPage";
-import AdminAIConfigPage from "../pages/admin/AdminAIConfigPage";
-import AdminPackagesPage from "../pages/admin/AdminPackagesPage";
-import AdminAuditLogsPage from "../pages/admin/AdminAuditLogsPage";
-import AdminCompliancePage from "../pages/admin/AdminCompliancePage";
 import AdminClinicsPage from "../pages/admin/AdminClinicsPage";
-import AdminNotificationTemplatesPage from "../pages/admin/AdminNotificationTemplatesPage";
+import AdminUsersPage from "../pages/admin/AdminUsersPage";
+import AdminSystemPage from "../pages/admin/AdminSystemPage";
+import AdminSecurityPage from "../pages/admin/AdminSecurityPage";
 import PatientProfilePage from "../pages/patient/PatientProfilePage";
 import HomePage from "../pages/HomePage";
 import PatientDashboard from "../pages/patient/PatientDashboard";
@@ -130,38 +128,6 @@ const AppRoutes = () => {
         }
       />
       <Route
-        path="/admin/ai-config"
-        element={
-          <AdminProtectedRoute>
-            <AdminAIConfigPage />
-          </AdminProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin/packages"
-        element={
-          <AdminProtectedRoute>
-            <AdminPackagesPage />
-          </AdminProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin/audit-logs"
-        element={
-          <AdminProtectedRoute>
-            <AdminAuditLogsPage />
-          </AdminProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin/compliance"
-        element={
-          <AdminProtectedRoute>
-            <AdminCompliancePage />
-          </AdminProtectedRoute>
-        }
-      />
-      <Route
         path="/admin/clinics"
         element={
           <AdminProtectedRoute>
@@ -170,10 +136,26 @@ const AppRoutes = () => {
         }
       />
       <Route
-        path="/admin/notification-templates"
+        path="/admin/users"
         element={
           <AdminProtectedRoute>
-            <AdminNotificationTemplatesPage />
+            <AdminUsersPage />
+          </AdminProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/system"
+        element={
+          <AdminProtectedRoute>
+            <AdminSystemPage />
+          </AdminProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/security"
+        element={
+          <AdminProtectedRoute>
+            <AdminSecurityPage />
           </AdminProtectedRoute>
         }
       />

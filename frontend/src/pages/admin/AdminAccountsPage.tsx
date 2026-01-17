@@ -5,6 +5,8 @@ import adminApi from "../../services/adminApi";
 import { useAdminAuthStore } from "../../store/adminAuthStore";
 import { rolesApi, Role } from "../../services/rbacApi";
 import AdminHeader from "../../components/admin/AdminHeader";
+import TabButton from "../../components/admin/TabButton";
+import { Field, ReadOnlyField } from "../../components/admin/FormField";
 
 type Tab = "users" | "doctors";
 
@@ -875,68 +877,3 @@ export default function AdminAccountsPage() {
   );
 }
 
-function TabButton({
-  active,
-  onClick,
-  children,
-  icon,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  icon?: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors border-b-2 ${
-        active
-          ? "border-blue-500 text-blue-600 dark:text-blue-400"
-          : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 dark:text-slate-400 dark:hover:text-slate-300"
-      }`}
-    >
-      {icon}
-      {children}
-    </button>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-        {label}
-      </label>
-      <input
-        type="text"
-        className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </div>
-  );
-}
-
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-        {label}
-      </label>
-      <input
-        type="text"
-        className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 cursor-not-allowed"
-        value={value}
-        readOnly
-      />
-    </div>
-  );
-}

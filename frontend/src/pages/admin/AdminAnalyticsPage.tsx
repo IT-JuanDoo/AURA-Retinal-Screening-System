@@ -10,6 +10,7 @@ import analyticsService, {
 } from "../../services/analyticsService";
 import { useAdminAuthStore } from "../../store/adminAuthStore";
 import AdminHeader from "../../components/admin/AdminHeader";
+import StatCard from "../../components/admin/StatCard";
 
 export default function AdminAnalyticsPage() {
   const navigate = useNavigate();
@@ -189,49 +190,6 @@ export default function AdminAnalyticsPage() {
   );
 }
 
-function StatCard({
-  title,
-  value,
-  subtitle,
-  icon,
-  color,
-}: {
-  title: string;
-  value: number;
-  subtitle: string;
-  icon: string;
-  color: "blue" | "green" | "purple" | "orange";
-}) {
-  const colorClasses = {
-    blue: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-    green: "bg-green-500/10 text-green-600 dark:text-green-400",
-    purple: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
-    orange: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-  };
-
-  return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-            {title}
-          </p>
-          <p className="text-3xl font-bold text-slate-900 dark:text-white mt-2">
-            {value.toLocaleString("vi-VN")}
-          </p>
-          <p className="text-sm text-slate-500 dark:text-slate-500 mt-1">
-            {subtitle}
-          </p>
-        </div>
-        <div
-          className={`size-12 rounded-lg flex items-center justify-center text-2xl ${colorClasses[color]}`}
-        >
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function ErrorRateCard({ errorRate }: { errorRate: ErrorRateDto }) {
   return (
