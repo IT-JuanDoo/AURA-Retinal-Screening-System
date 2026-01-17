@@ -283,5 +283,49 @@ public class UpdatePrivacySettingsDto
     public bool? RequireTwoFactorForSensitiveActions { get; set; }
 }
 
+// =====================================================
+// Notification Template DTOs (FR-39)
+// =====================================================
+
+public record NotificationTemplateRowDto(
+    string Id,
+    string TemplateName,
+    string TemplateType,
+    string TitleTemplate,
+    string ContentTemplate,
+    string? Variables,
+    bool IsActive,
+    string Language,
+    DateTime? CreatedDate,
+    string? CreatedBy,
+    DateTime? UpdatedDate,
+    string? UpdatedBy,
+    string? Note
+);
+
+public class CreateNotificationTemplateDto
+{
+    public string TemplateName { get; set; } = string.Empty;
+    public string TemplateType { get; set; } = "Custom"; // AnalysisComplete, HighRiskAlert, PaymentSuccess, PackageExpiring, MessageReceived, SystemAlert, Custom
+    public string TitleTemplate { get; set; } = string.Empty;
+    public string ContentTemplate { get; set; } = string.Empty;
+    public Dictionary<string, string>? Variables { get; set; }
+    public bool IsActive { get; set; } = true;
+    public string Language { get; set; } = "vi"; // vi, en
+    public string? Note { get; set; }
+}
+
+public class UpdateNotificationTemplateDto
+{
+    public string? TemplateName { get; set; }
+    public string? TemplateType { get; set; }
+    public string? TitleTemplate { get; set; }
+    public string? ContentTemplate { get; set; }
+    public Dictionary<string, string>? Variables { get; set; }
+    public bool? IsActive { get; set; }
+    public string? Language { get; set; }
+    public string? Note { get; set; }
+}
+
 
 

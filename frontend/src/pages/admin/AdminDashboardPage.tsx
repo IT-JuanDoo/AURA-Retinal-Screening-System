@@ -851,9 +851,6 @@ function SimpleLineChart({
     );
   }
 
-  const maxValue = Math.max(...data.map((d) => d[dataKey] || 0));
-  const minValue = Math.min(...data.map((d) => d[dataKey] || 0));
-  const range = maxValue - minValue || 1;
   const height = 200;
   const padding = 20;
 
@@ -864,16 +861,44 @@ function SimpleLineChart({
     orange: "stroke-orange-500 fill-orange-500/20",
   };
 
-  const points = data.map((d, i) => {
-    const x = (i / (data.length - 1 || 1)) * (100 - padding * 2) + padding;
+  // Validate and filter data to ensure all values are valid numbers
+  const validData = data.filter(
+    (d) => d != null && typeof d[dataKey] === "number" && !isNaN(d[dataKey])
+  );
+
+  if (validData.length === 0) {
+    return (
+      <div className="h-64 flex items-center justify-center text-slate-500 dark:text-slate-400">
+        Không có dữ liệu hợp lệ
+      </div>
+    );
+  }
+
+  // Recalculate min/max with valid data
+  const validMaxValue = Math.max(...validData.map((d) => d[dataKey] || 0));
+  const validMinValue = Math.min(...validData.map((d) => d[dataKey] || 0));
+  const validRange = validMaxValue - validMinValue || 1;
+
+  const points = validData.map((d, i) => {
+    const x =
+      (i / Math.max(validData.length - 1, 1)) * (100 - padding * 2) + padding;
     const y =
       height -
-      ((d[dataKey] - minValue) / range) * (height - padding * 2) -
+      ((d[dataKey] - validMinValue) / validRange) * (height - padding * 2) -
       padding;
-    return `${x},${y}`;
+    // Ensure x and y are valid numbers
+    const xNum = isNaN(x) ? padding : Math.max(padding, Math.min(100 - padding, x));
+    const yNum = isNaN(y) ? height - padding : Math.max(padding, Math.min(height - padding, y));
+    return `${xNum.toFixed(2)},${yNum.toFixed(2)}`;
   });
 
-  const pathData = `M ${points.join(" L ")}`;
+  // polyline/polygon need space-separated coordinates, not path commands
+  const polylinePoints = points.join(" ");
+  
+  // For polygon, create closed shape: start point -> line points -> end point -> bottom
+  const polygonPoints = validData.length > 0
+    ? `${points[0]},${height} ${polylinePoints} ${points[points.length - 1]},${height}`
+    : "";
 
   return (
     <div className="relative" style={{ height: `${height + 60}px` }}>
@@ -882,43 +907,49 @@ function SimpleLineChart({
         className="w-full h-full"
         preserveAspectRatio="none"
       >
-        <polyline
-          points={pathData}
-          fill="none"
-          strokeWidth="2"
-          className={colorClasses[color as keyof typeof colorClasses]}
-        />
-        <polygon
-          points={`${points[0]},${height} ${pathData.replace("M ", "")} ${
-            points[points.length - 1]
-          },${height}`}
-          className={colorClasses[color as keyof typeof colorClasses]}
-          opacity="0.1"
-        />
+        {polylinePoints && (
+          <polyline
+            points={polylinePoints}
+            fill="none"
+            strokeWidth="2"
+            className={colorClasses[color as keyof typeof colorClasses]}
+          />
+        )}
+        {polygonPoints && validData.length > 1 && (
+          <polygon
+            points={polygonPoints}
+            className={colorClasses[color as keyof typeof colorClasses]}
+            opacity="0.1"
+          />
+        )}
       </svg>
       <div className="absolute bottom-0 left-0 right-0 flex justify-between text-xs text-slate-500 dark:text-slate-400 px-2">
-        {data.length > 0 && (
+        {validData.length > 0 && validData[0]?.date && (
           <>
             <span>
-              {new Date(data[0].date).toLocaleDateString("vi-VN", {
+              {new Date(validData[0].date).toLocaleDateString("vi-VN", {
                 month: "short",
                 day: "numeric",
               })}
             </span>
             <span>
-              {new Date(data[data.length - 1].date).toLocaleDateString(
-                "vi-VN",
-                {
-                  month: "short",
-                  day: "numeric",
-                }
-              )}
+              {validData[validData.length - 1]?.date &&
+                new Date(validData[validData.length - 1].date).toLocaleDateString(
+                  "vi-VN",
+                  {
+                    month: "short",
+                    day: "numeric",
+                  }
+                )}
             </span>
           </>
         )}
       </div>
       <div className="absolute top-0 right-0 text-sm text-slate-600 dark:text-slate-400">
-        Max: {formatValue ? formatValue(maxValue) : maxValue.toFixed(0)}
+        Max:{" "}
+        {formatValue
+          ? formatValue(validMaxValue)
+          : validMaxValue.toFixed(0)}
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ const navItems: NavItem[] = [
   { label: "Audit Logs", path: "/admin/audit-logs" },
   { label: "Compliance", path: "/admin/compliance" },
   { label: "Clinics", path: "/admin/clinics" },
+  { label: "Templates", path: "/admin/notification-templates" },
 ];
 
 export default function AdminHeader() {

@@ -11,6 +11,7 @@ import AdminPackagesPage from "../pages/admin/AdminPackagesPage";
 import AdminAuditLogsPage from "../pages/admin/AdminAuditLogsPage";
 import AdminCompliancePage from "../pages/admin/AdminCompliancePage";
 import AdminClinicsPage from "../pages/admin/AdminClinicsPage";
+import AdminNotificationTemplatesPage from "../pages/admin/AdminNotificationTemplatesPage";
 import PatientProfilePage from "../pages/patient/PatientProfilePage";
 import HomePage from "../pages/HomePage";
 import PatientDashboard from "../pages/patient/PatientDashboard";
@@ -54,12 +55,12 @@ const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// Admin Public Route component (redirect to admin accounts if authenticated)
+// Admin Public Route component (redirect to admin dashboard if authenticated)
 const AdminPublicRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAdminAuthenticated } = useAdminAuthStore();
 
   if (isAdminAuthenticated) {
-    return <Navigate to="/admin/accounts" replace />;
+    return <Navigate to="/admin/dashboard" replace />;
   }
 
   return <>{children}</>;
@@ -165,6 +166,14 @@ const AppRoutes = () => {
         element={
           <AdminProtectedRoute>
             <AdminClinicsPage />
+          </AdminProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/notification-templates"
+        element={
+          <AdminProtectedRoute>
+            <AdminNotificationTemplatesPage />
           </AdminProtectedRoute>
         }
       />
