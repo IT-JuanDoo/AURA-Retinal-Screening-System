@@ -296,8 +296,9 @@ builder.Services.AddScoped<Aura.API.Admin.NotificationTemplateRepository>();
 builder.Services.AddScoped<ClinicDb>();
 builder.Services.AddScoped<ClinicRepository>();
 
-// Register background worker service
+// Register background worker services
 builder.Services.AddScoped<Aura.API.Services.BackgroundJobs.AnalysisQueueWorker>();
+builder.Services.AddScoped<Aura.API.Services.BackgroundJobs.RiskAlertWorker>();
 
 // TODO: Add database context when ready
 // builder.Services.AddDbContext<AuraDbContext>(options =>
@@ -401,6 +402,20 @@ using (var scope = app.Services.CreateScope())
         () => scope.ServiceProvider.GetRequiredService<Aura.API.Services.BackgroundJobs.AnalysisQueueWorker>()
             .ProcessEmailQueueAsync(),
         "*/10 * * * *"); // Every 10 minutes
+
+    // Check high-risk patients every hour (FR-29)
+    recurringJobManager.AddOrUpdate(
+        "check-high-risk-patients",
+        () => scope.ServiceProvider.GetRequiredService<Aura.API.Services.BackgroundJobs.RiskAlertWorker>()
+            .CheckHighRiskPatientsAsync(),
+        "0 * * * *"); // Every hour
+
+    // Check abnormal trends daily at 6:00 AM (FR-29)
+    recurringJobManager.AddOrUpdate(
+        "check-abnormal-trends",
+        () => scope.ServiceProvider.GetRequiredService<Aura.API.Services.BackgroundJobs.RiskAlertWorker>()
+            .CheckAbnormalTrendsAsync(),
+        "0 6 * * *"); // Daily at 6:00 AM
 }
 
 // Health check endpoint with database connection test

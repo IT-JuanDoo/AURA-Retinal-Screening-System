@@ -53,32 +53,60 @@ public class PaymentController : ControllerBase
                 ORDER BY Price ASC";
 
             using var command = new NpgsqlCommand(sql, connection);
-            command.Parameters.AddWithValue("PackageType", (object?)packageType ?? DBNull.Value);
+            if (string.IsNullOrWhiteSpace(packageType))
+            {
+                command.Parameters.Add(new NpgsqlParameter("PackageType", NpgsqlTypes.NpgsqlDbType.Text) { Value = DBNull.Value });
+            }
+            else
+            {
+                command.Parameters.AddWithValue("PackageType", packageType);
+            }
 
             var packages = new List<PackageDto>();
             using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                packages.Add(new PackageDto
+                try
                 {
-                    Id = reader.GetString(0),
-                    PackageName = reader.GetString(1),
-                    PackageType = reader.GetString(2),
-                    Description = reader.IsDBNull(3) ? null : reader.GetString(3),
-                    NumberOfAnalyses = reader.GetInt32(4),
-                    Price = reader.GetDecimal(5),
-                    Currency = reader.IsDBNull(6) ? "VND" : reader.GetString(6),
-                    ValidityDays = reader.IsDBNull(7) ? null : reader.GetInt32(7),
-                    IsActive = reader.GetBoolean(8)
-                });
+                    packages.Add(new PackageDto
+                    {
+                        Id = reader.IsDBNull(0) ? string.Empty : reader.GetString(0),
+                        PackageName = reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                        PackageType = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                        Description = reader.IsDBNull(3) ? null : reader.GetString(3),
+                        NumberOfAnalyses = reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+                        Price = reader.IsDBNull(5) ? 0 : reader.GetDecimal(5),
+                        Currency = reader.IsDBNull(6) ? "VND" : reader.GetString(6),
+                        ValidityDays = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                        IsActive = reader.IsDBNull(8) ? false : reader.GetBoolean(8)
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error reading package row at index {Index}", packages.Count);
+                    // Continue to next row instead of failing completely
+                }
             }
 
             return Ok(packages);
         }
+        catch (Npgsql.PostgresException pgEx)
+        {
+            _logger.LogError(pgEx, "PostgreSQL error getting packages: {Message}, Code: {SqlState}", pgEx.Message, pgEx.SqlState);
+            return StatusCode(500, new { 
+                message = "Không thể lấy danh sách packages", 
+                error = pgEx.Message,
+                sqlState = pgEx.SqlState
+            });
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting packages");
-            return StatusCode(500, new { message = "Không thể lấy danh sách packages" });
+            _logger.LogError(ex, "Error getting packages: {Message}", ex.Message);
+            return StatusCode(500, new { 
+                message = "Không thể lấy danh sách packages",
+                error = ex.Message,
+                stackTrace = ex.StackTrace
+            });
         }
     }
 
@@ -494,60 +522,89 @@ public class PaymentController : ControllerBase
             updateCmd.Parameters.AddWithValue("PaymentStatus", paymentStatus);
             await updateCmd.ExecuteNonQueryAsync();
 
-            // If payment is completed, create user_package
+            // If payment is completed, create user_package (only if not already created)
             if (paymentStatus == "Completed")
             {
-                // Get package details
-                var packageSql = @"
-                    SELECT NumberOfAnalyses, ValidityDays FROM service_packages WHERE Id = @PackageId";
-                using var packageCmd = new NpgsqlCommand(packageSql, connection);
-                packageCmd.Parameters.AddWithValue("PackageId", packageId);
+                // Check if user_package already exists for this payment
+                var checkUserPackageSql = @"
+                    SELECT UserPackageId FROM payment_history WHERE Id = @PaymentId AND UserPackageId IS NOT NULL";
+                using var checkUserPackageCmd = new NpgsqlCommand(checkUserPackageSql, connection);
+                checkUserPackageCmd.Parameters.AddWithValue("PaymentId", paymentId);
+                var existingUserPackageId = await checkUserPackageCmd.ExecuteScalarAsync() as string;
 
-                using var packageReader = await packageCmd.ExecuteReaderAsync();
-                if (await packageReader.ReadAsync())
+                if (string.IsNullOrEmpty(existingUserPackageId))
                 {
-                    var numberOfAnalyses = packageReader.GetInt32(0);
-                    var validityDays = packageReader.IsDBNull(1) ? null : (int?)packageReader.GetInt32(1);
+                    // Get package details
+                    var packageSql = @"
+                        SELECT NumberOfAnalyses, ValidityDays FROM service_packages WHERE Id = @PackageId";
+                    using var packageCmd = new NpgsqlCommand(packageSql, connection);
+                    packageCmd.Parameters.AddWithValue("PackageId", packageId);
 
-                    var userPackageId = Guid.NewGuid().ToString();
-                    var expiresAt = validityDays.HasValue 
-                        ? DateTime.UtcNow.AddDays(validityDays.Value) 
-                        : (DateTime?)null;
+                    using var packageReader = await packageCmd.ExecuteReaderAsync();
+                    if (await packageReader.ReadAsync())
+                    {
+                        var numberOfAnalyses = packageReader.GetInt32(0);
+                        var validityDays = packageReader.IsDBNull(1) ? null : (int?)packageReader.GetInt32(1);
+                        packageReader.Close();
 
-                    var userPackageSql = @"
-                        INSERT INTO user_packages
-                        (Id, UserId, ClinicId, PackageId, RemainingAnalyses, PurchasedAt, ExpiresAt,
-                         IsActive, CreatedDate, CreatedBy, IsDeleted)
-                        VALUES
-                        (@Id, @UserId, @ClinicId, @PackageId, @RemainingAnalyses, @PurchasedAt, @ExpiresAt,
-                         true, @CreatedDate, @CreatedBy, false)";
+                        var userPackageId = Guid.NewGuid().ToString();
+                        var expiresAt = validityDays.HasValue 
+                            ? DateTime.UtcNow.AddDays(validityDays.Value) 
+                            : (DateTime?)null;
 
-                    using var userPackageCmd = new NpgsqlCommand(userPackageSql, connection);
-                    userPackageCmd.Parameters.AddWithValue("Id", userPackageId);
-                    userPackageCmd.Parameters.AddWithValue("UserId", (object?)userId ?? DBNull.Value);
-                    userPackageCmd.Parameters.AddWithValue("ClinicId", (object?)clinicId ?? DBNull.Value);
-                    userPackageCmd.Parameters.AddWithValue("PackageId", packageId);
-                    userPackageCmd.Parameters.AddWithValue("RemainingAnalyses", numberOfAnalyses);
-                    userPackageCmd.Parameters.AddWithValue("PurchasedAt", DateTime.UtcNow);
-                    userPackageCmd.Parameters.AddWithValue("ExpiresAt", (object?)expiresAt ?? DBNull.Value);
-                    userPackageCmd.Parameters.AddWithValue("CreatedDate", DateTime.UtcNow.Date);
-                    userPackageCmd.Parameters.AddWithValue("CreatedBy", userId ?? clinicId ?? "system");
+                        // Use transaction to ensure atomicity
+                        using var transaction = await connection.BeginTransactionAsync();
+                        try
+                        {
+                            var userPackageSql = @"
+                                INSERT INTO user_packages
+                                (Id, UserId, ClinicId, PackageId, RemainingAnalyses, PurchasedAt, ExpiresAt,
+                                 IsActive, CreatedDate, CreatedBy, IsDeleted)
+                                VALUES
+                                (@Id, @UserId, @ClinicId, @PackageId, @RemainingAnalyses, @PurchasedAt, @ExpiresAt,
+                                 true, @CreatedDate, @CreatedBy, false)";
 
-                    await userPackageCmd.ExecuteNonQueryAsync();
+                            using var userPackageCmd = new NpgsqlCommand(userPackageSql, connection, transaction);
+                            userPackageCmd.Parameters.AddWithValue("Id", userPackageId);
+                            userPackageCmd.Parameters.AddWithValue("UserId", (object?)userId ?? DBNull.Value);
+                            userPackageCmd.Parameters.AddWithValue("ClinicId", (object?)clinicId ?? DBNull.Value);
+                            userPackageCmd.Parameters.AddWithValue("PackageId", packageId);
+                            userPackageCmd.Parameters.AddWithValue("RemainingAnalyses", numberOfAnalyses);
+                            userPackageCmd.Parameters.AddWithValue("PurchasedAt", DateTime.UtcNow);
+                            userPackageCmd.Parameters.AddWithValue("ExpiresAt", (object?)expiresAt ?? DBNull.Value);
+                            userPackageCmd.Parameters.AddWithValue("CreatedDate", DateTime.UtcNow.Date);
+                            userPackageCmd.Parameters.AddWithValue("CreatedBy", userId ?? clinicId ?? "system");
 
-                    // Update payment with user_package_id
-                    var updatePaymentSql = @"
-                        UPDATE payment_history
-                        SET UserPackageId = @UserPackageId
-                        WHERE Id = @PaymentId";
+                            await userPackageCmd.ExecuteNonQueryAsync();
 
-                    using var updatePaymentCmd = new NpgsqlCommand(updatePaymentSql, connection);
-                    updatePaymentCmd.Parameters.AddWithValue("UserPackageId", userPackageId);
-                    updatePaymentCmd.Parameters.AddWithValue("PaymentId", paymentId);
-                    await updatePaymentCmd.ExecuteNonQueryAsync();
+                            // Update payment with user_package_id
+                            var updatePaymentSql = @"
+                                UPDATE payment_history
+                                SET UserPackageId = @UserPackageId
+                                WHERE Id = @PaymentId";
 
-                    _logger.LogInformation("User package created: {UserPackageId} for payment {PaymentId}", 
-                        userPackageId, paymentId);
+                            using var updatePaymentCmd = new NpgsqlCommand(updatePaymentSql, connection, transaction);
+                            updatePaymentCmd.Parameters.AddWithValue("UserPackageId", userPackageId);
+                            updatePaymentCmd.Parameters.AddWithValue("PaymentId", paymentId);
+                            await updatePaymentCmd.ExecuteNonQueryAsync();
+
+                            await transaction.CommitAsync();
+
+                            _logger.LogInformation("User package created: {UserPackageId} for payment {PaymentId}", 
+                                userPackageId, paymentId);
+                        }
+                        catch (Exception ex)
+                        {
+                            await transaction.RollbackAsync();
+                            _logger.LogError(ex, "Error creating user package for payment {PaymentId}", paymentId);
+                            throw;
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("User package already exists: {UserPackageId} for payment {PaymentId}", 
+                        existingUserPackageId, paymentId);
                 }
             }
 

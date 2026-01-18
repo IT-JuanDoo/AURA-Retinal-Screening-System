@@ -37,6 +37,13 @@ public class AnalysisService : IAnalysisService
     {
         try
         {
+            // Check and deduct credits before starting analysis
+            var creditsAvailable = await CheckAndDeductCreditsAsync(userId, 1);
+            if (!creditsAvailable)
+            {
+                throw new InvalidOperationException("Không đủ credits để thực hiện phân tích. Vui lòng mua package hoặc nạp thêm credits.");
+            }
+
             // Get image info from database
             var imageInfo = await GetImageInfoAsync(imageId, userId);
             if (imageInfo == null)
@@ -522,5 +529,89 @@ public class AnalysisService : IAnalysisService
 
         _logger?.LogInformation("Retrieved {Count} analysis results for user: {UserId}", results.Count, userId);
         return results;
+    }
+
+    /// <summary>
+    /// Check if user has enough credits and deduct if available
+    /// Returns true if credits were successfully deducted, false otherwise
+    /// </summary>
+    private async Task<bool> CheckAndDeductCreditsAsync(string userId, int creditsNeeded)
+    {
+        using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        // Check if user has active package with remaining credits
+        var checkSql = @"
+            SELECT Id, RemainingAnalyses, ExpiresAt, IsActive
+            FROM user_packages
+            WHERE UserId = @UserId 
+                AND COALESCE(IsDeleted, false) = false
+                AND IsActive = true
+                AND RemainingAnalyses >= @CreditsNeeded
+                AND (ExpiresAt IS NULL OR ExpiresAt > CURRENT_TIMESTAMP)
+            ORDER BY 
+                CASE WHEN ExpiresAt IS NULL THEN 0 ELSE 1 END,  -- Non-expiring packages first
+                ExpiresAt DESC,  -- Most recent expiry first
+                PurchasedAt DESC  -- Most recent purchase first
+            LIMIT 1";
+
+        using var checkCmd = new Npgsql.NpgsqlCommand(checkSql, connection);
+        checkCmd.Parameters.AddWithValue("UserId", userId);
+        checkCmd.Parameters.AddWithValue("CreditsNeeded", creditsNeeded);
+
+        using var checkReader = await checkCmd.ExecuteReaderAsync();
+        if (!await checkReader.ReadAsync())
+        {
+            _logger?.LogWarning("User {UserId} does not have enough credits ({CreditsNeeded} needed)", userId, creditsNeeded);
+            return false;
+        }
+
+        var userPackageId = checkReader.GetString(0);
+        var remainingAnalyses = checkReader.GetInt32(1);
+        checkReader.Close();
+
+        // Deduct credits atomically
+        var deductSql = @"
+            UPDATE user_packages
+            SET RemainingAnalyses = RemainingAnalyses - @CreditsNeeded,
+                UpdatedDate = CURRENT_DATE
+            WHERE Id = @UserPackageId
+                AND RemainingAnalyses >= @CreditsNeeded
+                AND IsActive = true
+                AND COALESCE(IsDeleted, false) = false
+                AND (ExpiresAt IS NULL OR ExpiresAt > CURRENT_TIMESTAMP)
+            RETURNING RemainingAnalyses";
+
+        using var deductCmd = new Npgsql.NpgsqlCommand(deductSql, connection);
+        deductCmd.Parameters.AddWithValue("UserPackageId", userPackageId);
+        deductCmd.Parameters.AddWithValue("CreditsNeeded", creditsNeeded);
+
+        var newRemaining = await deductCmd.ExecuteScalarAsync();
+        if (newRemaining == null)
+        {
+            _logger?.LogWarning("Failed to deduct credits for user {UserId}, package {UserPackageId}", userId, userPackageId);
+            return false;
+        }
+
+        var newRemainingCount = Convert.ToInt32(newRemaining);
+        _logger?.LogInformation("Credits deducted for user {UserId}: Package {UserPackageId}, Remaining: {Remaining}", 
+            userId, userPackageId, newRemainingCount);
+
+        // Deactivate package if credits exhausted
+        if (newRemainingCount <= 0)
+        {
+            var deactivateSql = @"
+                UPDATE user_packages
+                SET IsActive = false, UpdatedDate = CURRENT_DATE
+                WHERE Id = @UserPackageId";
+
+            using var deactivateCmd = new Npgsql.NpgsqlCommand(deactivateSql, connection);
+            deactivateCmd.Parameters.AddWithValue("UserPackageId", userPackageId);
+            await deactivateCmd.ExecuteNonQueryAsync();
+
+            _logger?.LogInformation("Package {UserPackageId} deactivated (credits exhausted)", userPackageId);
+        }
+
+        return true;
     }
 }

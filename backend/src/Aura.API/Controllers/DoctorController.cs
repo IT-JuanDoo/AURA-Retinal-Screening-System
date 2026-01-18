@@ -547,6 +547,319 @@ public class DoctorController : ControllerBase
 
     #endregion
 
+    #region Validate/Correct AI Findings (FR-15)
+
+    /// <summary>
+    /// Validate hoặc correct AI findings (FR-15)
+    /// </summary>
+    [HttpPost("analyses/{analysisId}/validate")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ValidateFindings(string analysisId, [FromBody] ValidateFindingsDto dto)
+    {
+        if (dto.AnalysisId != analysisId)
+        {
+            return BadRequest(new { message = "AnalysisId không khớp" });
+        }
+
+        var doctorId = GetCurrentDoctorId();
+        if (doctorId == null) return Unauthorized(new { message = "Chưa xác thực bác sĩ" });
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            // Verify doctor has access to this analysis
+            var verifySql = @"
+                SELECT ar.Id FROM analysis_results ar
+                INNER JOIN patient_doctor_assignments pda ON pda.UserId = ar.UserId
+                WHERE ar.Id = @AnalysisId 
+                    AND pda.DoctorId = @DoctorId
+                    AND COALESCE(pda.IsDeleted, false) = false
+                    AND pda.IsActive = true";
+
+            using var verifyCmd = new NpgsqlCommand(verifySql, connection);
+            verifyCmd.Parameters.AddWithValue("AnalysisId", analysisId);
+            verifyCmd.Parameters.AddWithValue("DoctorId", doctorId);
+
+            var hasAccess = await verifyCmd.ExecuteScalarAsync();
+            if (hasAccess == null)
+            {
+                return NotFound(new { message = "Không tìm thấy kết quả phân tích hoặc không có quyền truy cập" });
+            }
+
+            // Update analysis_results with validated/corrected data if needed
+            if (dto.ValidationStatus == "Corrected" && 
+                (dto.CorrectedRiskLevel != null || dto.CorrectedRiskScore.HasValue))
+            {
+                var updateSql = @"
+                    UPDATE analysis_results
+                    SET OverallRiskLevel = COALESCE(@CorrectedRiskLevel, OverallRiskLevel),
+                        RiskScore = COALESCE(@CorrectedRiskScore, RiskScore),
+                        HypertensionRisk = COALESCE(@CorrectedHypertensionRisk, HypertensionRisk),
+                        DiabetesRisk = COALESCE(@CorrectedDiabetesRisk, DiabetesRisk),
+                        StrokeRisk = COALESCE(@CorrectedStrokeRisk, StrokeRisk),
+                        DiabeticRetinopathyDetected = COALESCE(@CorrectedDiabeticRetinopathyDetected, DiabeticRetinopathyDetected),
+                        DiabeticRetinopathySeverity = COALESCE(@CorrectedDiabeticRetinopathySeverity, DiabeticRetinopathySeverity),
+                        UpdatedDate = CURRENT_DATE,
+                        Note = COALESCE(@ValidationNotes, Note)
+                    WHERE Id = @AnalysisId";
+
+                using var updateCmd = new NpgsqlCommand(updateSql, connection);
+                updateCmd.Parameters.AddWithValue("AnalysisId", analysisId);
+                updateCmd.Parameters.AddWithValue("CorrectedRiskLevel", (object?)dto.CorrectedRiskLevel ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("CorrectedRiskScore", (object?)dto.CorrectedRiskScore ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("CorrectedHypertensionRisk", (object?)dto.CorrectedHypertensionRisk ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("CorrectedDiabetesRisk", (object?)dto.CorrectedDiabetesRisk ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("CorrectedStrokeRisk", (object?)dto.CorrectedStrokeRisk ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("CorrectedDiabeticRetinopathyDetected", (object?)dto.CorrectedDiabeticRetinopathyDetected ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("CorrectedDiabeticRetinopathySeverity", (object?)dto.CorrectedDiabeticRetinopathySeverity ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("ValidationNotes", (object?)dto.ValidationNotes ?? DBNull.Value);
+
+                await updateCmd.ExecuteNonQueryAsync();
+            }
+
+            // Create or update AI feedback record
+            var feedbackSql = @"
+                SELECT Id FROM ai_feedback 
+                WHERE ResultId = @ResultId AND DoctorId = @DoctorId AND COALESCE(IsDeleted, false) = false
+                LIMIT 1";
+
+            using var feedbackCheckCmd = new NpgsqlCommand(feedbackSql, connection);
+            feedbackCheckCmd.Parameters.AddWithValue("ResultId", analysisId);
+            feedbackCheckCmd.Parameters.AddWithValue("DoctorId", doctorId);
+
+            var existingFeedbackId = await feedbackCheckCmd.ExecuteScalarAsync() as string;
+
+            if (string.IsNullOrEmpty(existingFeedbackId))
+            {
+                // Create new feedback
+                var feedbackId = Guid.NewGuid().ToString();
+                var insertFeedbackSql = @"
+                    INSERT INTO ai_feedback
+                    (Id, ResultId, DoctorId, FeedbackType, OriginalRiskLevel, CorrectedRiskLevel, 
+                     FeedbackNotes, IsUsedForTraining, CreatedDate, CreatedBy, IsDeleted)
+                    VALUES
+                    (@Id, @ResultId, @DoctorId, @FeedbackType, @OriginalRiskLevel, @CorrectedRiskLevel,
+                     @FeedbackNotes, @IsUsedForTraining, @CreatedDate, @CreatedBy, false)";
+
+                using var insertFeedbackCmd = new NpgsqlCommand(insertFeedbackSql, connection);
+                insertFeedbackCmd.Parameters.AddWithValue("Id", feedbackId);
+                insertFeedbackCmd.Parameters.AddWithValue("ResultId", analysisId);
+                insertFeedbackCmd.Parameters.AddWithValue("DoctorId", doctorId);
+                insertFeedbackCmd.Parameters.AddWithValue("FeedbackType", dto.ValidationStatus == "Corrected" ? "Incorrect" : "Correct");
+                insertFeedbackCmd.Parameters.AddWithValue("OriginalRiskLevel", DBNull.Value); // Can be populated from analysis_results
+                insertFeedbackCmd.Parameters.AddWithValue("CorrectedRiskLevel", (object?)dto.CorrectedRiskLevel ?? DBNull.Value);
+                insertFeedbackCmd.Parameters.AddWithValue("FeedbackNotes", (object?)dto.ValidationNotes ?? DBNull.Value);
+                insertFeedbackCmd.Parameters.AddWithValue("IsUsedForTraining", dto.ValidationStatus == "Corrected");
+                insertFeedbackCmd.Parameters.AddWithValue("CreatedDate", DateTime.UtcNow.Date);
+                insertFeedbackCmd.Parameters.AddWithValue("CreatedBy", doctorId);
+
+                await insertFeedbackCmd.ExecuteNonQueryAsync();
+            }
+            else
+            {
+                // Update existing feedback
+                var updateFeedbackSql = @"
+                    UPDATE ai_feedback
+                    SET FeedbackType = @FeedbackType,
+                        CorrectedRiskLevel = COALESCE(@CorrectedRiskLevel, CorrectedRiskLevel),
+                        FeedbackNotes = COALESCE(@FeedbackNotes, FeedbackNotes),
+                        IsUsedForTraining = @IsUsedForTraining,
+                        UpdatedDate = CURRENT_DATE
+                    WHERE Id = @FeedbackId";
+
+                using var updateFeedbackCmd = new NpgsqlCommand(updateFeedbackSql, connection);
+                updateFeedbackCmd.Parameters.AddWithValue("FeedbackId", existingFeedbackId);
+                updateFeedbackCmd.Parameters.AddWithValue("FeedbackType", dto.ValidationStatus == "Corrected" ? "Incorrect" : "Correct");
+                updateFeedbackCmd.Parameters.AddWithValue("CorrectedRiskLevel", (object?)dto.CorrectedRiskLevel ?? DBNull.Value);
+                updateFeedbackCmd.Parameters.AddWithValue("FeedbackNotes", (object?)dto.ValidationNotes ?? DBNull.Value);
+                updateFeedbackCmd.Parameters.AddWithValue("IsUsedForTraining", dto.ValidationStatus == "Corrected");
+
+                await updateFeedbackCmd.ExecuteNonQueryAsync();
+            }
+
+            _logger.LogInformation("Findings validated by doctor {DoctorId} for analysis {AnalysisId}, Status: {Status}", 
+                doctorId, analysisId, dto.ValidationStatus);
+
+            return Ok(new { message = "Findings validated successfully", analysisId, status = dto.ValidationStatus });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating findings for analysis {AnalysisId}", analysisId);
+            return StatusCode(500, new { message = "Không thể validate findings" });
+        }
+    }
+
+    #endregion
+
+    #region AI Feedback (FR-19)
+
+    /// <summary>
+    /// Submit AI feedback (FR-19)
+    /// </summary>
+    [HttpPost("ai-feedback")]
+    [ProducesResponseType(typeof(AIFeedbackDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> SubmitAIFeedback([FromBody] CreateAIFeedbackDto dto)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        var doctorId = GetCurrentDoctorId();
+        if (doctorId == null) return Unauthorized(new { message = "Chưa xác thực bác sĩ" });
+
+        if (string.IsNullOrWhiteSpace(dto.ResultId))
+        {
+            return BadRequest(new { message = "ResultId là bắt buộc" });
+        }
+
+        if (!new[] { "Correct", "Incorrect", "PartiallyCorrect", "NeedsReview" }.Contains(dto.FeedbackType))
+        {
+            return BadRequest(new { message = "FeedbackType không hợp lệ" });
+        }
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            // Verify doctor has access to this analysis
+            var verifySql = @"
+                SELECT ar.Id, ar.OverallRiskLevel FROM analysis_results ar
+                INNER JOIN patient_doctor_assignments pda ON pda.UserId = ar.UserId
+                WHERE ar.Id = @ResultId 
+                    AND pda.DoctorId = @DoctorId
+                    AND COALESCE(pda.IsDeleted, false) = false
+                    AND pda.IsActive = true";
+
+            using var verifyCmd = new NpgsqlCommand(verifySql, connection);
+            verifyCmd.Parameters.AddWithValue("ResultId", dto.ResultId);
+            verifyCmd.Parameters.AddWithValue("DoctorId", doctorId);
+
+            using var verifyReader = await verifyCmd.ExecuteReaderAsync();
+            if (!await verifyReader.ReadAsync())
+            {
+                return NotFound(new { message = "Không tìm thấy kết quả phân tích hoặc không có quyền truy cập" });
+            }
+
+            var originalRiskLevel = verifyReader.IsDBNull(1) ? null : verifyReader.GetString(1);
+            verifyReader.Close();
+
+            // Check if feedback already exists
+            var checkSql = @"
+                SELECT Id FROM ai_feedback 
+                WHERE ResultId = @ResultId AND DoctorId = @DoctorId AND COALESCE(IsDeleted, false) = false
+                LIMIT 1";
+
+            using var checkCmd = new NpgsqlCommand(checkSql, connection);
+            checkCmd.Parameters.AddWithValue("ResultId", dto.ResultId);
+            checkCmd.Parameters.AddWithValue("DoctorId", doctorId);
+
+            var existingFeedbackId = await checkCmd.ExecuteScalarAsync() as string;
+
+            string feedbackId;
+            if (string.IsNullOrEmpty(existingFeedbackId))
+            {
+                // Create new feedback
+                feedbackId = Guid.NewGuid().ToString();
+                var insertSql = @"
+                    INSERT INTO ai_feedback
+                    (Id, ResultId, DoctorId, FeedbackType, OriginalRiskLevel, CorrectedRiskLevel, 
+                     FeedbackNotes, IsUsedForTraining, CreatedDate, CreatedBy, IsDeleted)
+                    VALUES
+                    (@Id, @ResultId, @DoctorId, @FeedbackType, @OriginalRiskLevel, @CorrectedRiskLevel,
+                     @FeedbackNotes, @IsUsedForTraining, @CreatedDate, @CreatedBy, false)
+                    RETURNING Id";
+
+                using var insertCmd = new NpgsqlCommand(insertSql, connection);
+                insertCmd.Parameters.AddWithValue("Id", feedbackId);
+                insertCmd.Parameters.AddWithValue("ResultId", dto.ResultId);
+                insertCmd.Parameters.AddWithValue("DoctorId", doctorId);
+                insertCmd.Parameters.AddWithValue("FeedbackType", dto.FeedbackType);
+                insertCmd.Parameters.AddWithValue("OriginalRiskLevel", (object?)dto.OriginalRiskLevel ?? (object?)originalRiskLevel ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("CorrectedRiskLevel", (object?)dto.CorrectedRiskLevel ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("FeedbackNotes", (object?)dto.FeedbackNotes ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("IsUsedForTraining", dto.UseForTraining);
+                insertCmd.Parameters.AddWithValue("CreatedDate", DateTime.UtcNow.Date);
+                insertCmd.Parameters.AddWithValue("CreatedBy", doctorId);
+
+                feedbackId = (await insertCmd.ExecuteScalarAsync() as string) ?? feedbackId;
+            }
+            else
+            {
+                // Update existing feedback
+                feedbackId = existingFeedbackId;
+                var updateSql = @"
+                    UPDATE ai_feedback
+                    SET FeedbackType = @FeedbackType,
+                        OriginalRiskLevel = COALESCE(@OriginalRiskLevel, OriginalRiskLevel),
+                        CorrectedRiskLevel = COALESCE(@CorrectedRiskLevel, CorrectedRiskLevel),
+                        FeedbackNotes = COALESCE(@FeedbackNotes, FeedbackNotes),
+                        IsUsedForTraining = @IsUsedForTraining,
+                        UpdatedDate = CURRENT_DATE
+                    WHERE Id = @FeedbackId";
+
+                using var updateCmd = new NpgsqlCommand(updateSql, connection);
+                updateCmd.Parameters.AddWithValue("FeedbackId", feedbackId);
+                updateCmd.Parameters.AddWithValue("FeedbackType", dto.FeedbackType);
+                updateCmd.Parameters.AddWithValue("OriginalRiskLevel", (object?)dto.OriginalRiskLevel ?? (object?)originalRiskLevel ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("CorrectedRiskLevel", (object?)dto.CorrectedRiskLevel ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("FeedbackNotes", (object?)dto.FeedbackNotes ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("IsUsedForTraining", dto.UseForTraining);
+
+                await updateCmd.ExecuteNonQueryAsync();
+            }
+
+            // Get created/updated feedback
+            var getFeedbackSql = @"
+                SELECT Id, ResultId, DoctorId, FeedbackType, OriginalRiskLevel, CorrectedRiskLevel,
+                       FeedbackNotes, IsUsedForTraining, CreatedDate
+                FROM ai_feedback
+                WHERE Id = @FeedbackId";
+
+            using var getFeedbackCmd = new NpgsqlCommand(getFeedbackSql, connection);
+            getFeedbackCmd.Parameters.AddWithValue("FeedbackId", feedbackId);
+
+            using var feedbackReader = await getFeedbackCmd.ExecuteReaderAsync();
+            if (!await feedbackReader.ReadAsync())
+            {
+                return StatusCode(500, new { message = "Không thể lấy thông tin feedback" });
+            }
+
+            var feedback = new AIFeedbackDto
+            {
+                Id = feedbackReader.GetString(0),
+                ResultId = feedbackReader.GetString(1),
+                DoctorId = feedbackReader.GetString(2),
+                FeedbackType = feedbackReader.GetString(3),
+                OriginalRiskLevel = feedbackReader.IsDBNull(4) ? null : feedbackReader.GetString(4),
+                CorrectedRiskLevel = feedbackReader.IsDBNull(5) ? null : feedbackReader.GetString(5),
+                FeedbackNotes = feedbackReader.IsDBNull(6) ? null : feedbackReader.GetString(6),
+                IsUsedForTraining = feedbackReader.GetBoolean(7),
+                CreatedDate = feedbackReader.GetDateTime(8)
+            };
+
+            _logger.LogInformation("AI feedback submitted by doctor {DoctorId} for analysis {ResultId}, Type: {FeedbackType}", 
+                doctorId, dto.ResultId, dto.FeedbackType);
+
+            return CreatedAtAction(nameof(SubmitAIFeedback), new { id = feedbackId }, feedback);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error submitting AI feedback for result {ResultId}", dto.ResultId);
+            return StatusCode(500, new { message = "Không thể submit AI feedback" });
+        }
+    }
+
+    #endregion
+
     #region Private Methods
 
     private string? GetCurrentDoctorId()

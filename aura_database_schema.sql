@@ -922,5 +922,36 @@ VALUES (
 ON CONFLICT (Email) DO NOTHING;
 
 -- =====================================================
+-- SEED DATA: SERVICE PACKAGES
+-- =====================================================
+
+-- Insert sample service packages for testing and development
+INSERT INTO service_packages (Id, PackageName, PackageType, Description, NumberOfAnalyses, Price, Currency, ValidityDays, IsActive, CreatedDate, IsDeleted)
+VALUES 
+    -- Individual Packages
+    ('pkg-individual-basic', 'Gói Cơ Bản', 'Individual', 'Gói phân tích cơ bản cho cá nhân - 10 lần phân tích', 10, 500000, 'VND', 30, true, CURRENT_DATE, false),
+    ('pkg-individual-standard', 'Gói Tiêu Chuẩn', 'Individual', 'Gói phân tích tiêu chuẩn cho cá nhân - 25 lần phân tích', 25, 1000000, 'VND', 60, true, CURRENT_DATE, false),
+    ('pkg-individual-premium', 'Gói Cao Cấp', 'Individual', 'Gói phân tích cao cấp cho cá nhân - 50 lần phân tích', 50, 1800000, 'VND', 90, true, CURRENT_DATE, false),
+    
+    -- Clinic Packages
+    ('pkg-clinic-starter', 'Gói Khởi Động Phòng Khám', 'Clinic', 'Gói cho phòng khám mới - 100 lần phân tích', 100, 8000000, 'VND', 90, true, CURRENT_DATE, false),
+    ('pkg-clinic-professional', 'Gói Chuyên Nghiệp', 'Clinic', 'Gói chuyên nghiệp cho phòng khám - 250 lần phân tích', 250, 18000000, 'VND', 180, true, CURRENT_DATE, false),
+    ('pkg-clinic-enterprise', 'Gói Doanh Nghiệp', 'Clinic', 'Gói doanh nghiệp cho phòng khám lớn - 500 lần phân tích', 500, 32000000, 'VND', 365, true, CURRENT_DATE, false),
+    
+    -- Enterprise Packages
+    ('pkg-enterprise-basic', 'Gói Doanh Nghiệp Cơ Bản', 'Enterprise', 'Gói cơ bản cho doanh nghiệp - 1000 lần phân tích', 1000, 60000000, 'VND', 365, true, CURRENT_DATE, false),
+    ('pkg-enterprise-advanced', 'Gói Doanh Nghiệp Nâng Cao', 'Enterprise', 'Gói nâng cao cho doanh nghiệp - 2500 lần phân tích', 2500, 99999999, 'VND', 365, true, CURRENT_DATE, false)
+ON CONFLICT (Id) DO UPDATE SET
+    PackageName = EXCLUDED.PackageName,
+    PackageType = EXCLUDED.PackageType,
+    Description = EXCLUDED.Description,
+    NumberOfAnalyses = EXCLUDED.NumberOfAnalyses,
+    Price = EXCLUDED.Price,
+    Currency = EXCLUDED.Currency,
+    ValidityDays = EXCLUDED.ValidityDays,
+    IsActive = EXCLUDED.IsActive,
+    UpdatedDate = CURRENT_DATE;
+
+-- =====================================================
 -- END OF SCHEMA
 -- =====================================================

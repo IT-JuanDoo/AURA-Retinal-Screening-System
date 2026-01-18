@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Mail;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -8,12 +10,37 @@ public class EmailService : IEmailService
     private readonly IConfiguration _configuration;
     private readonly ILogger<EmailService> _logger;
     private readonly string _frontendUrl;
+    private readonly string? _smtpHost;
+    private readonly int _smtpPort;
+    private readonly string? _smtpUsername;
+    private readonly string? _smtpPassword;
+    private readonly string _fromEmail;
+    private readonly string _fromName;
+    private readonly bool _enableSmtp;
 
     public EmailService(IConfiguration configuration, ILogger<EmailService> logger)
     {
         _configuration = configuration;
         _logger = logger;
         _frontendUrl = _configuration["App:FrontendUrl"] ?? "http://localhost:5173";
+        
+        // Email configuration
+        _smtpHost = _configuration["Email:SmtpHost"];
+        _smtpPort = int.TryParse(_configuration["Email:SmtpPort"], out var port) ? port : 587;
+        _smtpUsername = _configuration["Email:SmtpUsername"];
+        _smtpPassword = _configuration["Email:SmtpPassword"];
+        _fromEmail = _configuration["Email:FromEmail"] ?? "noreply@aura-health.com";
+        _fromName = _configuration["Email:FromName"] ?? "AURA Health System";
+        
+        // Enable SMTP only if credentials are provided
+        _enableSmtp = !string.IsNullOrWhiteSpace(_smtpHost) 
+                   && !string.IsNullOrWhiteSpace(_smtpUsername) 
+                   && !string.IsNullOrWhiteSpace(_smtpPassword);
+        
+        if (!_enableSmtp)
+        {
+            _logger.LogWarning("SMTP not configured. Email sending will be logged only. Configure Email:SmtpHost, Email:SmtpUsername, and Email:SmtpPassword to enable.");
+        }
     }
 
     public async Task<bool> SendVerificationEmailAsync(string email, string token, string? firstName = null)
@@ -21,16 +48,19 @@ public class EmailService : IEmailService
         try
         {
             var verificationUrl = $"{_frontendUrl}/verify-email?token={token}";
+            var subject = "Xác thực Email - AURA";
             var body = GenerateVerificationEmailBody(firstName, verificationUrl);
 
-            // TODO: Implement actual email sending using SMTP, SendGrid, etc.
-            // For now, log the verification URL for testing
-            _logger.LogInformation("Verification email for {Email}: {Url}", email, verificationUrl);
-            
-            // Simulate email sending
-            await Task.Delay(100);
-            
-            return true;
+            if (_enableSmtp)
+            {
+                return await SendEmailAsync(email, subject, body);
+            }
+            else
+            {
+                // Log only if SMTP not configured
+                _logger.LogInformation("Verification email for {Email}: {Url} (SMTP not configured)", email, verificationUrl);
+                return true;
+            }
         }
         catch (Exception ex)
         {
@@ -44,14 +74,18 @@ public class EmailService : IEmailService
         try
         {
             var resetUrl = $"{_frontendUrl}/reset-password?token={token}";
+            var subject = "Đặt lại Mật khẩu - AURA";
             var body = GeneratePasswordResetEmailBody(firstName, resetUrl);
 
-            // TODO: Implement actual email sending
-            _logger.LogInformation("Password reset email for {Email}: {Url}", email, resetUrl);
-            
-            await Task.Delay(100);
-            
-            return true;
+            if (_enableSmtp)
+            {
+                return await SendEmailAsync(email, subject, body);
+            }
+            else
+            {
+                _logger.LogInformation("Password reset email for {Email}: {Url} (SMTP not configured)", email, resetUrl);
+                return true;
+            }
         }
         catch (Exception ex)
         {
@@ -64,18 +98,68 @@ public class EmailService : IEmailService
     {
         try
         {
+            var subject = "Chào mừng đến với AURA!";
             var body = GenerateWelcomeEmailBody(firstName);
 
-            // TODO: Implement actual email sending
-            _logger.LogInformation("Welcome email sent to {Email}", email);
-            
-            await Task.Delay(100);
-            
-            return true;
+            if (_enableSmtp)
+            {
+                return await SendEmailAsync(email, subject, body);
+            }
+            else
+            {
+                _logger.LogInformation("Welcome email sent to {Email} (SMTP not configured)", email);
+                return true;
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send welcome email to {Email}", email);
+            return false;
+        }
+    }
+
+    private async Task<bool> SendEmailAsync(string toEmail, string subject, string htmlBody)
+    {
+        if (!_enableSmtp || string.IsNullOrWhiteSpace(_smtpHost) || string.IsNullOrWhiteSpace(_smtpUsername))
+        {
+            _logger.LogWarning("Cannot send email: SMTP not configured");
+            return false;
+        }
+
+        try
+        {
+            using var client = new SmtpClient(_smtpHost, _smtpPort)
+            {
+                EnableSsl = _smtpPort == 587 || _smtpPort == 465,
+                Credentials = new NetworkCredential(_smtpUsername, _smtpPassword),
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+                Timeout = 30000 // 30 seconds
+            };
+
+            using var message = new MailMessage
+            {
+                From = new MailAddress(_fromEmail, _fromName),
+                Subject = subject,
+                Body = htmlBody,
+                IsBodyHtml = true,
+                Priority = MailPriority.Normal
+            };
+
+            message.To.Add(toEmail);
+
+            await client.SendMailAsync(message);
+            
+            _logger.LogInformation("Email sent successfully to {Email}", toEmail);
+            return true;
+        }
+        catch (SmtpException ex)
+        {
+            _logger.LogError(ex, "SMTP error sending email to {Email}", toEmail);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending email to {Email}", toEmail);
             return false;
         }
     }
