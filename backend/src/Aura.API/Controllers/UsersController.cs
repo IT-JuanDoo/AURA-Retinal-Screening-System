@@ -151,10 +151,96 @@ public class UsersController : ControllerBase
         return deleted ? NoContent() : NotFound();
     }
 
-    // Avatar upload vẫn để TODO cho task khác
+    /// <summary>
+    /// Upload avatar cho user
+    /// </summary>
     [HttpPost("{id}/upload-avatar")]
-    public IActionResult UploadAvatar(string id, IFormFile file)
+    [Authorize]
+    [RequestSizeLimit(5 * 1024 * 1024)] // 5MB limit for avatar
+    public async Task<IActionResult> UploadAvatar(string id, IFormFile file, [FromServices] IConfiguration configuration)
     {
-        return Ok(new { message = $"Upload avatar for user {id} - Not implemented yet" });
+        // Verify user owns this resource
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId != id)
+        {
+            return Forbid();
+        }
+
+        // Validate file
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { message = "File is required" });
+        }
+
+        // Validate file type
+        var allowedTypes = new[] { "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp" };
+        if (!allowedTypes.Contains(file.ContentType.ToLower()))
+        {
+            return BadRequest(new { message = "Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed." });
+        }
+
+        try
+        {
+            // Upload to Cloudinary
+            var cloudName = configuration["Cloudinary:CloudName"];
+            var apiKey = configuration["Cloudinary:ApiKey"];
+            var apiSecret = configuration["Cloudinary:ApiSecret"];
+
+            string avatarUrl;
+
+            if (string.IsNullOrWhiteSpace(cloudName) || 
+                string.IsNullOrWhiteSpace(apiKey) || 
+                string.IsNullOrWhiteSpace(apiSecret))
+            {
+                // Return placeholder URL for development
+                avatarUrl = $"https://placeholder.aura-health.com/avatars/{id}/{file.FileName}";
+            }
+            else
+            {
+                var account = new CloudinaryDotNet.Account(cloudName, apiKey, apiSecret);
+                var cloudinary = new CloudinaryDotNet.Cloudinary(account);
+
+                await using var stream = file.OpenReadStream();
+                var uploadParams = new CloudinaryDotNet.Actions.ImageUploadParams
+                {
+                    File = new CloudinaryDotNet.FileDescription(file.FileName, stream),
+                    Folder = "aura/avatars",
+                    PublicId = $"avatar_{id}_{DateTime.UtcNow:yyyyMMddHHmmss}",
+                    Overwrite = true,
+                    Transformation = new CloudinaryDotNet.Transformation()
+                        .Width(200).Height(200).Crop("fill").Gravity("face")
+                };
+
+                var uploadResult = await cloudinary.UploadAsync(uploadParams);
+
+                if (uploadResult.StatusCode != System.Net.HttpStatusCode.OK)
+                {
+                    return BadRequest(new { message = "Failed to upload avatar" });
+                }
+
+                avatarUrl = uploadResult.SecureUrl.ToString();
+            }
+
+            // Update user profile with new avatar URL
+            var updated = await _userService.UpdateProfileAsync(id, new UpdateUserProfileDto
+            {
+                ProfileImageUrl = avatarUrl
+            });
+
+            if (updated == null)
+            {
+                return NotFound(new { message = "User not found" });
+            }
+
+            return Ok(new { 
+                success = true,
+                avatarUrl = avatarUrl,
+                message = "Avatar uploaded successfully"
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = $"Failed to upload avatar: {ex.Message}" });
+        }
     }
 }

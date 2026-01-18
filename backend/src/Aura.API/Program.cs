@@ -20,6 +20,7 @@ using Aura.API.Clinic;
 using Aura.API.Hangfire;
 using Aura.API.Hubs;
 using Aura.API.Swagger;
+using Aura.Infrastructure.Services.Payment;
 using Hangfire;
 using Hangfire.PostgreSql;
 
@@ -230,7 +231,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddSingleton<IUserService, UserService>();
+builder.Services.AddScoped<IUserService, UserService>();
 
 // FR-2: Image Services
 builder.Services.AddScoped<Aura.Application.Services.Images.IImageService, Aura.Application.Services.Images.ImageService>();
@@ -260,13 +261,22 @@ builder.Services.AddScoped<Aura.API.Services.AnalysisServiceClient>();
 // FR-24: Analysis Queue Service for batch processing (NFR-2: ≥100 images per batch)
 builder.Services.AddScoped<Aura.Application.Services.Analysis.IAnalysisQueueService, Aura.Application.Services.Analysis.AnalysisQueueService>();
 
-// Notifications (in-memory for now)
-builder.Services.AddSingleton<Aura.Application.Services.Notifications.INotificationService, Aura.Infrastructure.Services.Notifications.NotificationService>();
+// Notifications (PostgreSQL backed with real-time streaming)
+builder.Services.AddScoped<Aura.Application.Services.Notifications.INotificationService, Aura.Infrastructure.Services.Notifications.NotificationService>();
 
 // =============================================================================
 // INFRASTRUCTURE: RabbitMQ Message Queue Service
 // =============================================================================
 builder.Services.AddSingleton<Aura.Infrastructure.Services.RabbitMQ.IRabbitMQService, Aura.Infrastructure.Services.RabbitMQ.RabbitMQService>();
+
+// =============================================================================
+// INFRASTRUCTURE: Firebase Cloud Messaging (Push Notifications)
+// =============================================================================
+builder.Services.AddSingleton<Aura.Infrastructure.Services.Firebase.IFirebaseMessagingService, Aura.Infrastructure.Services.Firebase.FirebaseMessagingService>();
+
+// INFRASTRUCTURE: Payment Gateway Services
+// =============================================================================
+builder.Services.AddScoped<IPaymentGatewayService, VNPayService>();
 
 // FR-10: Messaging Services
 builder.Services.AddScoped<IMessageService, MessageService>();

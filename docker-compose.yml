@@ -144,6 +144,15 @@ services:
 
       # Hangfire Background Jobs
       - Hangfire__EnableDashboard=true
+
+      # Firebase Cloud Messaging (Push Notifications) - FCM V1 API
+      # Download Service Account JSON from: Firebase Console > Project Settings > Service Accounts
+      - Firebase__ProjectId=${FIREBASE_PROJECT_ID:-aura-retinal-screening}
+      - Firebase__SenderId=${FIREBASE_SENDER_ID:-422595241352}
+      - Firebase__ServiceAccountPath=/app/firebase/service-account.json
+    volumes:
+      # Firebase Service Account (optional - for FCM push notifications)
+      - ./firebase-service-account.json:/app/firebase/service-account.json:ro
     ports:
       - "${BACKEND_PORT:-5000}:5000"
     networks:
@@ -577,6 +586,38 @@ services:
     depends_on:
       - prometheus
 
+  # ===========================================================================
+  # Infrastructure - Apache NiFi (Data Flow Management)
+  # ===========================================================================
+  nifi:
+    image: apache/nifi:latest
+    container_name: aura-nifi
+    restart: unless-stopped
+    environment:
+      # NiFi 2.x runs on HTTPS by default
+      - SINGLE_USER_CREDENTIALS_USERNAME=${NIFI_USER:-admin}
+      - SINGLE_USER_CREDENTIALS_PASSWORD=${NIFI_PASSWORD:-aura_nifi_2024}
+    ports:
+      # NiFi uses HTTPS on port 8443 internally
+      - "${NIFI_PORT:-8443}:8443"
+    volumes:
+      - nifi_data:/opt/nifi/nifi-current/conf
+      - nifi_content:/opt/nifi/nifi-current/content_repository
+      - nifi_database:/opt/nifi/nifi-current/database_repository
+      - nifi_flowfile:/opt/nifi/nifi-current/flowfile_repository
+      - nifi_provenance:/opt/nifi/nifi-current/provenance_repository
+      - nifi_state:/opt/nifi/nifi-current/state
+      - nifi_logs:/opt/nifi/nifi-current/logs
+    networks:
+      - aura-network
+    healthcheck:
+      # NiFi binds to container hostname, check if process is running
+      test: ["CMD-SHELL", "pgrep -f 'nifi' > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
 # =============================================================================
 # Networks
 # =============================================================================
@@ -603,3 +644,17 @@ volumes:
     name: aura-prometheus-data
   grafana_data:
     name: aura-grafana-data
+  nifi_data:
+    name: aura-nifi-data
+  nifi_content:
+    name: aura-nifi-content
+  nifi_database:
+    name: aura-nifi-database
+  nifi_flowfile:
+    name: aura-nifi-flowfile
+  nifi_provenance:
+    name: aura-nifi-provenance
+  nifi_state:
+    name: aura-nifi-state
+  nifi_logs:
+    name: aura-nifi-logs

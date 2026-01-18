@@ -70,7 +70,7 @@ public class RiskAlertWorker
                         WHERE n.UserId = ar.UserId
                             AND n.NotificationType = 'HighRiskAlert'
                             AND n.RelatedEntityId = ar.Id
-                            AND n.CreatedAt >= CURRENT_TIMESTAMP - INTERVAL '24 hours'
+                            AND n.CreatedDate >= CURRENT_DATE - INTERVAL '1 day'
                             AND COALESCE(n.IsDeleted, false) = false
                     )";
 
@@ -203,11 +203,11 @@ public class RiskAlertWorker
 
         var sql = @"
             INSERT INTO notifications
-            (Id, UserId, NotificationType, Title, Message, RelatedEntityId, RelatedEntityType,
-             IsRead, CreatedAt, CreatedDate, IsDeleted)
+            (Id, UserId, NotificationType, Title, Description, RelatedEntityId, RelatedEntityType,
+             IsRead, CreatedDate, IsDeleted)
             VALUES
-            (@Id, @UserId, @NotificationType, @Title, @Message, @RelatedEntityId, @RelatedEntityType,
-             false, @CreatedAt, @CreatedDate, false)";
+            (@Id, @UserId, @NotificationType, @Title, @Description, @RelatedEntityId, @RelatedEntityType,
+             false, @CreatedDate, false)";
 
         using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("Id", notificationId);
@@ -259,21 +259,20 @@ public class RiskAlertWorker
 
             var sql = @"
                 INSERT INTO notifications
-                (Id, UserId, NotificationType, Title, Message, RelatedEntityId, RelatedEntityType,
-                 IsRead, CreatedAt, CreatedDate, IsDeleted)
+                (Id, UserId, NotificationType, Title, Description, RelatedEntityId, RelatedEntityType,
+                 IsRead, CreatedDate, IsDeleted)
                 VALUES
-                (@Id, @UserId, @NotificationType, @Title, @Message, @RelatedEntityId, @RelatedEntityType,
-                 false, @CreatedAt, @CreatedDate, false)";
+                (@Id, @UserId, @NotificationType, @Title, @Description, @RelatedEntityId, @RelatedEntityType,
+                 false, @CreatedDate, false)";
 
             using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("Id", notificationId);
             command.Parameters.AddWithValue("UserId", clinicUserId);
             command.Parameters.AddWithValue("NotificationType", "HighRiskAlert");
             command.Parameters.AddWithValue("Title", title);
-            command.Parameters.AddWithValue("Message", message);
+            command.Parameters.AddWithValue("Description", message);
             command.Parameters.AddWithValue("RelatedEntityId", analysisId);
             command.Parameters.AddWithValue("RelatedEntityType", "AnalysisResult");
-            command.Parameters.AddWithValue("CreatedAt", DateTime.UtcNow);
             command.Parameters.AddWithValue("CreatedDate", DateTime.UtcNow.Date);
 
             await command.ExecuteNonQueryAsync();
@@ -316,21 +315,20 @@ public class RiskAlertWorker
 
             var sql = @"
                 INSERT INTO notifications
-                (Id, UserId, NotificationType, Title, Message, RelatedEntityId, RelatedEntityType,
-                 IsRead, CreatedAt, CreatedDate, IsDeleted)
+                (Id, UserId, NotificationType, Title, Description, RelatedEntityId, RelatedEntityType,
+                 IsRead, CreatedDate, IsDeleted)
                 VALUES
-                (@Id, @UserId, @NotificationType, @Title, @Message, @RelatedEntityId, @RelatedEntityType,
-                 false, @CreatedAt, @CreatedDate, false)";
+                (@Id, @UserId, @NotificationType, @Title, @Description, @RelatedEntityId, @RelatedEntityType,
+                 false, @CreatedDate, false)";
 
             using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("Id", notificationId);
             command.Parameters.AddWithValue("UserId", doctorId);
             command.Parameters.AddWithValue("NotificationType", "HighRiskAlert");
             command.Parameters.AddWithValue("Title", title);
-            command.Parameters.AddWithValue("Message", message);
+            command.Parameters.AddWithValue("Description", message);
             command.Parameters.AddWithValue("RelatedEntityId", analysisId);
             command.Parameters.AddWithValue("RelatedEntityType", "AnalysisResult");
-            command.Parameters.AddWithValue("CreatedAt", DateTime.UtcNow);
             command.Parameters.AddWithValue("CreatedDate", DateTime.UtcNow.Date);
 
             await command.ExecuteNonQueryAsync();
@@ -352,11 +350,11 @@ public class RiskAlertWorker
 
         var sql = @"
             INSERT INTO notifications
-            (Id, UserId, NotificationType, Title, Message, RelatedEntityId, RelatedEntityType,
-             IsRead, CreatedAt, CreatedDate, IsDeleted)
+            (Id, UserId, NotificationType, Title, Description, RelatedEntityId, RelatedEntityType,
+             IsRead, CreatedDate, IsDeleted)
             VALUES
-            (@Id, @UserId, @NotificationType, @Title, @Message, @RelatedEntityId, @RelatedEntityType,
-             false, @CreatedAt, @CreatedDate, false)";
+            (@Id, @UserId, @NotificationType, @Title, @Description, @RelatedEntityId, @RelatedEntityType,
+             false, @CreatedDate, false)";
 
         using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("Id", notificationId);

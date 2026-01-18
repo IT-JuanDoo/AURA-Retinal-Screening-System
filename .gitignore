@@ -45,7 +45,9 @@ docker-compose.override.yml
 *.key
 *.pem
 
+# Firebase Service Account (contains sensitive credentials)
+firebase-service-account.json
+*-firebase-adminsdk-*.json
+
 # Test scripts output
 *.log
-test-results/
-

@@ -23,7 +23,23 @@ docker-compose up -d
 # 3. Đợi services khởi động (khoảng 2-3 phút)
 # Kiểm tra logs:
 docker-compose logs -f backend
+
+# Khi thấy "Now listening on: http://[::]:5000" → Backend đã sẵn sàng!
 ```
+
+### Test nhanh
+
+Sau khi services đã khởi động, bạn có thể test qua:
+
+- **Swagger UI**: http://localhost:5000/swagger
+  - Đăng nhập để lấy token
+  - Test các endpoints trực tiếp trong Swagger
+
+- **Health Check**: http://localhost:5000/health
+  - Kiểm tra backend và database đã sẵn sàng
+
+- **Hangfire Dashboard**: http://localhost:5000/hangfire
+  - Xem background jobs đang chạy
 
 ### Truy cập ứng dụng
 
@@ -101,29 +117,32 @@ cp docker.env.example .env.docker
 
 ## 🧪 Testing
 
-### Tạo tài khoản test tự động
+### Test qua Swagger UI
 
-```powershell
-# Windows PowerShell
-powershell -ExecutionPolicy Bypass -File create-test-account.ps1
-```
-
-Script sẽ tự động:
-- Tạo user `test@aura.com` với password `Test123!@#`
-- Đăng nhập và lưu token vào file (nếu cần)
+1. Truy cập: http://localhost:5000/swagger
+2. Đăng nhập qua endpoint `POST /api/auth/login`:
+   ```json
+   {
+     "email": "test@aura.com",
+     "password": "Test123!@#"
+   }
+   ```
+3. Copy `AccessToken` từ response
+4. Click "Authorize" ở đầu trang và nhập: `Bearer <your-token>`
+5. Test các endpoints trực tiếp trong Swagger
 
 ### Test Infrastructure
 
-```powershell
-# Test Redis Cache, RabbitMQ, Hangfire
-powershell -ExecutionPolicy Bypass -File test-infrastructure.ps1 -Email "test@aura.com" -Password "Test123!@#"
-```
+- **RabbitMQ Management**: http://localhost:15672
+  - Username: `aura_user`
+  - Password: `aura_rabbitmq_2024`
+  - Xem queues và messages
 
-### Test API với Swagger
+- **Hangfire Dashboard**: http://localhost:5000/hangfire
+  - Xem background jobs và recurring jobs
+  - Monitor job execution
 
-1. Truy cập: http://localhost:5000/swagger
-2. Click **Authorize** → Nhập JWT token
-3. Test các endpoints
+- **Redis**: Có thể test qua API endpoints (cache sẽ tự động hoạt động)
 
 ---
 
@@ -363,6 +382,15 @@ Kiểm tra `App__FrontendUrl` trong `docker-compose.yml` và CORS settings trong
 3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to branch (`git push origin feature/AmazingFeature`)
 5. Tạo Pull Request
+
+---
+
+## 📚 Documentation
+
+- **[Infrastructure Value](./INFRASTRUCTURE_VALUE.md)** - Giải thích giá trị của Redis, RabbitMQ, Hangfire
+- **[TODO](./TODO.md)** - Danh sách công việc cần hoàn thành
+
+**Lưu ý**: Các file test scripts và hướng dẫn test chi tiết chỉ dùng local, không commit lên Git.
 
 ---
 

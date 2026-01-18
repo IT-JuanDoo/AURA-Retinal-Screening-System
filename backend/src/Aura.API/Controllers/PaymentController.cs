@@ -1,4 +1,5 @@
 using Aura.Application.DTOs.Payments;
+using Aura.Infrastructure.Services.Payment;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -19,13 +20,16 @@ public class PaymentController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly ILogger<PaymentController> _logger;
     private readonly string _connectionString;
+    private readonly IPaymentGatewayService _paymentGateway;
 
     public PaymentController(
         IConfiguration configuration,
-        ILogger<PaymentController> logger)
+        ILogger<PaymentController> logger,
+        IPaymentGatewayService paymentGateway)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _paymentGateway = paymentGateway ?? throw new ArgumentNullException(nameof(paymentGateway));
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("Database connection string not configured");
     }
@@ -245,11 +249,53 @@ public class PaymentController : ControllerBase
             _logger.LogInformation("Payment created: {PaymentId} for package {PackageId} by user {UserId}", 
                 paymentId, dto.PackageId, userId);
 
-            // TODO: Integrate with payment gateway (Stripe, VNPay, etc.)
-            // For now, return payment record with Pending status
-            // In production, redirect to payment gateway or return payment URL
+            // Generate payment URL from payment gateway
+            try
+            {
+                var frontendUrl = _configuration["App:FrontendUrl"] ?? "http://localhost:3000";
+                var returnUrl = $"{frontendUrl}/payment/callback?transaction_id={transactionId}";
+                var orderDescription = $"Mua gói {packageName} - {packageType}";
 
-            return CreatedAtAction(nameof(GetPaymentHistory), new { id = paymentId }, payment);
+                var paymentUrl = await _paymentGateway.CreatePaymentUrlAsync(
+                    transactionId: transactionId,
+                    amount: price,
+                    currency: currency,
+                    orderDescription: orderDescription,
+                    returnUrl: returnUrl,
+                    userId: userId,
+                    additionalData: new Dictionary<string, string>
+                    {
+                        { "package_id", dto.PackageId },
+                        { "package_name", packageName }
+                    }
+                );
+
+                // Update payment record with payment URL
+                var updateUrlSql = @"
+                    UPDATE payment_history
+                    SET Notes = @PaymentUrl
+                    WHERE Id = @PaymentId";
+
+                using var updateUrlCmd = new NpgsqlCommand(updateUrlSql, connection);
+                updateUrlCmd.Parameters.AddWithValue("PaymentId", paymentId);
+                updateUrlCmd.Parameters.AddWithValue("PaymentUrl", paymentUrl);
+                await updateUrlCmd.ExecuteNonQueryAsync();
+
+                _logger.LogInformation("Payment URL generated for transaction: {TransactionId}", transactionId);
+
+                return CreatedAtAction(nameof(GetPaymentHistory), new { id = paymentId }, new
+                {
+                    payment,
+                    paymentUrl,
+                    gateway = _paymentGateway.GatewayName
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating payment URL for transaction: {TransactionId}", transactionId);
+                // Still return payment record even if URL generation fails
+                return CreatedAtAction(nameof(GetPaymentHistory), new { id = paymentId }, payment);
+            }
         }
         catch (Exception ex)
         {
@@ -455,26 +501,31 @@ public class PaymentController : ControllerBase
     }
 
     /// <summary>
-    /// Verify payment (webhook callback from payment gateway)
+    /// VNPay callback endpoint (webhook from payment gateway)
     /// </summary>
-    [HttpPost("verify")]
+    [HttpPost("vnpay-callback")]
+    [AllowAnonymous] // Payment gateway callbacks don't require authentication
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> VerifyPayment([FromBody] Dictionary<string, object> paymentData)
+    public async Task<IActionResult> VNPayCallback([FromForm] Dictionary<string, string> callbackData)
     {
-        // TODO: Implement payment gateway webhook verification
-        // This should verify the payment with the payment provider (Stripe, VNPay, etc.)
-        // and update payment status + create user_package if payment is successful
-
         try
         {
-            var transactionId = paymentData.ContainsKey("transaction_id") 
-                ? paymentData["transaction_id"]?.ToString() 
-                : null;
+            _logger.LogInformation("VNPay callback received with {Count} parameters", callbackData.Count);
 
+            // Verify payment with payment gateway
+            var verificationResult = await _paymentGateway.VerifyPaymentAsync(callbackData);
+
+            if (!verificationResult.IsValid)
+            {
+                _logger.LogWarning("VNPay callback verification failed: {Message}", verificationResult.Message);
+                return BadRequest(new { message = "Invalid payment callback", details = verificationResult.Message });
+            }
+
+            var transactionId = verificationResult.TransactionId;
             if (string.IsNullOrEmpty(transactionId))
             {
-                return BadRequest(new { message = "Transaction ID is required" });
+                return BadRequest(new { message = "Transaction ID not found in callback" });
             }
 
             using var connection = new NpgsqlConnection(_connectionString);
@@ -492,6 +543,7 @@ public class PaymentController : ControllerBase
             using var reader = await command.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
             {
+                _logger.LogWarning("Payment not found for transaction: {TransactionId}", transactionId);
                 return NotFound(new { message = "Payment not found" });
             }
 
@@ -501,9 +553,10 @@ public class PaymentController : ControllerBase
             var packageId = reader.GetString(3);
             var currentStatus = reader.GetString(4);
 
-            // TODO: Verify payment status with payment gateway
-            // For now, assume payment is completed if webhook is called
-            var paymentStatus = "Completed";
+            reader.Close();
+
+            // Determine payment status from verification result
+            var paymentStatus = verificationResult.IsSuccess ? "Completed" : "Failed";
 
             if (currentStatus == "Completed")
             {

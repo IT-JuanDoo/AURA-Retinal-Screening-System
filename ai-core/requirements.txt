@@ -14,11 +14,14 @@ Pillow==10.1.0
 opencv-python==4.8.1.78
 numpy==1.24.3
 
-# Machine Learning (uncomment when ready to use)
-# torch==2.1.0
-# torchvision==0.16.0
-# tensorflow==2.15.0
-# scikit-learn==1.3.2
+# Machine Learning - PyTorch & timm for Hugging Face models
+torch>=2.0.0
+torchvision>=0.15.0
+timm>=0.9.0  # For Hugging Face model loading
+huggingface-hub>=0.19.0  # For downloading models from HF
+
+# Optional: TensorFlow (for alternative models)
+# tensorflow>=2.15.0
 
 # Data Processing
 pandas==2.1.3
