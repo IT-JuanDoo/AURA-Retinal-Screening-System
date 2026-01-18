@@ -141,6 +141,9 @@ services:
       - RabbitMQ__Password=aura_rabbitmq_2024
       - RabbitMQ__Port=5672
       - RabbitMQ__VirtualHost=/
+
+      # Hangfire Background Jobs
+      - Hangfire__EnableDashboard=true
     ports:
       - "${BACKEND_PORT:-5000}:5000"
     networks:

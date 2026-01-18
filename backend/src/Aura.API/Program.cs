@@ -10,12 +10,18 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Npgsql;
 using Aura.API.Clinic;
+using Aura.API.Hangfire;
 using Aura.API.Hubs;
 using Aura.API.Swagger;
+using Hangfire;
+using Hangfire.PostgreSql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,6 +33,49 @@ builder.WebHost.ConfigureKestrel(options =>
 
 // Add SignalR for real-time messaging (FR-10)
 builder.Services.AddSignalR();
+
+// =============================================================================
+// INFRASTRUCTURE: Redis Cache (Distributed Cache)
+// =============================================================================
+var redisConnectionString = builder.Configuration["Redis:ConnectionString"] ?? "redis:6379";
+if (!string.IsNullOrWhiteSpace(redisConnectionString))
+{
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = redisConnectionString;
+        options.InstanceName = "AURA:";
+    });
+}
+
+// =============================================================================
+// INFRASTRUCTURE: Memory Cache (In-Memory Cache)
+// =============================================================================
+builder.Services.AddMemoryCache(options =>
+{
+    options.SizeLimit = 1024; // Limit number of entries
+});
+
+// =============================================================================
+// INFRASTRUCTURE: Hangfire Background Jobs (Worker Service)
+// =============================================================================
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (!string.IsNullOrWhiteSpace(connectionString))
+{
+    builder.Services.AddHangfire(config =>
+    {
+        config.UsePostgreSqlStorage(connectionString, new PostgreSqlStorageOptions
+        {
+            SchemaName = "hangfire"
+        });
+        config.UseSimpleAssemblyNameTypeSerializer();
+        config.UseRecommendedSerializerSettings();
+    });
+    builder.Services.AddHangfireServer(options =>
+    {
+        options.WorkerCount = Environment.ProcessorCount * 2;
+        options.ServerName = "AURA-Worker";
+    });
+}
 
 // Add services to the container
 builder.Services.AddControllers(options =>
@@ -214,6 +263,11 @@ builder.Services.AddScoped<Aura.Application.Services.Analysis.IAnalysisQueueServ
 // Notifications (in-memory for now)
 builder.Services.AddSingleton<Aura.Application.Services.Notifications.INotificationService, Aura.Infrastructure.Services.Notifications.NotificationService>();
 
+// =============================================================================
+// INFRASTRUCTURE: RabbitMQ Message Queue Service
+// =============================================================================
+builder.Services.AddSingleton<Aura.Infrastructure.Services.RabbitMQ.IRabbitMQService, Aura.Infrastructure.Services.RabbitMQ.RabbitMQService>();
+
 // FR-10: Messaging Services
 builder.Services.AddScoped<IMessageService, MessageService>();
 
@@ -241,6 +295,9 @@ builder.Services.AddScoped<Aura.API.Admin.NotificationTemplateRepository>();
 // FR-22: Clinic Management
 builder.Services.AddScoped<ClinicDb>();
 builder.Services.AddScoped<ClinicRepository>();
+
+// Register background worker service
+builder.Services.AddScoped<Aura.API.Services.BackgroundJobs.AnalysisQueueWorker>();
 
 // TODO: Add database context when ready
 // builder.Services.AddDbContext<AuraDbContext>(options =>
@@ -302,6 +359,49 @@ app.MapControllers();
 
 // Map SignalR Hub for real-time messaging (FR-10)
 app.MapHub<ChatHub>("/hubs/chat");
+
+// =============================================================================
+// INFRASTRUCTURE: Hangfire Dashboard (Background Jobs UI)
+// =============================================================================
+// Only enable in Development or if explicitly configured
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Hangfire:EnableDashboard"))
+{
+    app.UseHangfireDashboard("/hangfire", new DashboardOptions
+    {
+        Authorization = new[] { new HangfireAuthorizationFilter() },
+        DashboardTitle = "AURA Background Jobs",
+        StatsPollingInterval = 2000
+    });
+}
+
+// =============================================================================
+// INFRASTRUCTURE: Register Recurring Background Jobs (Worker Service)
+// =============================================================================
+using (var scope = app.Services.CreateScope())
+{
+    var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+    
+    // Process analysis queue every 5 minutes
+    recurringJobManager.AddOrUpdate(
+        "process-analysis-queue",
+        () => scope.ServiceProvider.GetRequiredService<Aura.API.Services.BackgroundJobs.AnalysisQueueWorker>()
+            .ProcessAnalysisQueueAsync(),
+        "*/5 * * * *"); // Every 5 minutes
+
+    // Cleanup expired exports daily at 2:00 AM
+    recurringJobManager.AddOrUpdate(
+        "cleanup-expired-exports",
+        () => scope.ServiceProvider.GetRequiredService<Aura.API.Services.BackgroundJobs.AnalysisQueueWorker>()
+            .CleanupExpiredExportsAsync(),
+        "0 2 * * *"); // Daily at 2:00 AM
+
+    // Process email queue every 10 minutes
+    recurringJobManager.AddOrUpdate(
+        "process-email-queue",
+        () => scope.ServiceProvider.GetRequiredService<Aura.API.Services.BackgroundJobs.AnalysisQueueWorker>()
+            .ProcessEmailQueueAsync(),
+        "*/10 * * * *"); // Every 10 minutes
+}
 
 // Health check endpoint with database connection test
 app.MapGet("/health", async (IConfiguration config) =>

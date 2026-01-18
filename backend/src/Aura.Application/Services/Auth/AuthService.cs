@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Aura.Application.DTOs.Auth;
 using Aura.Core.Entities;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -14,6 +16,7 @@ public class AuthService : IAuthService
     private readonly IEmailService _emailService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthService> _logger;
+    private readonly IDistributedCache? _distributedCache;
     
     // TODO: Inject actual repositories when database is set up
     // private readonly IUserRepository _userRepository;
@@ -31,12 +34,14 @@ public class AuthService : IAuthService
         IJwtService jwtService,
         IEmailService emailService,
         IConfiguration configuration,
-        ILogger<AuthService> logger)
+        ILogger<AuthService> logger,
+        IDistributedCache? distributedCache = null)
     {
         _jwtService = jwtService;
         _emailService = emailService;
         _configuration = configuration;
         _logger = logger;
+        _distributedCache = distributedCache;
     }
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterDto registerDto)
@@ -477,6 +482,18 @@ public class AuthService : IAuthService
     {
         try
         {
+            // =====================================================================
+            // REDIS CACHE: Check cache first to reduce database queries
+            // =====================================================================
+            string cacheKey = $"user:{userId}";
+            var cachedUser = await GetCachedUserAsync(cacheKey);
+            if (cachedUser != null)
+            {
+                _logger.LogDebug("User {UserId} retrieved from cache", userId);
+                return cachedUser;
+            }
+
+            // Cache miss - query database
             using var conn = OpenConnection();
             
             var getUserQuery = @"
@@ -503,7 +520,13 @@ public class AuthService : IAuthService
                 return null;
             }
             
-            return MapToUserInfo(user);
+            var userInfo = MapToUserInfo(user);
+            
+            // Cache user for 5 minutes to reduce DB load
+            await SetCachedUserAsync(cacheKey, userInfo, TimeSpan.FromMinutes(5));
+            _logger.LogDebug("User {UserId} cached for 5 minutes", userId);
+            
+            return userInfo;
         }
         catch (Exception ex)
         {
@@ -651,7 +674,12 @@ public class AuthService : IAuthService
             }
             
             _logger.LogInformation("Profile updated for user: {UserId}", userId);
-            return MapToUserInfo(user);
+            var updatedUserInfo = MapToUserInfo(user);
+            
+            // Invalidate cache after update to ensure fresh data
+            await InvalidateUserCacheAsync(userId);
+            
+            return updatedUserInfo;
         }
         catch (Exception ex)
         {
@@ -1064,6 +1092,67 @@ public class AuthService : IAuthService
         var conn = new NpgsqlConnection(cs);
         conn.Open();
         return conn;
+    }
+
+    // =====================================================================
+    // REDIS CACHE: Helper methods for user caching
+    // =====================================================================
+    private async Task<UserInfoDto?> GetCachedUserAsync(string cacheKey)
+    {
+        if (_distributedCache == null) return null;
+
+        try
+        {
+            var cachedBytes = await _distributedCache.GetAsync(cacheKey);
+            if (cachedBytes == null || cachedBytes.Length == 0)
+                return null;
+
+            var json = Encoding.UTF8.GetString(cachedBytes);
+            return JsonSerializer.Deserialize<UserInfoDto>(json);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error reading from cache for key {CacheKey}", cacheKey);
+            return null;
+        }
+    }
+
+    private async Task SetCachedUserAsync(string cacheKey, UserInfoDto userInfo, TimeSpan expiration)
+    {
+        if (_distributedCache == null) return;
+
+        try
+        {
+            var json = JsonSerializer.Serialize(userInfo);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            
+            var options = new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = expiration
+            };
+            
+            await _distributedCache.SetAsync(cacheKey, bytes, options);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error writing to cache for key {CacheKey}", cacheKey);
+            // Don't throw - caching is best effort
+        }
+    }
+
+    private async Task InvalidateUserCacheAsync(string userId)
+    {
+        if (_distributedCache == null) return;
+
+        try
+        {
+            string cacheKey = $"user:{userId}";
+            await _distributedCache.RemoveAsync(cacheKey);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error invalidating cache for user {UserId}", userId);
+        }
     }
 
     private User MapUserFromReader(NpgsqlDataReader reader)
