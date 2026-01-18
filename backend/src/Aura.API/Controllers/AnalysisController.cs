@@ -370,11 +370,64 @@ public class AnalysisController : ControllerBase
     }
 
     /// <summary>
-    /// Đánh dấu đã download báo cáo (tăng download count)
+    /// Download file export (proxy từ Cloudinary để tránh authentication issues)
+    /// </summary>
+    /// <param name="exportId">ID của báo cáo</param>
+    /// <returns>File download</returns>
+    [HttpGet("exports/{exportId}/download")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> DownloadExportFile(string exportId)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null) return Unauthorized(new { message = "Chưa xác thực người dùng" });
+
+        try
+        {
+            // Get export details
+            var export = await _exportService.GetExportByIdAsync(exportId, userId);
+            if (export == null)
+            {
+                return NotFound(new { message = "Không tìm thấy báo cáo" });
+            }
+
+            // Download file from Cloudinary
+            var fileBytes = await _exportService.DownloadExportFileAsync(exportId, userId);
+            if (fileBytes == null || fileBytes.Length == 0)
+            {
+                return NotFound(new { message = "Không tìm thấy file" });
+            }
+
+            // Determine content type
+            var contentType = export.ReportType.ToUpper() switch
+            {
+                "PDF" => "application/pdf",
+                "CSV" => "text/csv",
+                "JSON" => "application/json",
+                _ => "application/octet-stream"
+            };
+
+            // Track download
+            await _exportService.IncrementDownloadCountAsync(exportId, userId);
+
+            // Return file
+            var fileName = $"analysis-report-{exportId}.{export.ReportType.ToLower()}";
+            return File(fileBytes, contentType, fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error downloading export file {ExportId}", exportId);
+            return StatusCode(500, new { message = "Không thể tải file" });
+        }
+    }
+
+    /// <summary>
+    /// Đánh dấu đã download báo cáo (tăng download count) - DEPRECATED, dùng GET /exports/{exportId}/download thay thế
     /// </summary>
     /// <param name="exportId">ID của báo cáo</param>
     /// <returns>Kết quả</returns>
-    [HttpPost("exports/{exportId}/download")]
+    [HttpPost("exports/{exportId}/track-download")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

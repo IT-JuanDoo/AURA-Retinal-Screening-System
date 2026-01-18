@@ -115,5 +115,13 @@ public interface IExportService
     /// <returns>Số báo cáo đã xóa</returns>
     Task<int> CleanupExpiredExportsAsync();
     
+    /// <summary>
+    /// Download file export từ Cloudinary (proxy để tránh authentication issues)
+    /// </summary>
+    /// <param name="exportId">ID của báo cáo</param>
+    /// <param name="userId">ID của người dùng</param>
+    /// <returns>File bytes hoặc null nếu không tìm thấy</returns>
+    Task<byte[]?> DownloadExportFileAsync(string exportId, string userId);
+    
     #endregion
 }

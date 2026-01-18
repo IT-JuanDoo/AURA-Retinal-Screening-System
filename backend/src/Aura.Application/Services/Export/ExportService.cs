@@ -481,6 +481,44 @@ public class ExportService : IExportService
         }
     }
 
+    public async Task<byte[]?> DownloadExportFileAsync(string exportId, string userId)
+    {
+        try
+        {
+            // Get export details
+            var export = await GetExportByIdAsync(exportId, userId);
+            if (export == null || string.IsNullOrEmpty(export.FileUrl))
+            {
+                _logger?.LogWarning("Export not found or file URL is empty: {ExportId}", exportId);
+                return null;
+            }
+
+            // Download file from Cloudinary URL
+            using var httpClient = new HttpClient();
+            httpClient.Timeout = TimeSpan.FromMinutes(5); // Allow time for large files
+
+            var response = await httpClient.GetAsync(export.FileUrl);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger?.LogError("Failed to download file from Cloudinary: {StatusCode}, {Url}", 
+                    response.StatusCode, export.FileUrl);
+                return null;
+            }
+
+            var fileBytes = await response.Content.ReadAsByteArrayAsync();
+            _logger?.LogInformation("Successfully downloaded export file: {ExportId}, Size: {Size} bytes", 
+                exportId, fileBytes.Length);
+            
+            return fileBytes;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error downloading export file: {ExportId}", exportId);
+            return null;
+        }
+    }
+
     #endregion
 
     #region Private Methods - Validation
