@@ -261,6 +261,12 @@ builder.Services.AddScoped<Aura.API.Services.AnalysisServiceClient>();
 // FR-24: Analysis Queue Service for batch processing (NFR-2: ≥100 images per batch)
 builder.Services.AddScoped<Aura.Application.Services.Analysis.IAnalysisQueueService, Aura.Application.Services.Analysis.AnalysisQueueService>();
 
+// FR-24: Bulk Upload Batch Services
+builder.Services.AddScoped<Aura.Application.Services.Images.IBulkUploadBatchService, Aura.Application.Services.Images.BulkUploadBatchService>();
+
+// FR-29: High-Risk Alert Service
+builder.Services.AddScoped<Aura.Application.Services.Alerts.IHighRiskAlertService, Aura.Application.Services.Alerts.HighRiskAlertService>();
+
 // Notifications (PostgreSQL backed with real-time streaming)
 builder.Services.AddScoped<Aura.Application.Services.Notifications.INotificationService, Aura.Infrastructure.Services.Notifications.NotificationService>();
 

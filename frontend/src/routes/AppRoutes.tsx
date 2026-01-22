@@ -17,6 +17,8 @@ import ImageUploadPage from "../pages/patient/ImageUploadPage";
 import AnalysisResultPage from "../pages/patient/AnalysisResultPage";
 import ChatPage from "../pages/patient/ChatPage";
 import ClinicBulkUploadPage from "../pages/clinic/ClinicBulkUploadPage";
+import ClinicAlertsPage from "../pages/clinic/ClinicAlertsPage";
+import PatientTrendPage from "../pages/clinic/PatientTrendPage";
 import { useAuthStore } from "../store/authStore";
 import { useAdminAuthStore } from "../store/adminAuthStore";
 
@@ -202,15 +204,31 @@ const AppRoutes = () => {
         }
       />
 
-      {/* Clinic routes */}
-      <Route
-        path="/clinic/bulk-upload"
-        element={
-          <ProtectedRoute>
-            <ClinicBulkUploadPage />
-          </ProtectedRoute>
-        }
-      />
+        {/* Clinic routes */}
+        <Route
+          path="/clinic/bulk-upload"
+          element={
+            <ProtectedRoute>
+              <ClinicBulkUploadPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/clinic/alerts"
+          element={
+            <ProtectedRoute>
+              <ClinicAlertsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/clinic/patient-trend/:patientUserId"
+          element={
+            <ProtectedRoute>
+              <PatientTrendPage />
+            </ProtectedRoute>
+          }
+        />
 
       {/* 404 - redirect to home */}
       <Route path="*" element={<Navigate to="/" replace />} />

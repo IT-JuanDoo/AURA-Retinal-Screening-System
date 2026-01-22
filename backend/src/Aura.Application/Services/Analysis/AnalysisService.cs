@@ -16,11 +16,13 @@ public class AnalysisService : IAnalysisService
     private readonly ILogger<AnalysisService>? _logger;
     private readonly string _connectionString;
     private readonly HttpClient _httpClient;
+    private readonly Aura.Application.Services.Alerts.IHighRiskAlertService? _alertService;
 
     public AnalysisService(
         IConfiguration configuration,
         HttpClient httpClient,
-        ILogger<AnalysisService>? logger = null)
+        ILogger<AnalysisService>? logger = null,
+        Aura.Application.Services.Alerts.IHighRiskAlertService? alertService = null)
     {
         _configuration = configuration;
         _logger = logger;
@@ -31,6 +33,8 @@ public class AnalysisService : IAnalysisService
         var timeoutValue = _configuration["AICore:Timeout"];
         _httpClient.Timeout = TimeSpan.FromMilliseconds(
             int.TryParse(timeoutValue, out var timeout) ? timeout : 30000);
+        
+        _alertService = alertService;
     }
 
     public async Task<AnalysisResponseDto> StartAnalysisAsync(string userId, string imageId)
@@ -461,6 +465,50 @@ public class AnalysisService : IAnalysisService
         command.Parameters.AddWithValue("UpdatedDate", DateTime.UtcNow.Date);
 
         await command.ExecuteNonQueryAsync();
+
+        // FR-29: Check and generate high-risk alert if needed
+        try
+        {
+            if (_alertService != null)
+            {
+                // Get userId and clinicId from analysis result
+                using var getInfoCommand = new Npgsql.NpgsqlCommand(
+                    "SELECT UserId FROM analysis_results WHERE Id = @Id", connection);
+                getInfoCommand.Parameters.AddWithValue("Id", analysisId);
+                
+                var userId = await getInfoCommand.ExecuteScalarAsync() as string;
+                
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    // Get clinicId from image
+                    using var getClinicCommand = new Npgsql.NpgsqlCommand(
+                        @"SELECT ri.ClinicId FROM retinal_images ri 
+                          INNER JOIN analysis_results ar ON ri.Id = ar.ImageId 
+                          WHERE ar.Id = @Id", connection);
+                    getClinicCommand.Parameters.AddWithValue("Id", analysisId);
+                    
+                    var clinicId = await getClinicCommand.ExecuteScalarAsync() as string;
+                    
+                    // Check and generate alert asynchronously (fire and forget)
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await _alertService.CheckAndGenerateAlertAsync(analysisId, userId, clinicId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogError(ex, "Error generating alert for analysis: {AnalysisId}", analysisId);
+                        }
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error checking for high-risk alert after analysis: {AnalysisId}", analysisId);
+            // Don't throw - alert generation failure shouldn't fail the analysis
+        }
     }
 
     public async Task<List<AnalysisResultDto>> GetUserAnalysisResultsAsync(string userId)
