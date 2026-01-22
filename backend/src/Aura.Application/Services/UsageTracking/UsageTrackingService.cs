@@ -43,8 +43,8 @@ public class UsageTrackingService : IUsageTrackingService
             // Get clinic name
             var clinicName = await GetClinicNameAsync(connection, clinicId);
 
-            var usageStats = await GetUsageStatisticsAsync(connection, clinicId: clinicId, start, end);
-            var imageAnalysisTracking = await GetImageAnalysisTrackingAsync(connection, clinicId: clinicId, start, end);
+            var usageStats = await GetUsageStatisticsAsync(connection, userId: null, clinicId: clinicId, startDate: start, endDate: end);
+            var imageAnalysisTracking = await GetImageAnalysisTrackingAsync(connection, userId: null, clinicId: clinicId, startDate: start, endDate: end);
 
             return new ClinicUsageStatisticsDto
             {
@@ -78,8 +78,8 @@ public class UsageTrackingService : IUsageTrackingService
             // Get user name
             var userName = await GetUserNameAsync(connection, userId);
 
-            var usageStats = await GetUsageStatisticsAsync(connection, userId: userId, start, end);
-            var imageAnalysisTracking = await GetImageAnalysisTrackingAsync(connection, userId: userId, start, end);
+            var usageStats = await GetUsageStatisticsAsync(connection, userId: userId, clinicId: null, startDate: start, endDate: end);
+            var imageAnalysisTracking = await GetImageAnalysisTrackingAsync(connection, userId: userId, clinicId: null, startDate: start, endDate: end);
 
             return new UserUsageStatisticsDto
             {

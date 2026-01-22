@@ -27,8 +27,25 @@ const ChatPage = () => {
   // Initialize SignalR connection
   useEffect(() => {
     const initSignalR = async () => {
+      if (!user) {
+        console.log("Chat: No user, skipping SignalR connection");
+        return;
+      }
+
+      // Check if token exists - wait a bit for auth to complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const token = localStorage.getItem("token");
+      if (!token) {
+        console.warn("Chat: No token found in localStorage");
+        // Don't show error immediately, might be loading
+        return;
+      }
+
       try {
-        await signalRService.connect();
+        console.log("Chat: Connecting to SignalR...");
+        await signalRService.connect(token);
+        console.log("Chat: SignalR connected successfully");
         
         // Set up message listeners
         signalRService.onReceiveMessage((message: Message) => {
@@ -55,19 +72,36 @@ const ChatPage = () => {
         });
 
         signalRService.onError((error) => {
+          console.error("Chat: SignalR error:", error);
           toast.error(`Chat error: ${error}`);
         });
-      } catch (error) {
-        console.error("Failed to connect to SignalR:", error);
-        toast.error("Không thể kết nối chat. Vui lòng thử lại.");
+      } catch (error: any) {
+        console.error("Chat: Failed to connect to SignalR:", error);
+        const errorMessage = error?.message || "Không thể kết nối chat. Vui lòng thử lại.";
+        
+        // Only show error if it's not a token issue (might be temporary)
+        if (!errorMessage.includes("No authentication token")) {
+          toast.error(errorMessage);
+        }
+        
+        // If authentication error, suggest login
+        if (errorMessage.includes("xác thực") || errorMessage.includes("đăng nhập") || errorMessage.includes("Unauthorized")) {
+          setTimeout(() => {
+            if (window.confirm("Phiên đăng nhập đã hết hạn. Bạn có muốn đăng nhập lại không?")) {
+              window.location.href = "/login";
+            }
+          }, 2000);
+        }
       }
     };
 
-    if (user) {
+    // Delay initialization to ensure auth is ready
+    const timer = setTimeout(() => {
       initSignalR();
-    }
+    }, 1000);
 
     return () => {
+      clearTimeout(timer);
       signalRService.removeAllListeners();
       if (selectedConversation) {
         signalRService.leaveConversation(selectedConversation.conversationId);
@@ -87,8 +121,12 @@ const ChatPage = () => {
     try {
       const convs = await messageService.getConversations();
       setConversations(convs);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to load conversations:", error);
+      // Only show error if it's not a 404 (might be backend not ready)
+      if (error?.response?.status !== 404) {
+        toast.error("Không thể tải danh sách cuộc trò chuyện");
+      }
     }
   };
 
@@ -96,8 +134,12 @@ const ChatPage = () => {
     try {
       const count = await messageService.getUnreadCount();
       setUnreadCount(count);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to load unread count:", error);
+      // Only show error if it's not a 404 (might be backend not ready)
+      if (error?.response?.status !== 404) {
+        // Silently fail for unread count
+      }
     }
   };
 

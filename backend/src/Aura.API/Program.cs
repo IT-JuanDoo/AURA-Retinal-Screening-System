@@ -110,6 +110,9 @@ builder.Services.AddSwaggerGen(options =>
         Description = "API cho Hệ thống Sàng lọc Sức khỏe Mạch máu Võng mạc AURA"
     });
 
+    // Use full namespace for schema IDs to avoid conflicts between DTOs with same name
+    options.CustomSchemaIds(type => type.FullName?.Replace("+", ".") ?? type.Name);
+
     // Map IFormFile to file input in Swagger
     options.MapType<IFormFile>(() => new OpenApiSchema
     {
@@ -186,6 +189,17 @@ builder.Services.AddAuthentication(options =>
             // Support JWT token in query string for SignalR (WebSocket doesn't support headers)
             var accessToken = context.Request.Query["access_token"];
             var path = context.HttpContext.Request.Path;
+            
+            // Also check Authorization header (for LongPolling fallback)
+            if (string.IsNullOrEmpty(accessToken))
+            {
+                var authHeader = context.Request.Headers["Authorization"].ToString();
+                if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
+                {
+                    accessToken = authHeader.Substring("Bearer ".Length).Trim();
+                }
+            }
+            
             if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
             {
                 context.Token = accessToken;
@@ -261,8 +275,8 @@ builder.Services.AddScoped<Aura.API.Services.AnalysisServiceClient>();
 // FR-24: Analysis Queue Service for batch processing (NFR-2: ≥100 images per batch)
 builder.Services.AddScoped<Aura.Application.Services.Analysis.IAnalysisQueueService, Aura.Application.Services.Analysis.AnalysisQueueService>();
 
-// FR-24: Bulk Upload Batch Services
-builder.Services.AddScoped<Aura.Application.Services.Images.IBulkUploadBatchService, Aura.Application.Services.Images.BulkUploadBatchService>();
+// FR-24: Bulk Upload Batch Services (commented out - service not implemented yet)
+// builder.Services.AddScoped<Aura.Application.Services.Images.IBulkUploadBatchService, Aura.Application.Services.Images.BulkUploadBatchService>();
 
 // FR-29: High-Risk Alert Service
 builder.Services.AddScoped<Aura.Application.Services.Alerts.IHighRiskAlertService, Aura.Application.Services.Alerts.HighRiskAlertService>();
@@ -378,6 +392,8 @@ app.UseAuthorization();
 app.MapControllers();
 
 // Map SignalR Hub for real-time messaging (FR-10)
+// Note: SignalR negotiation can be anonymous, but OnConnectedAsync will check authentication
+// This allows the connection to be established, then we verify token in the hub
 app.MapHub<ChatHub>("/hubs/chat");
 
 // =============================================================================

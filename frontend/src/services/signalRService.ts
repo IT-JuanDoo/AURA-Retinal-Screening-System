@@ -27,9 +27,15 @@ class SignalRService {
       ? `${window.location.origin}/hubs/chat` // Use relative path for Docker
       : `${apiUrl}/hubs/chat`; // Use full URL for local dev
 
+    // SignalR: accessTokenFactory automatically adds token to:
+    // 1. Authorization header (for negotiation and LongPolling)
+    // 2. Query string as access_token (for WebSocket, handled by backend OnMessageReceived)
     this.connection = new signalR.HubConnectionBuilder()
       .withUrl(hubUrl, {
-        accessTokenFactory: () => authToken,
+        accessTokenFactory: () => {
+          // Return token - SignalR will add it to Authorization header and query string
+          return authToken;
+        },
         skipNegotiation: false,
         transport:
           signalR.HttpTransportType.WebSockets |
@@ -66,10 +72,24 @@ class SignalRService {
 
     try {
       await this.connection.start();
-      console.log("SignalR connected");
-    } catch (error) {
+      console.log("SignalR connected successfully");
+      this.reconnectAttempts = 0;
+    } catch (error: any) {
       console.error("SignalR connection error:", error);
-      throw error;
+      
+      // Provide more detailed error message
+      let errorMessage = "Không thể kết nối chat";
+      if (error?.message) {
+        if (error.message.includes("401") || error.message.includes("Unauthorized")) {
+          errorMessage = "Lỗi xác thực. Vui lòng đăng nhập lại.";
+        } else if (error.message.includes("404") || error.message.includes("Not Found")) {
+          errorMessage = "Không tìm thấy dịch vụ chat. Vui lòng kiểm tra kết nối.";
+        } else if (error.message.includes("Failed to start")) {
+          errorMessage = "Không thể khởi động kết nối chat. Vui lòng thử lại.";
+        }
+      }
+      
+      throw new Error(errorMessage);
     }
   }
 

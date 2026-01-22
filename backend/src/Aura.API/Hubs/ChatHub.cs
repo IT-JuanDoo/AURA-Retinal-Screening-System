@@ -17,15 +17,21 @@ public class ChatHub : Hub
 
     public override async Task OnConnectedAsync()
     {
-        var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? Context.User?.FindFirstValue("sub")
+            ?? Context.User?.FindFirstValue("id");
         var userType = Context.User?.FindFirstValue("user_type") ?? "User";
 
-        if (!string.IsNullOrEmpty(userId))
+        if (string.IsNullOrEmpty(userId))
         {
-            // Add user to group for their user ID
-            await Groups.AddToGroupAsync(Context.ConnectionId, userId);
-            _logger.LogInformation("User {UserId} ({UserType}) connected to chat hub", userId, userType);
+            _logger.LogWarning("Unauthenticated connection attempt to chat hub from {ConnectionId}", Context.ConnectionId);
+            Context.Abort(); // Close connection if not authenticated
+            return;
         }
+
+        // Add user to group for their user ID
+        await Groups.AddToGroupAsync(Context.ConnectionId, userId);
+        _logger.LogInformation("User {UserId} ({UserType}) connected to chat hub", userId, userType);
 
         await base.OnConnectedAsync();
     }

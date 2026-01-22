@@ -534,16 +534,16 @@ public class HighRiskAlertService : IHighRiskAlertService
             using var patientCommand = new NpgsqlCommand(patientSql, connection);
             patientCommand.Parameters.AddWithValue("UserId", patientUserId);
             var patientName = "Unknown";
-            using (var reader = await patientCommand.ExecuteReaderAsync())
+            using (var patientReader = await patientCommand.ExecuteReaderAsync())
             {
-                if (await reader.ReadAsync())
+                if (await patientReader.ReadAsync())
                 {
-                    patientName = $"{reader.GetString(0)} {reader.GetString(1)}".Trim();
+                    patientName = $"{patientReader.GetString(0)} {patientReader.GetString(1)}".Trim();
                 }
             }
 
             // Get analysis history
-            var trendSql = $@"
+            var trendSql = $@" 
                 SELECT 
                     ar.Id, ar.OverallRiskLevel, ar.RiskScore, ar.AnalysisCompletedAt
                 FROM analysis_results ar
@@ -561,13 +561,13 @@ public class HighRiskAlertService : IHighRiskAlertService
             decimal? currentRiskScore = null;
             DateTime? lastAnalysisDate = null;
 
-            using var reader = await trendCommand.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
+            using var trendReader = await trendCommand.ExecuteReaderAsync();
+            while (await trendReader.ReadAsync())
             {
-                var analysisId = reader.GetString(0);
-                var riskLevel = reader.IsDBNull(1) ? null : reader.GetString(1);
-                var riskScore = reader.IsDBNull(2) ? null : reader.GetDecimal(2);
-                var analysisDate = reader.GetDateTime(3);
+                var analysisId = trendReader.GetString(0);
+                var riskLevel = trendReader.IsDBNull(1) ? null : trendReader.GetString(1);
+                var riskScore = trendReader.IsDBNull(2) ? (decimal?)null : trendReader.GetDecimal(2);
+                var analysisDate = trendReader.GetDateTime(3);
 
                 trendPoints.Add(new RiskTrendPointDto
                 {
