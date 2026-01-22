@@ -19,6 +19,7 @@ import ChatPage from "../pages/patient/ChatPage";
 import ClinicBulkUploadPage from "../pages/clinic/ClinicBulkUploadPage";
 import ClinicAlertsPage from "../pages/clinic/ClinicAlertsPage";
 import PatientTrendPage from "../pages/clinic/PatientTrendPage";
+import ClinicUsageDashboardPage from "../pages/clinic/ClinicUsageDashboardPage";
 import { useAuthStore } from "../store/authStore";
 import { useAdminAuthStore } from "../store/adminAuthStore";
 
@@ -226,6 +227,14 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute>
               <PatientTrendPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/clinic/usage-dashboard"
+          element={
+            <ProtectedRoute>
+              <ClinicUsageDashboardPage />
             </ProtectedRoute>
           }
         />

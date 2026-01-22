@@ -267,6 +267,9 @@ builder.Services.AddScoped<Aura.Application.Services.Images.IBulkUploadBatchServ
 // FR-29: High-Risk Alert Service
 builder.Services.AddScoped<Aura.Application.Services.Alerts.IHighRiskAlertService, Aura.Application.Services.Alerts.HighRiskAlertService>();
 
+// FR-27: Usage Tracking Service
+builder.Services.AddScoped<Aura.Application.Services.UsageTracking.IUsageTrackingService, Aura.Application.Services.UsageTracking.UsageTrackingService>();
+
 // Notifications (PostgreSQL backed with real-time streaming)
 builder.Services.AddScoped<Aura.Application.Services.Notifications.INotificationService, Aura.Infrastructure.Services.Notifications.NotificationService>();
 
