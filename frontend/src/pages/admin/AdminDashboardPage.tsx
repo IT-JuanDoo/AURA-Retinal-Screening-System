@@ -12,6 +12,21 @@ import AdminHeader from "../../components/admin/AdminHeader";
 
 type Tab = "overview" | "revenue" | "ai-performance" | "system-health";
 
+function toViHealthStatus(status: string): string {
+  switch (status) {
+    case "Healthy":
+      return "Tốt";
+    case "Warning":
+    case "Degraded":
+      return "Cảnh báo";
+    case "Unhealthy":
+    case "Down":
+      return "Sự cố";
+    default:
+      return status;
+  }
+}
+
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
   const { isAdminAuthenticated, logoutAdmin } = useAdminAuthStore();
@@ -146,9 +161,9 @@ export default function AdminDashboardPage() {
           <nav className="flex space-x-8">
             {[
               { id: "overview" as Tab, label: "Tổng quan" },
-              { id: "revenue" as Tab, label: "Revenue" },
-              { id: "ai-performance" as Tab, label: "AI Performance" },
-              { id: "system-health" as Tab, label: "System Health" },
+              { id: "revenue" as Tab, label: "Doanh thu" },
+              { id: "ai-performance" as Tab, label: "Hiệu suất AI" },
+              { id: "system-health" as Tab, label: "Sức khỏe hệ thống" },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -197,25 +212,27 @@ function OverviewTab({ dashboard }: { dashboard: GlobalDashboardDto }) {
           color="blue"
         />
         <MetricCard
-          title="Tổng Revenue"
+          title="Tổng doanh thu"
           value={`$${dashboard.revenueDashboard.totalRevenue.toLocaleString(
             "vi-VN",
             { minimumFractionDigits: 2 }
           )}`}
-          subtitle={`${dashboard.revenueDashboard.totalTransactions} transactions`}
+          subtitle={`${dashboard.revenueDashboard.totalTransactions} giao dịch`}
           icon="💰"
           color="green"
         />
         <MetricCard
-          title="AI Success Rate"
+          title="Tỷ lệ thành công AI"
           value={`${dashboard.aiPerformanceDashboard.successRate.toFixed(1)}%`}
-          subtitle={`${dashboard.aiPerformanceDashboard.successfulAnalyses}/${dashboard.aiPerformanceDashboard.totalAnalysesProcessed} analyses`}
+          subtitle={`${dashboard.aiPerformanceDashboard.successfulAnalyses}/${dashboard.aiPerformanceDashboard.totalAnalysesProcessed} lượt phân tích`}
           icon="🤖"
           color="purple"
         />
         <MetricCard
-          title="System Status"
-          value={dashboard.systemHealthDashboard.systemStatus.overallStatus}
+          title="Trạng thái hệ thống"
+          value={toViHealthStatus(
+            dashboard.systemHealthDashboard.systemStatus.overallStatus
+          )}
           subtitle={`CPU: ${dashboard.systemHealthDashboard.systemStatus.cpuUsagePercent.toFixed(
             1
           )}%`}
@@ -232,7 +249,7 @@ function OverviewTab({ dashboard }: { dashboard: GlobalDashboardDto }) {
       {/* Usage Chart */}
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-          Usage Analytics
+          Thống kê sử dụng
         </h2>
         <SimpleLineChart
           data={usageStatistics.dailyUsage}
@@ -244,7 +261,7 @@ function OverviewTab({ dashboard }: { dashboard: GlobalDashboardDto }) {
       {/* Revenue Chart */}
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-          Revenue Trend
+          Xu hướng doanh thu
         </h2>
         <SimpleLineChart
           data={dashboard.revenueDashboard.dailyRevenueList}
@@ -257,7 +274,7 @@ function OverviewTab({ dashboard }: { dashboard: GlobalDashboardDto }) {
       {/* AI Performance Chart */}
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-          AI Performance Trend
+          Xu hướng hiệu suất AI
         </h2>
         <SimpleLineChart
           data={dashboard.aiPerformanceDashboard.dailyPerformance}
@@ -277,38 +294,38 @@ function RevenueTab({ revenue }: { revenue: RevenueDashboardDto }) {
       {/* Revenue Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          title="Total Revenue"
+          title="Tổng doanh thu"
           value={`$${revenue.totalRevenue.toLocaleString("vi-VN", {
             minimumFractionDigits: 2,
           })}`}
-          subtitle="All time"
+          subtitle="Tất cả thời gian"
           icon="💰"
           color="green"
         />
         <MetricCard
-          title="Monthly Revenue"
+          title="Doanh thu theo tháng"
           value={`$${revenue.monthlyRevenue.toLocaleString("vi-VN", {
             minimumFractionDigits: 2,
           })}`}
-          subtitle="This month"
+          subtitle="Tháng này"
           icon="📅"
           color="blue"
         />
         <MetricCard
-          title="Weekly Revenue"
+          title="Doanh thu theo tuần"
           value={`$${revenue.weeklyRevenue.toLocaleString("vi-VN", {
             minimumFractionDigits: 2,
           })}`}
-          subtitle="This week"
+          subtitle="Tuần này"
           icon="📊"
           color="purple"
         />
         <MetricCard
-          title="Daily Revenue"
+          title="Doanh thu theo ngày"
           value={`$${revenue.dailyRevenue.toLocaleString("vi-VN", {
             minimumFractionDigits: 2,
           })}`}
-          subtitle="Today"
+          subtitle="Hôm nay"
           icon="📈"
           color="orange"
         />
@@ -317,7 +334,7 @@ function RevenueTab({ revenue }: { revenue: RevenueDashboardDto }) {
       {/* Revenue Chart */}
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-          Daily Revenue Trend
+          Xu hướng doanh thu theo ngày
         </h2>
         <SimpleLineChart
           data={revenue.dailyRevenueList}
@@ -330,29 +347,29 @@ function RevenueTab({ revenue }: { revenue: RevenueDashboardDto }) {
       {/* Revenue by Source */}
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-          Revenue by Source
+          Doanh thu theo nguồn
         </h2>
         <div className="space-y-4">
           <RevenueSourceBar
-            label="Clinic Subscriptions"
+            label="Gói đăng ký (Phòng khám)"
             value={revenue.revenueBySource.clinicSubscriptions}
             total={revenue.totalRevenue}
             color="blue"
           />
           <RevenueSourceBar
-            label="Individual Analyses"
+            label="Phân tích cá nhân"
             value={revenue.revenueBySource.individualAnalyses}
             total={revenue.totalRevenue}
             color="green"
           />
           <RevenueSourceBar
-            label="Bulk Analysis Packages"
+            label="Gói phân tích hàng loạt"
             value={revenue.revenueBySource.bulkAnalysisPackages}
             total={revenue.totalRevenue}
             color="purple"
           />
           <RevenueSourceBar
-            label="Premium Features"
+            label="Tính năng nâng cao"
             value={revenue.revenueBySource.premiumFeatures}
             total={revenue.totalRevenue}
             color="orange"
@@ -364,7 +381,7 @@ function RevenueTab({ revenue }: { revenue: RevenueDashboardDto }) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Total Transactions
+            Tổng giao dịch
           </p>
           <p className="text-3xl font-bold text-slate-900 dark:text-white mt-2">
             {revenue.totalTransactions.toLocaleString("vi-VN")}
@@ -372,7 +389,7 @@ function RevenueTab({ revenue }: { revenue: RevenueDashboardDto }) {
         </div>
         <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Average Transaction Value
+            Giá trị giao dịch trung bình
           </p>
           <p className="text-3xl font-bold text-slate-900 dark:text-white mt-2">
             ${revenue.averageTransactionValue.toFixed(2)}
@@ -380,7 +397,7 @@ function RevenueTab({ revenue }: { revenue: RevenueDashboardDto }) {
         </div>
         <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Active Subscriptions
+            Số gói đang hoạt động
           </p>
           <p className="text-3xl font-bold text-slate-900 dark:text-white mt-2">
             {revenue.activeSubscriptions}
@@ -402,30 +419,30 @@ function AiPerformanceTab({
       {/* Performance Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          title="Average Accuracy"
+          title="Độ chính xác trung bình"
           value={`${performance.averageAccuracy.toFixed(1)}%`}
-          subtitle="Overall"
+          subtitle="Tổng quan"
           icon="🎯"
           color="green"
         />
         <MetricCard
-          title="Success Rate"
+          title="Tỷ lệ thành công"
           value={`${performance.successRate.toFixed(1)}%`}
           subtitle={`${performance.successfulAnalyses}/${performance.totalAnalysesProcessed}`}
           icon="✅"
           color="blue"
         />
         <MetricCard
-          title="Avg Confidence"
+          title="Độ tin cậy TB"
           value={`${performance.averageConfidenceScore.toFixed(1)}%`}
-          subtitle="AI confidence"
+          subtitle="Độ tin cậy của AI"
           icon="🤖"
           color="purple"
         />
         <MetricCard
-          title="Avg Processing Time"
+          title="Thời gian xử lý TB"
           value={`${performance.averageProcessingTimeSeconds.toFixed(1)}s`}
-          subtitle="Per analysis"
+          subtitle="Mỗi lượt phân tích"
           icon="⏱️"
           color="orange"
         />
@@ -434,7 +451,7 @@ function AiPerformanceTab({
       {/* Performance Chart */}
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-          Daily Performance Trend
+          Xu hướng hiệu suất theo ngày
         </h2>
         <SimpleLineChart
           data={performance.dailyPerformance}
@@ -448,33 +465,33 @@ function AiPerformanceTab({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-            Model Metrics
+            Chỉ số mô hình
           </h2>
           <div className="space-y-4">
             <div>
               <div className="flex justify-between mb-2">
                 <span className="text-slate-600 dark:text-slate-400">
-                  Fundus Model
+                  Mô hình Fundus
                 </span>
                 <span className="font-semibold text-slate-900 dark:text-white">
                   {performance.modelMetrics.fundusModelAccuracy.toFixed(1)}%
                 </span>
               </div>
               <div className="text-sm text-slate-500 dark:text-slate-500">
-                {performance.modelMetrics.fundusAnalysesCount} analyses
+                {performance.modelMetrics.fundusAnalysesCount} lượt phân tích
               </div>
             </div>
             <div>
               <div className="flex justify-between mb-2">
                 <span className="text-slate-600 dark:text-slate-400">
-                  OCT Model
+                  Mô hình OCT
                 </span>
                 <span className="font-semibold text-slate-900 dark:text-white">
                   {performance.modelMetrics.octModelAccuracy.toFixed(1)}%
                 </span>
               </div>
               <div className="text-sm text-slate-500 dark:text-slate-500">
-                {performance.modelMetrics.octAnalysesCount} analyses
+                {performance.modelMetrics.octAnalysesCount} lượt phân tích
               </div>
             </div>
           </div>
@@ -482,29 +499,29 @@ function AiPerformanceTab({
 
         <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-            Accuracy by Risk Level
+            Độ chính xác theo mức rủi ro
           </h2>
           <div className="space-y-3">
             <AccuracyBar
-              label="Low Risk"
+              label="Rủi ro thấp"
               accuracy={performance.accuracyByRiskLevel.lowRiskAccuracy}
               count={performance.accuracyByRiskLevel.lowRiskCount}
               color="green"
             />
             <AccuracyBar
-              label="Medium Risk"
+              label="Rủi ro trung bình"
               accuracy={performance.accuracyByRiskLevel.mediumRiskAccuracy}
               count={performance.accuracyByRiskLevel.mediumRiskCount}
               color="yellow"
             />
             <AccuracyBar
-              label="High Risk"
+              label="Rủi ro cao"
               accuracy={performance.accuracyByRiskLevel.highRiskAccuracy}
               count={performance.accuracyByRiskLevel.highRiskCount}
               color="orange"
             />
             <AccuracyBar
-              label="Critical Risk"
+              label="Rủi ro nghiêm trọng"
               accuracy={performance.accuracyByRiskLevel.criticalRiskAccuracy}
               count={performance.accuracyByRiskLevel.criticalRiskCount}
               color="red"
@@ -523,7 +540,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
       {/* System Status Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <HealthMetricCard
-          title="CPU Usage"
+          title="CPU"
           value={`${health.systemStatus.cpuUsagePercent.toFixed(1)}%`}
           status={
             health.systemStatus.cpuUsagePercent > 80 ? "warning" : "healthy"
@@ -531,7 +548,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
           icon="💻"
         />
         <HealthMetricCard
-          title="Memory Usage"
+          title="Bộ nhớ"
           value={`${health.systemStatus.memoryUsagePercent.toFixed(1)}%`}
           status={
             health.systemStatus.memoryUsagePercent > 85 ? "warning" : "healthy"
@@ -539,7 +556,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
           icon="🧠"
         />
         <HealthMetricCard
-          title="Disk Usage"
+          title="Ổ đĩa"
           value={`${health.systemStatus.diskUsagePercent.toFixed(1)}%`}
           status={
             health.systemStatus.diskUsagePercent > 90 ? "warning" : "healthy"
@@ -547,7 +564,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
           icon="💾"
         />
         <HealthMetricCard
-          title="Network Latency"
+          title="Độ trễ mạng"
           value={`${health.systemStatus.networkLatencyMs.toFixed(1)}ms`}
           status={
             health.systemStatus.networkLatencyMs > 100 ? "warning" : "healthy"
@@ -559,11 +576,11 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
       {/* Database Health */}
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-          Database Health
+          Tình trạng cơ sở dữ liệu
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Status</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">Trạng thái</p>
             <p
               className={`text-lg font-semibold mt-1 ${
                 health.databaseHealth.status === "Healthy"
@@ -571,12 +588,12 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
                   : "text-red-600"
               }`}
             >
-              {health.databaseHealth.status}
+              {toViHealthStatus(health.databaseHealth.status)}
             </p>
           </div>
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Response Time
+              Thời gian phản hồi
             </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.databaseHealth.responseTimeMs.toFixed(1)}ms
@@ -584,7 +601,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
           </div>
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Active Connections
+              Kết nối đang hoạt động
             </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.databaseHealth.activeConnections}/
@@ -593,7 +610,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
           </div>
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Total Queries
+              Tổng truy vấn
             </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.databaseHealth.totalQueries.toLocaleString("vi-VN")}
@@ -605,11 +622,11 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
       {/* API Health */}
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-          API Health
+          Tình trạng API
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Status</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">Trạng thái</p>
             <p
               className={`text-lg font-semibold mt-1 ${
                 health.apiHealth.status === "Healthy"
@@ -617,12 +634,12 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
                   : "text-red-600"
               }`}
             >
-              {health.apiHealth.status}
+              {toViHealthStatus(health.apiHealth.status)}
             </p>
           </div>
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Total Requests
+              Tổng yêu cầu
             </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.apiHealth.totalRequests.toLocaleString("vi-VN")}
@@ -630,7 +647,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
           </div>
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Success Rate
+              Tỷ lệ thành công
             </p>
             <p className="text-lg font-semibold text-green-600 mt-1">
               {health.apiHealth.totalRequests > 0
@@ -645,7 +662,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
           </div>
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Avg Response Time
+              Thời gian phản hồi TB
             </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.apiHealth.averageResponseTimeMs.toFixed(1)}ms
@@ -653,7 +670,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
           </div>
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Requests/sec
+              Yêu cầu/giây
             </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.apiHealth.requestsPerSecond.toFixed(2)}
@@ -665,11 +682,11 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
       {/* AI Service Health */}
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-          AI Service Health
+          Tình trạng dịch vụ AI
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Status</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">Trạng thái</p>
             <p
               className={`text-lg font-semibold mt-1 ${
                 health.aiServiceHealth.status === "Healthy"
@@ -677,12 +694,12 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
                   : "text-red-600"
               }`}
             >
-              {health.aiServiceHealth.status}
+              {toViHealthStatus(health.aiServiceHealth.status)}
             </p>
           </div>
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Queue Length
+              Độ dài hàng đợi
             </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.aiServiceHealth.queueLength}
@@ -690,7 +707,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
           </div>
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Active Workers
+              Worker đang chạy
             </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.aiServiceHealth.activeWorkers}/
@@ -699,7 +716,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
           </div>
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Avg Response Time
+              Thời gian phản hồi TB
             </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-1">
               {health.aiServiceHealth.averageResponseTimeMs.toFixed(0)}ms
@@ -711,12 +728,12 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
       {/* Uptime */}
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-          System Uptime
+          Thời gian hoạt động hệ thống
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Uptime Percentage
+              Tỷ lệ uptime
             </p>
             <p className="text-3xl font-bold text-green-600 mt-2">
               {health.uptime.uptimePercentage.toFixed(2)}%
@@ -724,7 +741,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
           </div>
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Total Uptime
+              Tổng thời gian chạy
             </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-2">
               {health.uptime.totalUptime || "N/A"}
@@ -732,7 +749,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
           </div>
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Incidents
+              Sự cố
             </p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white mt-2">
               {health.uptime.incidentsCount}
@@ -740,7 +757,7 @@ function SystemHealthTab({ health }: { health: SystemHealthDashboardDto }) {
           </div>
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Last Incident
+              Sự cố gần nhất
             </p>
             <p className="text-sm font-semibold text-slate-900 dark:text-white mt-2">
               {new Date(health.uptime.lastIncident).toLocaleDateString("vi-VN")}
@@ -946,7 +963,7 @@ function SimpleLineChart({
         )}
       </div>
       <div className="absolute top-0 right-0 text-sm text-slate-600 dark:text-slate-400">
-        Max:{" "}
+        Cao nhất:{" "}
         {formatValue
           ? formatValue(validMaxValue)
           : validMaxValue.toFixed(0)}
@@ -1018,7 +1035,7 @@ function AccuracyBar({
       <div className="flex justify-between mb-2">
         <span className="text-slate-600 dark:text-slate-400">{label}</span>
         <span className="font-semibold text-slate-900 dark:text-white">
-          {accuracy.toFixed(1)}% ({count} analyses)
+          {accuracy.toFixed(1)}% ({count} lượt phân tích)
         </span>
       </div>
       <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">

@@ -94,7 +94,7 @@ export default function AdminRbacPage() {
 
   const handleCreateRole = async () => {
     if (!formData.roleName.trim()) {
-      toast.error("Vui lòng nhập tên role");
+      toast.error("Vui lòng nhập tên vai trò");
       return;
     }
     try {
@@ -102,7 +102,7 @@ export default function AdminRbacPage() {
         roleName: formData.roleName,
         description: formData.description || undefined,
       });
-      toast.success("Đã tạo role thành công");
+      toast.success("Đã tạo vai trò thành công");
       setShowRoleForm(false);
       setFormData({
         roleName: "",
@@ -114,7 +114,7 @@ export default function AdminRbacPage() {
       await loadData();
     } catch (e: any) {
       toast.error(
-        e?.response?.data?.message || e?.message || "Không tạo được role"
+        e?.response?.data?.message || e?.message || "Không tạo được vai trò"
       );
     }
   };
@@ -126,7 +126,7 @@ export default function AdminRbacPage() {
         roleName: formData.roleName || undefined,
         description: formData.description || undefined,
       });
-      toast.success("Đã cập nhật role thành công");
+      toast.success("Đã cập nhật vai trò thành công");
       setEditingRole(null);
       setShowRoleForm(false);
       setFormData({
@@ -139,7 +139,7 @@ export default function AdminRbacPage() {
       await loadData();
     } catch (e: any) {
       toast.error(
-        e?.response?.data?.message || e?.message || "Không cập nhật được role"
+        e?.response?.data?.message || e?.message || "Không cập nhật được vai trò"
       );
     }
   };
@@ -162,13 +162,13 @@ export default function AdminRbacPage() {
     try {
       if (deleteConfirm.type === "role") {
         await rolesApi.delete(deleteConfirm.id);
-        toast.success("Đã xóa role thành công");
+        toast.success("Đã xóa vai trò thành công");
         if (selectedRole?.id === deleteConfirm.id) {
           setSelectedRole(null);
         }
       } else {
         await permissionsApi.delete(deleteConfirm.id);
-        toast.success("Đã xóa permission thành công");
+        toast.success("Đã xóa quyền thành công");
         if (selectedPermission?.id === deleteConfirm.id) {
           setSelectedPermission(null);
         }
@@ -188,7 +188,7 @@ export default function AdminRbacPage() {
 
   const handleCreatePermission = async () => {
     if (!formData.permissionName.trim()) {
-      toast.error("Vui lòng nhập tên permission");
+      toast.error("Vui lòng nhập tên quyền");
       return;
     }
     try {
@@ -197,7 +197,7 @@ export default function AdminRbacPage() {
         permissionDescription: formData.permissionDescription || undefined,
         resourceType: formData.resourceType || undefined,
       });
-      toast.success("Đã tạo permission thành công");
+      toast.success("Đã tạo quyền thành công");
       setShowPermissionForm(false);
       setFormData({
         roleName: "",
@@ -209,7 +209,7 @@ export default function AdminRbacPage() {
       await loadData();
     } catch (e: any) {
       toast.error(
-        e?.response?.data?.message || e?.message || "Không tạo được permission"
+        e?.response?.data?.message || e?.message || "Không tạo được quyền"
       );
     }
   };
@@ -222,7 +222,7 @@ export default function AdminRbacPage() {
         permissionDescription: formData.permissionDescription || undefined,
         resourceType: formData.resourceType || undefined,
       });
-      toast.success("Đã cập nhật permission thành công");
+      toast.success("Đã cập nhật quyền thành công");
       setEditingPermission(null);
       setShowPermissionForm(false);
       setFormData({
@@ -237,7 +237,7 @@ export default function AdminRbacPage() {
       toast.error(
         e?.response?.data?.message ||
           e?.message ||
-          "Không cập nhật được permission"
+          "Không cập nhật được quyền"
       );
     }
   };
@@ -260,13 +260,13 @@ export default function AdminRbacPage() {
   ) => {
     try {
       await permissionsApi.assignToRole({ roleId, permissionId });
-      toast.success("Đã gán permission cho role thành công");
+      toast.success("Đã gán quyền cho vai trò thành công");
       if (selectedRole?.id === roleId) {
         await loadRolePermissions(roleId);
       }
     } catch (e: any) {
       toast.error(
-        e?.response?.data?.message || e?.message || "Không gán được permission"
+        e?.response?.data?.message || e?.message || "Không gán được quyền"
       );
     }
   };
@@ -283,7 +283,7 @@ export default function AdminRbacPage() {
       }
     } catch (e: any) {
       toast.error(
-        e?.response?.data?.message || e?.message || "Không gỡ được permission"
+        e?.response?.data?.message || e?.message || "Không gỡ được quyền"
       );
     }
   };
@@ -298,7 +298,7 @@ export default function AdminRbacPage() {
             Quản lý Phân quyền (RBAC)
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
-            Quản lý roles và permissions trong hệ thống
+            Quản lý vai trò và quyền trong hệ thống
           </p>
         </div>
 
@@ -314,7 +314,7 @@ export default function AdminRbacPage() {
                     : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 dark:text-slate-400 dark:hover:text-slate-300"
                 }`}
               >
-                Roles ({roles.length})
+                Vai trò ({roles.length})
               </button>
               <button
                 onClick={() => setActiveTab("permissions")}
@@ -324,7 +324,7 @@ export default function AdminRbacPage() {
                     : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 dark:text-slate-400 dark:hover:text-slate-300"
                 }`}
               >
-                Permissions ({permissions.length})
+                Quyền ({permissions.length})
               </button>
             </nav>
           </div>
@@ -334,7 +334,7 @@ export default function AdminRbacPage() {
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
                   <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-                    Danh sách Roles
+                    Danh sách vai trò
                   </h2>
                   <button
                     onClick={() => {
@@ -350,7 +350,7 @@ export default function AdminRbacPage() {
                     }}
                     className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
                   >
-                    + Tạo Role mới
+                    + Tạo vai trò mới
                   </button>
                 </div>
 
@@ -409,8 +409,8 @@ export default function AdminRbacPage() {
                           </p>
                         )}
                         <div className="flex gap-4 text-xs text-slate-500 dark:text-slate-400">
-                          <span>{role.userCount} users</span>
-                          <span>{role.permissionCount} permissions</span>
+                          <span>{role.userCount} người dùng</span>
+                          <span>{role.permissionCount} quyền</span>
                         </div>
                       </div>
                     ))}
@@ -420,7 +420,7 @@ export default function AdminRbacPage() {
                 {selectedRole && (
                   <div className="mt-6 p-6 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
-                      Permissions của Role: {selectedRole.roleName}
+                      Quyền của vai trò: {selectedRole.roleName}
                     </h3>
                     <div className="space-y-2 mb-4">
                       {rolePermissions.map((perm) => (
@@ -463,7 +463,7 @@ export default function AdminRbacPage() {
                         }}
                         defaultValue=""
                       >
-                        <option value="">Chọn permission để gán...</option>
+                        <option value="">Chọn quyền để gán...</option>
                         {permissions
                           .filter(
                             (p) => !rolePermissions.some((rp) => rp.id === p.id)
@@ -482,12 +482,12 @@ export default function AdminRbacPage() {
                   <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-white dark:bg-slate-900 rounded-lg p-6 w-full max-w-md">
                       <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
-                        {editingRole ? "Sửa Role" : "Tạo Role mới"}
+                        {editingRole ? "Sửa vai trò" : "Tạo vai trò mới"}
                       </h3>
                       <div className="space-y-4">
                         <div>
                           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                            Tên Role
+                            Tên vai trò
                           </label>
                           <input
                             type="text"
@@ -516,7 +516,7 @@ export default function AdminRbacPage() {
                             }
                             className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50"
                             rows={3}
-                            placeholder="Mô tả về role này..."
+                            placeholder="Mô tả về vai trò này..."
                           />
                         </div>
                         <div className="flex gap-2">
@@ -554,7 +554,7 @@ export default function AdminRbacPage() {
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
                   <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-                    Danh sách Permissions
+                    Danh sách quyền
                   </h2>
                   <button
                     onClick={() => {
@@ -570,7 +570,7 @@ export default function AdminRbacPage() {
                     }}
                     className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
                   >
-                    + Tạo Permission mới
+                    + Tạo quyền mới
                   </button>
                 </div>
 
@@ -580,11 +580,11 @@ export default function AdminRbacPage() {
                   </div>
                 ) : permissions.length === 0 ? (
                   <EmptyState
-                    title="Chưa có permission nào"
-                    message="Bắt đầu tạo permission đầu tiên để định nghĩa các quyền trong hệ thống"
+                    title="Chưa có quyền nào"
+                    message="Bắt đầu tạo quyền đầu tiên để định nghĩa các quyền trong hệ thống"
                     icon="🔑"
                     action={{
-                      label: "Tạo Permission mới",
+                      label: "Tạo quyền mới",
                       onClick: () => {
                         setEditingPermission(null);
                         setFormData({
@@ -651,11 +651,11 @@ export default function AdminRbacPage() {
                         )}
                         {perm.resourceType && (
                           <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Resource: {perm.resourceType}
+                            Tài nguyên: {perm.resourceType}
                           </p>
                         )}
                         <div className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                          {perm.roleCount} roles
+                          {perm.roleCount} vai trò
                         </div>
                       </div>
                     ))}
@@ -667,13 +667,13 @@ export default function AdminRbacPage() {
                     <div className="bg-white dark:bg-slate-900 rounded-lg p-6 w-full max-w-md">
                       <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
                         {editingPermission
-                          ? "Sửa Permission"
-                          : "Tạo Permission mới"}
+                          ? "Sửa quyền"
+                          : "Tạo quyền mới"}
                       </h3>
                       <div className="space-y-4">
                         <div>
                           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                            Tên Permission
+                            Tên quyền
                           </label>
                           <input
                             type="text"
@@ -702,12 +702,12 @@ export default function AdminRbacPage() {
                             }
                             className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50"
                             rows={3}
-                            placeholder="Mô tả về permission này..."
+                            placeholder="Mô tả về quyền này..."
                           />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                            Resource Type
+                            Loại tài nguyên
                           </label>
                           <input
                             type="text"
@@ -771,9 +771,9 @@ export default function AdminRbacPage() {
           })
         }
         onConfirm={confirmDelete}
-        title={`Xóa ${deleteConfirm.type === "role" ? "Role" : "Permission"}`}
+        title={`Xóa ${deleteConfirm.type === "role" ? "vai trò" : "quyền"}`}
         message={`Bạn có chắc muốn xóa ${
-          deleteConfirm.type === "role" ? "role" : "permission"
+          deleteConfirm.type === "role" ? "vai trò" : "quyền"
         } "${deleteConfirm.name}"? Hành động này không thể hoàn tác.`}
         confirmText="Xóa"
         cancelText="Hủy"

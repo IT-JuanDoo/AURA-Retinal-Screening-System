@@ -150,10 +150,10 @@ export default function AdminSecurityPage() {
         requireTwoFactorForSensitiveActions: privacySettings.requireTwoFactorForSensitiveActions,
       };
       await complianceApi.updatePrivacySettings(dto);
-      toast.success("Đã lưu privacy settings");
+      toast.success("Đã lưu cài đặt quyền riêng tư");
       await loadComplianceData();
     } catch (e: any) {
-      toast.error(e?.response?.data?.message || e?.message || "Không lưu được privacy settings");
+      toast.error(e?.response?.data?.message || e?.message || "Không lưu được cài đặt quyền riêng tư");
     } finally {
       setSaving(false);
     }
@@ -183,7 +183,7 @@ export default function AdminSecurityPage() {
             Bảo mật & Tuân thủ
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
-            Quản lý audit logs và compliance settings
+            Quản lý nhật ký kiểm toán và thiết lập tuân thủ
           </p>
         </div>
 
@@ -200,7 +200,7 @@ export default function AdminSecurityPage() {
                   </svg>
                 }
               >
-                Audit Logs
+                Nhật ký kiểm toán
               </TabButton>
               <TabButton
                 active={activeTab === "compliance"}
@@ -211,7 +211,7 @@ export default function AdminSecurityPage() {
                   </svg>
                 }
               >
-                Compliance
+                Tuân thủ
               </TabButton>
             </nav>
           </div>
@@ -277,10 +277,10 @@ function AuditLogsContent({
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-6">
         <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Bộ lọc</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          <Field label="Action Type" value={filters.actionType || ""} onChange={(v) => onFiltersChange({ ...filters, actionType: v || undefined })} placeholder="Ví dụ: Create, Update, Delete" />
-          <Field label="Resource Type" value={filters.resourceType || ""} onChange={(v) => onFiltersChange({ ...filters, resourceType: v || undefined })} placeholder="Ví dụ: User, Package, Config" />
-          <Field label="User ID" value={filters.userId || ""} onChange={(v) => onFiltersChange({ ...filters, userId: v || undefined })} />
-          <Field label="Admin ID" value={filters.adminId || ""} onChange={(v) => onFiltersChange({ ...filters, adminId: v || undefined })} />
+          <Field label="Loại hành động" value={filters.actionType || ""} onChange={(v) => onFiltersChange({ ...filters, actionType: v || undefined })} placeholder="Ví dụ: Tạo, Cập nhật, Xóa" />
+          <Field label="Loại tài nguyên" value={filters.resourceType || ""} onChange={(v) => onFiltersChange({ ...filters, resourceType: v || undefined })} placeholder="Ví dụ: Người dùng, Gói, Cấu hình" />
+          <Field label="ID Người dùng" value={filters.userId || ""} onChange={(v) => onFiltersChange({ ...filters, userId: v || undefined })} />
+          <Field label="ID Quản trị viên" value={filters.adminId || ""} onChange={(v) => onFiltersChange({ ...filters, adminId: v || undefined })} />
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Từ ngày</label>
             <input type="date" className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={filters.startDate || ""} onChange={(e) => onFiltersChange({ ...filters, startDate: e.target.value || undefined })} />
@@ -289,7 +289,7 @@ function AuditLogsContent({
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Đến ngày</label>
             <input type="date" className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={filters.endDate || ""} onChange={(e) => onFiltersChange({ ...filters, endDate: e.target.value || undefined })} />
           </div>
-          <Field label="IP Address" value={filters.ipAddress || ""} onChange={(v) => onFiltersChange({ ...filters, ipAddress: v || undefined })} placeholder="192.168.1.1" />
+          <Field label="Địa chỉ IP" value={filters.ipAddress || ""} onChange={(v) => onFiltersChange({ ...filters, ipAddress: v || undefined })} placeholder="192.168.1.1" />
           <div className="flex items-end gap-2">
             <button onClick={() => { onFiltersChange({ page: 1, pageSize: 50 }); onPageChange(1); }} className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
               Xóa bộ lọc
@@ -301,7 +301,7 @@ function AuditLogsContent({
       {/* Actions */}
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-4 mb-6 flex items-center justify-between">
         <div className="text-sm text-slate-600 dark:text-slate-400">
-          Tổng: <span className="font-semibold text-slate-900 dark:text-white">{total.toLocaleString("vi-VN")}</span> logs
+          Tổng: <span className="font-semibold text-slate-900 dark:text-white">{total.toLocaleString("vi-VN")}</span> bản ghi
         </div>
         <div className="flex gap-2">
           <button onClick={() => onExport("csv")} className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors text-sm font-medium">Xuất CSV</button>
@@ -320,9 +320,9 @@ function AuditLogsContent({
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Thời gian</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Người thực hiện</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Action</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Resource</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">IP Address</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Hành động</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Tài nguyên</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Địa chỉ IP</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Thao tác</th>
               </tr>
             </thead>
@@ -333,7 +333,7 @@ function AuditLogsContent({
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td className="px-6 py-8 text-center text-slate-500 dark:text-slate-400" colSpan={6}>Không có audit log nào</td>
+                  <td className="px-6 py-8 text-center text-slate-500 dark:text-slate-400" colSpan={6}>Không có nhật ký kiểm toán nào</td>
                 </tr>
               ) : (
                 logs.map((log: AuditLog) => (
@@ -385,7 +385,7 @@ function AuditLogsContent({
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Chi tiết Audit Log</h3>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Chi tiết nhật ký kiểm toán</h3>
               <button onClick={() => onSelect(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">✕</button>
             </div>
             <div className="space-y-4">
@@ -396,25 +396,25 @@ function AuditLogsContent({
                   <p className="text-sm text-slate-900 dark:text-slate-100">{selected.createdDate ? new Date(selected.createdDate).toLocaleString("vi-VN") : "N/A"}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Action Type</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Loại hành động</label>
                   <p className="text-sm text-slate-900 dark:text-slate-100">{selected.actionType}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Resource Type</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Loại tài nguyên</label>
                   <p className="text-sm text-slate-900 dark:text-slate-100">{selected.resourceType}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Resource ID</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ID tài nguyên</label>
                   <p className="text-sm text-slate-900 dark:text-slate-100 font-mono">{selected.resourceId || "N/A"}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">IP Address</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Địa chỉ IP</label>
                   <p className="text-sm text-slate-900 dark:text-slate-100 font-mono">{selected.ipAddress || "N/A"}</p>
                 </div>
               </div>
               {selected.oldValues && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Giá trị cũ (Old Values)</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Giá trị cũ</label>
                   <pre className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-mono overflow-x-auto">
                     {formatJson(selected.oldValues)}
                   </pre>
@@ -422,7 +422,7 @@ function AuditLogsContent({
               )}
               {selected.newValues && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Giá trị mới (New Values)</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Giá trị mới</label>
                   <pre className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-mono overflow-x-auto">
                     {formatJson(selected.newValues)}
                   </pre>
@@ -464,10 +464,10 @@ function ComplianceContent({
       <div className="border-b border-slate-200 dark:border-slate-800 mb-6">
         <nav className="flex -mb-px">
           <TabButton active={subTab === "dashboard"} onClick={() => onSubTabChange("dashboard")}>
-            Compliance Dashboard
+            Bảng điều khiển tuân thủ
           </TabButton>
           <TabButton active={subTab === "privacy"} onClick={() => onSubTabChange("privacy")}>
-            Privacy Settings
+            Cài đặt quyền riêng tư
           </TabButton>
         </nav>
       </div>
@@ -475,20 +475,20 @@ function ComplianceContent({
       {subTab === "dashboard" ? (
         <div className="space-y-6">
           {loading ? (
-            <div className="text-center py-12 text-slate-500 dark:text-slate-400">Đang tải compliance report...</div>
+            <div className="text-center py-12 text-slate-500 dark:text-slate-400">Đang tải báo cáo tuân thủ...</div>
           ) : report ? (
             <>
               {/* Stats */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard title="Tổng Audit Logs" value={report.totalAuditLogs.toLocaleString("vi-VN")} iconColor="text-blue-500" bgColor="bg-blue-500/10" />
-                <StatCard title="Logs (30 ngày)" value={report.logsLast30Days.toLocaleString("vi-VN")} iconColor="text-green-500" bgColor="bg-green-500/10" />
-                <StatCard title="Logs (7 ngày)" value={report.logsLast7Days.toLocaleString("vi-VN")} iconColor="text-purple-500" bgColor="bg-purple-500/10" />
-                <StatCard title="Unique Users" value={report.uniqueUsers.toLocaleString("vi-VN")} iconColor="text-orange-500" bgColor="bg-orange-500/10" />
+                <StatCard title="Tổng nhật ký kiểm toán" value={report.totalAuditLogs.toLocaleString("vi-VN")} iconColor="text-blue-500" bgColor="bg-blue-500/10" />
+                <StatCard title="Nhật ký (30 ngày)" value={report.logsLast30Days.toLocaleString("vi-VN")} iconColor="text-green-500" bgColor="bg-green-500/10" />
+                <StatCard title="Nhật ký (7 ngày)" value={report.logsLast7Days.toLocaleString("vi-VN")} iconColor="text-purple-500" bgColor="bg-purple-500/10" />
+                <StatCard title="Người dùng duy nhất" value={report.uniqueUsers.toLocaleString("vi-VN")} iconColor="text-orange-500" bgColor="bg-orange-500/10" />
               </div>
 
               {/* Action Type Distribution */}
               <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-6">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Phân bố theo Action Type</h3>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Phân bố theo loại hành động</h3>
                 <div className="space-y-2">
                   {Object.entries(report.actionTypeCounts).map(([action, count]: [string, any]) => (
                     <div key={action} className="flex items-center justify-between">
@@ -501,7 +501,7 @@ function ComplianceContent({
 
               {/* Resource Type Distribution */}
               <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-6">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Phân bố theo Resource Type</h3>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Phân bố theo loại tài nguyên</h3>
                 <div className="space-y-2">
                   {Object.entries(report.resourceTypeCounts).map(([resource, count]: [string, any]) => (
                     <div key={resource} className="flex items-center justify-between">
@@ -515,7 +515,7 @@ function ComplianceContent({
               {/* Compliance Issues */}
               {report.issues.length > 0 && (
                 <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-yellow-900 dark:text-yellow-300 mb-4">⚠️ Compliance Issues</h3>
+                  <h3 className="text-lg font-semibold text-yellow-900 dark:text-yellow-300 mb-4">⚠️ Vấn đề tuân thủ</h3>
                   <div className="space-y-3">
                     {report.issues.map((issue: any, idx: number) => (
                       <div key={idx} className="bg-white dark:bg-slate-900 rounded-lg p-4 border border-yellow-200 dark:border-yellow-800">
@@ -529,7 +529,7 @@ function ComplianceContent({
                             issue.severity === "Medium" ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400" :
                             "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
                           }`}>
-                            {issue.severity}
+                            {issue.severity === "High" ? "Cao" : issue.severity === "Medium" ? "Trung bình" : "Thấp"}
                           </span>
                         </div>
                       </div>
@@ -545,20 +545,20 @@ function ComplianceContent({
               </div>
             </>
           ) : (
-            <div className="text-center py-12 text-slate-500 dark:text-slate-400">Không có dữ liệu compliance report</div>
+            <div className="text-center py-12 text-slate-500 dark:text-slate-400">Không có dữ liệu báo cáo tuân thủ</div>
           )}
         </div>
       ) : (
         <div className="space-y-6">
           {privacySettings ? (
             <>
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Cài đặt Privacy & Compliance</h3>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Cài đặt quyền riêng tư & tuân thủ</h3>
               <div className="space-y-4">
-                <SettingToggle label="Bật Audit Logging" description="Ghi lại tất cả các thao tác trong hệ thống" value={privacySettings.enableAuditLogging} onChange={(v: boolean) => onPrivacySettingsChange({ ...privacySettings, enableAuditLogging: v })} />
-                <SettingNumber label="Thời gian lưu Audit Logs (ngày)" description="Số ngày lưu trữ audit logs trước khi xóa" value={privacySettings.auditLogRetentionDays} onChange={(v: number) => onPrivacySettingsChange({ ...privacySettings, auditLogRetentionDays: v })} />
+                <SettingToggle label="Bật nhật ký kiểm toán" description="Ghi lại tất cả các thao tác trong hệ thống" value={privacySettings.enableAuditLogging} onChange={(v: boolean) => onPrivacySettingsChange({ ...privacySettings, enableAuditLogging: v })} />
+                <SettingNumber label="Thời gian lưu nhật ký kiểm toán (ngày)" description="Số ngày lưu trữ nhật ký kiểm toán trước khi xóa" value={privacySettings.auditLogRetentionDays} onChange={(v: number) => onPrivacySettingsChange({ ...privacySettings, auditLogRetentionDays: v })} />
                 <SettingToggle label="Ẩn danh hóa logs cũ" description="Tự động ẩn danh hóa thông tin nhạy cảm trong logs cũ" value={privacySettings.anonymizeOldLogs} onChange={(v: boolean) => onPrivacySettingsChange({ ...privacySettings, anonymizeOldLogs: v })} />
                 <SettingToggle label="Yêu cầu đồng ý chia sẻ dữ liệu" description="Yêu cầu người dùng đồng ý trước khi chia sẻ dữ liệu" value={privacySettings.requireConsentForDataSharing} onChange={(v: boolean) => onPrivacySettingsChange({ ...privacySettings, requireConsentForDataSharing: v })} />
-                <SettingToggle label="Bật GDPR Compliance" description="Tuân thủ các quy định GDPR về bảo vệ dữ liệu" value={privacySettings.enableGdprCompliance} onChange={(v: boolean) => onPrivacySettingsChange({ ...privacySettings, enableGdprCompliance: v })} />
+                <SettingToggle label="Bật tuân thủ GDPR" description="Tuân thủ các quy định GDPR về bảo vệ dữ liệu" value={privacySettings.enableGdprCompliance} onChange={(v: boolean) => onPrivacySettingsChange({ ...privacySettings, enableGdprCompliance: v })} />
                 <SettingNumber label="Thời gian lưu trữ dữ liệu (ngày)" description="Số ngày lưu trữ dữ liệu người dùng (GDPR: tối đa 7 năm = 2555 ngày)" value={privacySettings.dataRetentionDays} onChange={(v: number) => onPrivacySettingsChange({ ...privacySettings, dataRetentionDays: v })} />
                 <SettingToggle label="Cho phép xuất dữ liệu" description="Cho phép người dùng xuất dữ liệu của họ" value={privacySettings.allowDataExport} onChange={(v: boolean) => onPrivacySettingsChange({ ...privacySettings, allowDataExport: v })} />
                 <SettingToggle label="Yêu cầu 2FA cho thao tác nhạy cảm" description="Yêu cầu xác thực 2 yếu tố cho các thao tác quan trọng" value={privacySettings.requireTwoFactorForSensitiveActions} onChange={(v: boolean) => onPrivacySettingsChange({ ...privacySettings, requireTwoFactorForSensitiveActions: v })} />
@@ -573,7 +573,7 @@ function ComplianceContent({
               </div>
             </>
           ) : (
-            <div className="text-center py-12 text-slate-500 dark:text-slate-400">Đang tải privacy settings...</div>
+            <div className="text-center py-12 text-slate-500 dark:text-slate-400">Đang tải cài đặt quyền riêng tư...</div>
           )}
         </div>
       )}

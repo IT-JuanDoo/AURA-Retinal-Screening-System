@@ -8,11 +8,11 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-  { label: "Dashboard", path: "/admin/dashboard" },
+  { label: "Bảng điều khiển", path: "/admin/dashboard" },
   { label: "Người dùng", path: "/admin/users" },
   { label: "Hệ thống", path: "/admin/system" },
   { label: "Bảo mật", path: "/admin/security" },
-  { label: "RBAC", path: "/admin/rbac" },
+  { label: "Phân quyền", path: "/admin/rbac" },
 ];
 
 export default function AdminHeader() {
@@ -69,7 +69,7 @@ export default function AdminHeader() {
               <div className="text-sm text-slate-600 dark:text-slate-400">
                 Xin chào,{" "}
                 <span className="font-semibold text-slate-900 dark:text-white">
-                  {admin?.firstName || admin?.email || "Admin"}
+                  {admin?.firstName || admin?.email || "Quản trị viên"}
                 </span>
               </div>
             </div>

@@ -547,10 +547,55 @@ public class AnalyticsRepository
             }
         }
 
+        // Monthly revenue breakdown (group by year-month)
+        using (var cmd = new NpgsqlCommand(@"
+            SELECT 
+                DATE_TRUNC('month', CreatedDate) as RevenueMonth,
+                COUNT(*) as AnalysisCount
+            FROM analysis_results
+            WHERE CreatedDate >= @StartDate AND CreatedDate <= @EndDate
+                AND COALESCE(IsDeleted, false) = false
+                AND AnalysisStatus = 'Completed'
+            GROUP BY DATE_TRUNC('month', CreatedDate)
+            ORDER BY DATE_TRUNC('month', CreatedDate)", conn))
+        {
+            cmd.Parameters.AddWithValue("StartDate", start.Date);
+            cmd.Parameters.AddWithValue("EndDate", end.Date.AddDays(1));
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            MonthlyRevenueDto? prev = null;
+            while (await reader.ReadAsync())
+            {
+                var period = reader.GetDateTime(0);
+                var count = reader.GetInt32(1);
+                var revenueValue = count * analysisPrice;
+
+                var monthly = new MonthlyRevenueDto
+                {
+                    Year = period.Year,
+                    Month = period.Month,
+                    Revenue = revenueValue,
+                    TransactionCount = count,
+                    GrowthRate = 0
+                };
+
+                // growth vs previous month if available
+                if (prev != null && prev.Revenue > 0)
+                {
+                    monthly.GrowthRate = (monthly.Revenue - prev.Revenue) / prev.Revenue * 100m;
+                }
+
+                revenue.MonthlyRevenueList.Add(monthly);
+                prev = monthly;
+            }
+        }
+
         // Revenue by source (simplified)
         revenue.RevenueBySource.IndividualAnalyses = revenue.TotalRevenue * 0.6m;
         revenue.RevenueBySource.ClinicSubscriptions = revenue.TotalRevenue * 0.35m;
         revenue.RevenueBySource.BulkAnalysisPackages = revenue.TotalRevenue * 0.05m;
+        revenue.RevenueBySource.PremiumFeatures = 0;
+        revenue.RevenueBySource.Other = 0;
 
         revenue.TotalTransactions = (int)(revenue.TotalRevenue / analysisPrice);
         revenue.AverageTransactionValue = revenue.TotalTransactions > 0 

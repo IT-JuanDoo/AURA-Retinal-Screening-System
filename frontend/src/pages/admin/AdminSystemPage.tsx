@@ -356,7 +356,7 @@ export default function AdminSystemPage() {
 
   const createTemplate = async () => {
     if (!newTemplate.templateName || !newTemplate.titleTemplate || !newTemplate.contentTemplate) {
-      toast.error("Vui lòng điền đầy đủ Tên template, Title Template và Content Template");
+      toast.error("Vui lòng điền đầy đủ Tên template, Mẫu tiêu đề và Mẫu nội dung");
       return;
     }
     setSaving(true);
@@ -457,7 +457,7 @@ export default function AdminSystemPage() {
             Cài đặt Hệ thống
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
-            Quản lý cấu hình AI, gói dịch vụ và notification templates
+            Quản lý cấu hình AI, gói dịch vụ và mẫu thông báo
           </p>
         </div>
 
@@ -474,7 +474,7 @@ export default function AdminSystemPage() {
                   </svg>
                 }
               >
-                AI Config
+                Cấu hình AI
               </TabButton>
               <TabButton
                 active={activeTab === "packages"}
@@ -485,7 +485,7 @@ export default function AdminSystemPage() {
                   </svg>
                 }
               >
-                Packages
+                Gói dịch vụ
               </TabButton>
               <TabButton
                 active={activeTab === "templates"}
@@ -496,7 +496,7 @@ export default function AdminSystemPage() {
                   </svg>
                 }
               >
-                Templates
+                Mẫu thông báo
               </TabButton>
             </nav>
           </div>
@@ -508,7 +508,7 @@ export default function AdminSystemPage() {
                 <StatCard title="Tổng số" value={stats.total} iconColor="text-blue-500" bgColor="bg-blue-500/10" />
                 <StatCard title="Đang hoạt động" value={stats.active} iconColor="text-green-500" bgColor="bg-green-500/10" />
                 <StatCard title="Đã tắt" value={stats.inactive} iconColor="text-red-500" bgColor="bg-red-500/10" />
-                <StatCard title="Parameters" value={"byType" in stats && stats.byType ? (stats.byType as any).parameter : 0} iconColor="text-purple-500" bgColor="bg-purple-500/10" />
+                <StatCard title="Tham số" value={"byType" in stats && stats.byType ? (stats.byType as any).parameter : 0} iconColor="text-purple-500" bgColor="bg-purple-500/10" />
               </div>
             )}
             {activeTab === "packages" && (
@@ -516,7 +516,7 @@ export default function AdminSystemPage() {
                 <StatCard title="Tổng số gói" value={stats.total} iconColor="text-blue-500" bgColor="bg-blue-500/10" />
                 <StatCard title="Đang hoạt động" value={stats.active} iconColor="text-green-500" bgColor="bg-green-500/10" />
                 <StatCard title="Đã tắt" value={stats.inactive} iconColor="text-red-500" bgColor="bg-red-500/10" />
-                <StatCard title="Clinic/Enterprise" value={"byType" in stats && stats.byType ? ((stats.byType as any).clinic || 0) + ((stats.byType as any).enterprise || 0) : 0} iconColor="text-purple-500" bgColor="bg-purple-500/10" />
+                <StatCard title="Phòng khám/Doanh nghiệp" value={"byType" in stats && stats.byType ? ((stats.byType as any).clinic || 0) + ((stats.byType as any).enterprise || 0) : 0} iconColor="text-purple-500" bgColor="bg-purple-500/10" />
               </div>
             )}
             {activeTab === "templates" && (
@@ -525,7 +525,7 @@ export default function AdminSystemPage() {
                 <StatCard title="Đang hoạt động" value={stats.active} iconColor="text-green-500" bgColor="bg-green-500/10" />
                 <StatCard title="Đã tắt" value={stats.inactive} iconColor="text-red-500" bgColor="bg-red-500/10" />
                 <StatCard title="Tiếng Việt" value={"vi" in stats ? (stats.vi || 0) : 0} iconColor="text-purple-500" bgColor="bg-purple-500/10" />
-                <StatCard title="English" value={"en" in stats ? (stats.en || 0) : 0} iconColor="text-orange-500" bgColor="bg-orange-500/10" />
+                <StatCard title="Tiếng Anh" value={"en" in stats ? (stats.en || 0) : 0} iconColor="text-orange-500" bgColor="bg-orange-500/10" />
               </div>
             )}
 
@@ -557,7 +557,7 @@ export default function AdminSystemPage() {
                 >
                   <option value="">Tất cả ngôn ngữ</option>
                   <option value="vi">Tiếng Việt</option>
-                  <option value="en">English</option>
+                  <option value="en">Tiếng Anh</option>
                 </select>
               )}
             </div>
@@ -690,16 +690,16 @@ function AIConfigContent({
             Tất cả ({stats.total})
           </TabButton>
           <TabButton active={subTab === "threshold"} onClick={() => onSubTabChange("threshold")}>
-            Thresholds ({stats.byType.threshold})
+            Ngưỡng ({stats.byType.threshold})
           </TabButton>
           <TabButton active={subTab === "parameter"} onClick={() => onSubTabChange("parameter")}>
-            Parameters ({stats.byType.parameter})
+            Tham số ({stats.byType.parameter})
           </TabButton>
           <TabButton active={subTab === "policy"} onClick={() => onSubTabChange("policy")}>
-            Policies ({stats.byType.policy})
+            Chính sách ({stats.byType.policy})
           </TabButton>
           <TabButton active={subTab === "retraining"} onClick={() => onSubTabChange("retraining")}>
-            Retraining ({stats.byType.retraining})
+            Huấn luyện lại ({stats.byType.retraining})
           </TabButton>
         </nav>
       </div>
@@ -721,8 +721,8 @@ function AIConfigContent({
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Tên cấu hình</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Loại</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Parameter Key</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Parameter Value</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Khóa tham số</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Giá trị tham số</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Trạng thái</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Thao tác</th>
             </tr>
@@ -789,21 +789,21 @@ function AIConfigContent({
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Loại cấu hình *</label>
               <select className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={newConfig.configurationType} onChange={(e) => onNewConfigChange({ ...newConfig, configurationType: e.target.value })}>
-                <option value="Threshold">Threshold</option>
-                <option value="Parameter">Parameter</option>
-                <option value="Policy">Policy</option>
-                <option value="Retraining">Retraining</option>
+                <option value="Threshold">Ngưỡng</option>
+                <option value="Parameter">Tham số</option>
+                <option value="Policy">Chính sách</option>
+                <option value="Retraining">Huấn luyện lại</option>
               </select>
             </div>
-            <Field label="Model Version ID" value={newConfig.modelVersionId || ""} onChange={(v) => onNewConfigChange({ ...newConfig, modelVersionId: v })} />
-            <Field label="Parameter Key *" value={newConfig.parameterKey} onChange={(v) => onNewConfigChange({ ...newConfig, parameterKey: v })} />
-            <TextAreaField label="Parameter Value *" value={newConfig.parameterValue} onChange={(v) => onNewConfigChange({ ...newConfig, parameterValue: v })} rows={3} />
+            <Field label="ID phiên bản mô hình" value={newConfig.modelVersionId || ""} onChange={(v) => onNewConfigChange({ ...newConfig, modelVersionId: v })} />
+            <Field label="Khóa tham số *" value={newConfig.parameterKey} onChange={(v) => onNewConfigChange({ ...newConfig, parameterKey: v })} />
+            <TextAreaField label="Giá trị tham số *" value={newConfig.parameterValue} onChange={(v) => onNewConfigChange({ ...newConfig, parameterValue: v })} rows={3} />
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Data Type</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Kiểu dữ liệu</label>
               <select className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={newConfig.parameterDataType || "String"} onChange={(e) => onNewConfigChange({ ...newConfig, parameterDataType: e.target.value })}>
-                <option value="String">String</option>
-                <option value="Number">Number</option>
-                <option value="Boolean">Boolean</option>
+                <option value="String">Chuỗi (String)</option>
+                <option value="Number">Số (Number)</option>
+                <option value="Boolean">Đúng/Sai (Boolean)</option>
                 <option value="JSON">JSON</option>
               </select>
             </div>
@@ -831,21 +831,21 @@ function AIConfigContent({
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Loại cấu hình</label>
               <select className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={selected.configurationType} onChange={(e) => onSelect({ ...selected, configurationType: e.target.value })}>
-                <option value="Threshold">Threshold</option>
-                <option value="Parameter">Parameter</option>
-                <option value="Policy">Policy</option>
-                <option value="Retraining">Retraining</option>
+                <option value="Threshold">Ngưỡng</option>
+                <option value="Parameter">Tham số</option>
+                <option value="Policy">Chính sách</option>
+                <option value="Retraining">Huấn luyện lại</option>
               </select>
             </div>
-            <Field label="Model Version ID" value={selected.modelVersionId || ""} onChange={(v) => onSelect({ ...selected, modelVersionId: v })} />
-            <Field label="Parameter Key" value={selected.parameterKey} onChange={(v) => onSelect({ ...selected, parameterKey: v })} />
-            <TextAreaField label="Parameter Value" value={selected.parameterValue} onChange={(v) => onSelect({ ...selected, parameterValue: v })} rows={3} />
+            <Field label="ID phiên bản mô hình" value={selected.modelVersionId || ""} onChange={(v) => onSelect({ ...selected, modelVersionId: v })} />
+            <Field label="Khóa tham số" value={selected.parameterKey} onChange={(v) => onSelect({ ...selected, parameterKey: v })} />
+            <TextAreaField label="Giá trị tham số" value={selected.parameterValue} onChange={(v) => onSelect({ ...selected, parameterValue: v })} rows={3} />
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Data Type</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Kiểu dữ liệu</label>
               <select className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={selected.parameterDataType || "String"} onChange={(e) => onSelect({ ...selected, parameterDataType: e.target.value })}>
-                <option value="String">String</option>
-                <option value="Number">Number</option>
-                <option value="Boolean">Boolean</option>
+                <option value="String">Chuỗi (String)</option>
+                <option value="Number">Số (Number)</option>
+                <option value="Boolean">Đúng/Sai (Boolean)</option>
                 <option value="JSON">JSON</option>
               </select>
             </div>
@@ -903,7 +903,7 @@ function PackagesContent({
             Phòng khám ({stats.byType.clinic})
           </TabButton>
           <TabButton active={subTab === "enterprise"} onClick={() => onSubTabChange("enterprise")}>
-            Enterprise ({stats.byType.enterprise})
+            Doanh nghiệp ({stats.byType.enterprise})
           </TabButton>
         </nav>
       </div>
@@ -942,7 +942,7 @@ function PackagesContent({
               packages.map((pkg: ServicePackage) => (
                 <tr key={pkg.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 ${selected?.id === pkg.id ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-slate-100">{pkg.packageName}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">{pkg.packageType === "Individual" ? "Cá nhân" : pkg.packageType === "Clinic" ? "Phòng khám" : "Enterprise"}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">{pkg.packageType === "Individual" ? "Cá nhân" : pkg.packageType === "Clinic" ? "Phòng khám" : "Doanh nghiệp"}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-slate-100">{pkg.numberOfAnalyses.toLocaleString("vi-VN")}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-slate-100">{pkg.price.toLocaleString("vi-VN")} {pkg.currency}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-slate-100">{pkg.validityDays ? `${pkg.validityDays} ngày` : "Không giới hạn"}</td>
@@ -985,7 +985,7 @@ function PackagesContent({
               <select className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={newPackage.packageType} onChange={(e) => onNewPackageChange({ ...newPackage, packageType: e.target.value })}>
                 <option value="Individual">Cá nhân</option>
                 <option value="Clinic">Phòng khám/Phòng mạch</option>
-                <option value="Enterprise">Enterprise / Tổ chức lớn</option>
+                <option value="Enterprise">Doanh nghiệp / Tổ chức lớn</option>
               </select>
             </div>
             <Field label="Số lượt phân tích *" type="number" value={String(newPackage.numberOfAnalyses)} onChange={(v) => onNewPackageChange({ ...newPackage, numberOfAnalyses: Number(v) || 0 })} />
@@ -1018,7 +1018,7 @@ function PackagesContent({
               <select className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={selected.packageType} onChange={(e) => onSelect({ ...selected, packageType: e.target.value })}>
                 <option value="Individual">Cá nhân</option>
                 <option value="Clinic">Phòng khám/Phòng mạch</option>
-                <option value="Enterprise">Enterprise / Tổ chức lớn</option>
+                <option value="Enterprise">Doanh nghiệp / Tổ chức lớn</option>
               </select>
             </div>
             <Field label="Số lượt phân tích" type="number" value={String(selected.numberOfAnalyses)} onChange={(v) => onSelect({ ...selected, numberOfAnalyses: Number(v) || 0 })} />
@@ -1072,12 +1072,12 @@ function TemplatesContent({
       <div className="border-b border-slate-200 dark:border-slate-800 mb-6">
         <nav className="flex -mb-px overflow-x-auto">
           <TabButton active={subTab === "all"} onClick={() => onSubTabChange("all")}>Tất cả</TabButton>
-          <TabButton active={subTab === "analysis"} onClick={() => onSubTabChange("analysis")}>Analysis Complete</TabButton>
-          <TabButton active={subTab === "alert"} onClick={() => onSubTabChange("alert")}>High Risk Alert</TabButton>
-          <TabButton active={subTab === "payment"} onClick={() => onSubTabChange("payment")}>Payment</TabButton>
-          <TabButton active={subTab === "message"} onClick={() => onSubTabChange("message")}>Message</TabButton>
-          <TabButton active={subTab === "system"} onClick={() => onSubTabChange("system")}>System Alert</TabButton>
-          <TabButton active={subTab === "custom"} onClick={() => onSubTabChange("custom")}>Custom</TabButton>
+          <TabButton active={subTab === "analysis"} onClick={() => onSubTabChange("analysis")}>Hoàn tất phân tích</TabButton>
+          <TabButton active={subTab === "alert"} onClick={() => onSubTabChange("alert")}>Cảnh báo rủi ro cao</TabButton>
+          <TabButton active={subTab === "payment"} onClick={() => onSubTabChange("payment")}>Thanh toán</TabButton>
+          <TabButton active={subTab === "message"} onClick={() => onSubTabChange("message")}>Tin nhắn</TabButton>
+          <TabButton active={subTab === "system"} onClick={() => onSubTabChange("system")}>Cảnh báo hệ thống</TabButton>
+          <TabButton active={subTab === "custom"} onClick={() => onSubTabChange("custom")}>Tùy chỉnh</TabButton>
         </nav>
       </div>
 
@@ -1095,7 +1095,7 @@ function TemplatesContent({
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Tên template</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Loại</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Title Template</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Mẫu tiêu đề</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Ngôn ngữ</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Trạng thái</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Thao tác</th>
@@ -1120,7 +1120,7 @@ function TemplatesContent({
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 max-w-xs truncate">{template.titleTemplate}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">{template.language === "vi" ? "🇻🇳 Tiếng Việt" : "🇬🇧 English"}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">{template.language === "vi" ? "🇻🇳 Tiếng Việt" : "🇬🇧 Tiếng Anh"}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <button onClick={() => onToggleActive(template)} className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                       template.isActive ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400"
@@ -1132,7 +1132,7 @@ function TemplatesContent({
                     <div className="flex items-center gap-2">
                       <button onClick={() => onSelect({ ...template })} className="text-blue-600 hover:text-blue-900 dark:text-blue-400">Sửa</button>
                       <span className="text-slate-300 dark:text-slate-700">|</span>
-                      <button onClick={() => onPreview(template)} className="text-purple-600 hover:text-purple-900 dark:text-purple-400">Preview</button>
+                      <button onClick={() => onPreview(template)} className="text-purple-600 hover:text-purple-900 dark:text-purple-400">Xem trước</button>
                       <span className="text-slate-300 dark:text-slate-700">|</span>
                       <button onClick={() => onDelete(template.id, template.templateName)} className="text-red-600 hover:text-red-900 dark:text-red-400">Xóa</button>
                     </div>
@@ -1162,18 +1162,18 @@ function TemplatesContent({
                 <option value="PackageExpiring">PackageExpiring</option>
                 <option value="MessageReceived">MessageReceived</option>
                 <option value="SystemAlert">SystemAlert</option>
-                <option value="Custom">Custom</option>
+                <option value="Custom">Tùy chỉnh</option>
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Ngôn ngữ *</label>
               <select className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={newTemplate.language} onChange={(e) => onNewTemplateChange({ ...newTemplate, language: e.target.value })}>
                 <option value="vi">Tiếng Việt</option>
-                <option value="en">English</option>
+                <option value="en">Tiếng Anh</option>
               </select>
             </div>
-            <Field label="Title Template *" value={newTemplate.titleTemplate} onChange={(v) => onNewTemplateChange({ ...newTemplate, titleTemplate: v })} placeholder="Ví dụ: Kết quả phân tích cho {{ userName }}" />
-            <TextAreaField label="Content Template *" value={newTemplate.contentTemplate} onChange={(v) => onNewTemplateChange({ ...newTemplate, contentTemplate: v })} rows={6} placeholder="Ví dụ: Xin chào {{ userName }}, kết quả phân tích của bạn đã sẵn sàng..." />
+            <Field label="Mẫu tiêu đề *" value={newTemplate.titleTemplate} onChange={(v) => onNewTemplateChange({ ...newTemplate, titleTemplate: v })} placeholder="Ví dụ: Kết quả phân tích cho {{ userName }}" />
+            <TextAreaField label="Mẫu nội dung *" value={newTemplate.contentTemplate} onChange={(v) => onNewTemplateChange({ ...newTemplate, contentTemplate: v })} rows={6} placeholder="Ví dụ: Xin chào {{ userName }}, kết quả phân tích của bạn đã sẵn sàng..." />
             <div className="text-sm text-slate-600 dark:text-slate-400">
               <p className="font-medium mb-1">Cách sử dụng variables:</p>
               <ul className="list-disc list-inside space-y-1">
@@ -1197,17 +1197,17 @@ function TemplatesContent({
       {(selected || previewData) && (
         <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-6">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{previewData ? "Preview Template" : "Chỉnh sửa Template"}</h3>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{previewData ? "Xem trước template" : "Chỉnh sửa template"}</h3>
             <button onClick={() => { onSelect(null); onPreviewDataChange(null); }} className="text-slate-400 hover:text-slate-600">✕</button>
           </div>
           {previewData ? (
             <div className="space-y-4">
               <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4">
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Preview Title:</p>
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Tiêu đề (xem trước):</p>
                 <p className="text-lg font-semibold text-slate-900 dark:text-white">{previewData.title}</p>
               </div>
               <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4">
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Preview Content:</p>
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Nội dung (xem trước):</p>
                 <p className="text-slate-900 dark:text-white whitespace-pre-wrap">{previewData.content}</p>
               </div>
               <div className="flex gap-3 pt-4 border-t">
@@ -1226,24 +1226,24 @@ function TemplatesContent({
                   <option value="PackageExpiring">PackageExpiring</option>
                   <option value="MessageReceived">MessageReceived</option>
                   <option value="SystemAlert">SystemAlert</option>
-                  <option value="Custom">Custom</option>
+                  <option value="Custom">Tùy chỉnh</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Ngôn ngữ</label>
                 <select className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={selected.language} onChange={(e) => onSelect({ ...selected, language: e.target.value })}>
                   <option value="vi">Tiếng Việt</option>
-                  <option value="en">English</option>
+                  <option value="en">Tiếng Anh</option>
                 </select>
               </div>
-              <Field label="Title Template" value={selected.titleTemplate} onChange={(v) => onSelect({ ...selected, titleTemplate: v })} />
-              <TextAreaField label="Content Template" value={selected.contentTemplate} onChange={(v) => onSelect({ ...selected, contentTemplate: v })} rows={8} />
+              <Field label="Mẫu tiêu đề" value={selected.titleTemplate} onChange={(v) => onSelect({ ...selected, titleTemplate: v })} />
+              <TextAreaField label="Mẫu nội dung" value={selected.contentTemplate} onChange={(v) => onSelect({ ...selected, contentTemplate: v })} rows={8} />
               {selected.note !== undefined && <Field label="Ghi chú" value={selected.note || ""} onChange={(v) => onSelect({ ...selected, note: v })} />}
               <div className="flex gap-3 pt-4 border-t">
                 <button onClick={onSave} disabled={saving} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 font-medium">
                   {saving ? "Đang lưu..." : "Lưu thay đổi"}
                 </button>
-                <button onClick={() => onPreview(selected)} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium">Preview</button>
+                <button onClick={() => onPreview(selected)} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium">Xem trước</button>
                 <button onClick={() => { onSelect(null); onPreviewDataChange(null); }} className="px-4 py-2 border border-slate-300 rounded-lg">Hủy</button>
               </div>
             </div>
