@@ -168,7 +168,16 @@ public class AdminAnalyticsController : ControllerBase
     {
         try
         {
-            var dashboard = await _repo.GetGlobalDashboardAsync(startDate, endDate);
+            // Normalize dates: treat as UTC dates (frontend sends YYYY-MM-DD format)
+            // Repository will handle adding one day to end date to cover full day
+            DateTime? normalizedStart = startDate.HasValue 
+                ? startDate.Value.Date.ToUniversalTime() 
+                : null;
+            DateTime? normalizedEnd = endDate.HasValue 
+                ? endDate.Value.Date.ToUniversalTime() 
+                : null;
+            
+            var dashboard = await _repo.GetGlobalDashboardAsync(normalizedStart, normalizedEnd);
             return Ok(dashboard);
         }
         catch (Exception ex)

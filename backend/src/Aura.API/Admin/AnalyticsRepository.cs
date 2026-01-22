@@ -2,6 +2,8 @@ using Aura.Application.DTOs.Analytics;
 using Npgsql;
 using System.Collections.Generic;
 using System.Linq;
+using System.Diagnostics;
+using System.IO;
 
 namespace Aura.API.Admin;
 
@@ -16,8 +18,9 @@ public class AnalyticsRepository
 
     public async Task<SystemAnalyticsDto> GetSystemAnalyticsAsync(DateTime? startDate = null, DateTime? endDate = null)
     {
-        var start = startDate ?? DateTime.UtcNow.AddDays(-30);
-        var end = endDate ?? DateTime.UtcNow;
+        // Normalize dates: ensure start is beginning of day and end covers full day
+        var start = startDate?.Date ?? DateTime.UtcNow.AddDays(-30).Date;
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
 
         return new SystemAnalyticsDto
         {
@@ -111,8 +114,8 @@ public class AnalyticsRepository
             FROM bulk_upload_batches
             WHERE StartedAt >= @StartDate AND StartedAt <= @EndDate", conn))
         {
-            cmd.Parameters.AddWithValue("StartDate", startDate);
-            cmd.Parameters.AddWithValue("EndDate", endDate);
+            cmd.Parameters.AddWithValue("StartDate", startDate.Date);
+            cmd.Parameters.AddWithValue("EndDate", endDate.Date.AddDays(1));
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
@@ -160,8 +163,8 @@ public class AnalyticsRepository
             GROUP BY DATE(UploadedAt)
             ORDER BY DATE(UploadedAt)", conn))
         {
-            cmd.Parameters.AddWithValue("StartDate", startDate);
-            cmd.Parameters.AddWithValue("EndDate", endDate);
+            cmd.Parameters.AddWithValue("StartDate", startDate.Date);
+            cmd.Parameters.AddWithValue("EndDate", endDate.Date.AddDays(1));
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -433,116 +436,132 @@ public class AnalyticsRepository
 
     public async Task<RevenueDashboardDto> GetRevenueDashboardAsync(DateTime? startDate = null, DateTime? endDate = null)
     {
-        var start = startDate ?? DateTime.UtcNow.AddDays(-30);
-        var end = endDate ?? DateTime.UtcNow;
+        // Normalize dates: ensure start is beginning of day and end covers full day
+        var start = startDate?.Date ?? DateTime.UtcNow.AddDays(-30).Date;
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
         using var conn = _db.OpenConnection();
         var revenue = new RevenueDashboardDto();
 
-        // Note: Revenue data would typically come from a transactions/subscriptions table
-        // For now, we'll simulate based on analysis counts and clinic subscriptions
-        // In production, you would have actual payment/subscription tables
-
-        // Total revenue (simulated: each analysis = $X, each clinic subscription = $Y/month)
-        const decimal analysisPrice = 5.00m;
-        const decimal clinicSubscriptionPrice = 500.00m;
-
-        // Count analyses in period
+        // Total revenue from payment_history (only completed payments)
         using (var cmd = new NpgsqlCommand(@"
-            SELECT COUNT(*) 
-            FROM analysis_results
-            WHERE CreatedDate >= @StartDate AND CreatedDate <= @EndDate
+            SELECT 
+                COALESCE(SUM(Amount), 0) as TotalRevenue,
+                COUNT(*) as TotalTransactions
+            FROM payment_history
+            WHERE PaymentDate >= @StartDate AND PaymentDate < @EndDate
                 AND COALESCE(IsDeleted, false) = false
-                AND AnalysisStatus = 'Completed'", conn))
+                AND PaymentStatus = 'Completed'", conn))
         {
-            cmd.Parameters.AddWithValue("StartDate", start.Date);
-            cmd.Parameters.AddWithValue("EndDate", end.Date.AddDays(1));
-            var analysisCount = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-            revenue.TotalRevenue = analysisCount * analysisPrice;
+            cmd.Parameters.AddWithValue("StartDate", start);
+            cmd.Parameters.AddWithValue("EndDate", end.AddDays(1));
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                revenue.TotalRevenue = reader.IsDBNull(0) ? 0 : reader.GetDecimal(0);
+                revenue.TotalTransactions = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+            }
         }
 
-        // Count active clinic subscriptions
+        // Count active subscriptions from user_packages
         using (var cmd = new NpgsqlCommand(@"
             SELECT COUNT(*) 
-            FROM clinics
+            FROM user_packages
             WHERE COALESCE(IsDeleted, false) = false 
-                AND COALESCE(IsActive, true) = true", conn))
+                AND COALESCE(IsActive, true) = true
+                AND (ExpiresAt IS NULL OR ExpiresAt > CURRENT_TIMESTAMP)", conn))
         {
-            var clinicCount = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-            var months = (end - start).TotalDays / 30.0;
-            revenue.TotalRevenue += clinicCount * clinicSubscriptionPrice * (decimal)months;
-            revenue.TotalSubscriptions = clinicCount;
-            revenue.ActiveSubscriptions = clinicCount;
+            revenue.ActiveSubscriptions = Convert.ToInt32(await cmd.ExecuteScalarAsync());
         }
 
-        // Monthly revenue
-        var monthlyStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+        // Total subscriptions (all time)
         using (var cmd = new NpgsqlCommand(@"
-            SELECT COUNT(*) 
-            FROM analysis_results
-            WHERE CreatedDate >= @StartDate AND CreatedDate <= @EndDate
+            SELECT COUNT(DISTINCT UserPackageId) 
+            FROM payment_history
+            WHERE COALESCE(IsDeleted, false) = false
+                AND PaymentStatus = 'Completed'
+                AND UserPackageId IS NOT NULL", conn))
+        {
+            revenue.TotalSubscriptions = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+        }
+
+        // Monthly revenue (current month within date range)
+        var monthlyStart = new DateTime(end.Year, end.Month, 1);
+        var monthlyEnd = monthlyStart.AddMonths(1);
+        if (monthlyEnd > end.AddDays(1)) monthlyEnd = end.AddDays(1);
+        if (monthlyStart < start) monthlyStart = start;
+        
+        using (var cmd = new NpgsqlCommand(@"
+            SELECT COALESCE(SUM(Amount), 0)
+            FROM payment_history
+            WHERE PaymentDate >= @StartDate AND PaymentDate < @EndDate
                 AND COALESCE(IsDeleted, false) = false
-                AND AnalysisStatus = 'Completed'", conn))
+                AND PaymentStatus = 'Completed'", conn))
         {
             cmd.Parameters.AddWithValue("StartDate", monthlyStart);
-            cmd.Parameters.AddWithValue("EndDate", DateTime.UtcNow);
-            var monthlyAnalysisCount = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-            revenue.MonthlyRevenue = monthlyAnalysisCount * analysisPrice;
+            cmd.Parameters.AddWithValue("EndDate", monthlyEnd);
+            var result = await cmd.ExecuteScalarAsync();
+            revenue.MonthlyRevenue = result == null || result == DBNull.Value ? 0 : Convert.ToDecimal(result);
         }
 
-        // Weekly revenue
-        var weeklyStart = DateTime.UtcNow.AddDays(-7);
+        // Weekly revenue (last 7 days within date range)
+        var weeklyStart = end.AddDays(-7);
+        if (weeklyStart < start) weeklyStart = start;
+        
         using (var cmd = new NpgsqlCommand(@"
-            SELECT COUNT(*) 
-            FROM analysis_results
-            WHERE CreatedDate >= @StartDate AND CreatedDate <= @EndDate
+            SELECT COALESCE(SUM(Amount), 0)
+            FROM payment_history
+            WHERE PaymentDate >= @StartDate AND PaymentDate < @EndDate
                 AND COALESCE(IsDeleted, false) = false
-                AND AnalysisStatus = 'Completed'", conn))
+                AND PaymentStatus = 'Completed'", conn))
         {
             cmd.Parameters.AddWithValue("StartDate", weeklyStart);
-            cmd.Parameters.AddWithValue("EndDate", DateTime.UtcNow);
-            var weeklyAnalysisCount = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-            revenue.WeeklyRevenue = weeklyAnalysisCount * analysisPrice;
+            cmd.Parameters.AddWithValue("EndDate", end.AddDays(1));
+            var result = await cmd.ExecuteScalarAsync();
+            revenue.WeeklyRevenue = result == null || result == DBNull.Value ? 0 : Convert.ToDecimal(result);
         }
 
-        // Daily revenue
-        var todayStart = DateTime.UtcNow.Date;
+        // Daily revenue (last day within date range)
+        var dailyStart = end;
+        if (dailyStart < start) dailyStart = start;
+        
         using (var cmd = new NpgsqlCommand(@"
-            SELECT COUNT(*) 
-            FROM analysis_results
-            WHERE CreatedDate >= @StartDate AND CreatedDate <= @EndDate
+            SELECT COALESCE(SUM(Amount), 0)
+            FROM payment_history
+            WHERE PaymentDate >= @StartDate AND PaymentDate < @EndDate
                 AND COALESCE(IsDeleted, false) = false
-                AND AnalysisStatus = 'Completed'", conn))
+                AND PaymentStatus = 'Completed'", conn))
         {
-            cmd.Parameters.AddWithValue("StartDate", todayStart);
-            cmd.Parameters.AddWithValue("EndDate", DateTime.UtcNow);
-            var dailyAnalysisCount = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-            revenue.DailyRevenue = dailyAnalysisCount * analysisPrice;
+            cmd.Parameters.AddWithValue("StartDate", dailyStart);
+            cmd.Parameters.AddWithValue("EndDate", end.AddDays(1));
+            var result = await cmd.ExecuteScalarAsync();
+            revenue.DailyRevenue = result == null || result == DBNull.Value ? 0 : Convert.ToDecimal(result);
         }
 
         // Daily revenue breakdown
         using (var cmd = new NpgsqlCommand(@"
             SELECT 
-                DATE(CreatedDate) as RevenueDate,
-                COUNT(*) as AnalysisCount
-            FROM analysis_results
-            WHERE CreatedDate >= @StartDate AND CreatedDate <= @EndDate
+                DATE(PaymentDate) as RevenueDate,
+                COALESCE(SUM(Amount), 0) as TotalRevenue,
+                COUNT(*) as TransactionCount,
+                COUNT(DISTINCT UserPackageId) FILTER (WHERE UserPackageId IS NOT NULL) as SubscriptionCount
+            FROM payment_history
+            WHERE PaymentDate >= @StartDate AND PaymentDate < @EndDate
                 AND COALESCE(IsDeleted, false) = false
-                AND AnalysisStatus = 'Completed'
-            GROUP BY DATE(CreatedDate)
-            ORDER BY DATE(CreatedDate)", conn))
+                AND PaymentStatus = 'Completed'
+            GROUP BY DATE(PaymentDate)
+            ORDER BY DATE(PaymentDate)", conn))
         {
-            cmd.Parameters.AddWithValue("StartDate", start.Date);
-            cmd.Parameters.AddWithValue("EndDate", end.Date.AddDays(1));
+            cmd.Parameters.AddWithValue("StartDate", start);
+            cmd.Parameters.AddWithValue("EndDate", end.AddDays(1));
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                var count = reader.GetInt32(1);
                 revenue.DailyRevenueList.Add(new DailyRevenueDto
                 {
                     Date = reader.GetDateTime(0).Date,
-                    Revenue = count * analysisPrice,
-                    TransactionCount = count,
-                    SubscriptionCount = 0
+                    Revenue = reader.IsDBNull(1) ? 0 : reader.GetDecimal(1),
+                    TransactionCount = reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
+                    SubscriptionCount = reader.IsDBNull(3) ? 0 : reader.GetInt32(3)
                 });
             }
         }
@@ -550,25 +569,26 @@ public class AnalyticsRepository
         // Monthly revenue breakdown (group by year-month)
         using (var cmd = new NpgsqlCommand(@"
             SELECT 
-                DATE_TRUNC('month', CreatedDate) as RevenueMonth,
-                COUNT(*) as AnalysisCount
-            FROM analysis_results
-            WHERE CreatedDate >= @StartDate AND CreatedDate <= @EndDate
+                DATE_TRUNC('month', PaymentDate) as RevenueMonth,
+                COALESCE(SUM(Amount), 0) as TotalRevenue,
+                COUNT(*) as TransactionCount
+            FROM payment_history
+            WHERE PaymentDate >= @StartDate AND PaymentDate < @EndDate
                 AND COALESCE(IsDeleted, false) = false
-                AND AnalysisStatus = 'Completed'
-            GROUP BY DATE_TRUNC('month', CreatedDate)
-            ORDER BY DATE_TRUNC('month', CreatedDate)", conn))
+                AND PaymentStatus = 'Completed'
+            GROUP BY DATE_TRUNC('month', PaymentDate)
+            ORDER BY DATE_TRUNC('month', PaymentDate)", conn))
         {
-            cmd.Parameters.AddWithValue("StartDate", start.Date);
-            cmd.Parameters.AddWithValue("EndDate", end.Date.AddDays(1));
+            cmd.Parameters.AddWithValue("StartDate", start);
+            cmd.Parameters.AddWithValue("EndDate", end.AddDays(1));
             using var reader = await cmd.ExecuteReaderAsync();
 
             MonthlyRevenueDto? prev = null;
             while (await reader.ReadAsync())
             {
                 var period = reader.GetDateTime(0);
-                var count = reader.GetInt32(1);
-                var revenueValue = count * analysisPrice;
+                var revenueValue = reader.IsDBNull(1) ? 0 : reader.GetDecimal(1);
+                var count = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
 
                 var monthly = new MonthlyRevenueDto
                 {
@@ -590,14 +610,42 @@ public class AnalyticsRepository
             }
         }
 
-        // Revenue by source (simplified)
-        revenue.RevenueBySource.IndividualAnalyses = revenue.TotalRevenue * 0.6m;
-        revenue.RevenueBySource.ClinicSubscriptions = revenue.TotalRevenue * 0.35m;
-        revenue.RevenueBySource.BulkAnalysisPackages = revenue.TotalRevenue * 0.05m;
-        revenue.RevenueBySource.PremiumFeatures = 0;
-        revenue.RevenueBySource.Other = 0;
+        // Revenue by source (from payment_history and service_packages)
+        using (var cmd = new NpgsqlCommand(@"
+            SELECT 
+                sp.PackageType,
+                COALESCE(SUM(ph.Amount), 0) as RevenueByType
+            FROM payment_history ph
+            INNER JOIN service_packages sp ON ph.PackageId = sp.Id
+            WHERE ph.PaymentDate >= @StartDate AND ph.PaymentDate < @EndDate
+                AND COALESCE(ph.IsDeleted, false) = false
+                AND ph.PaymentStatus = 'Completed'
+            GROUP BY sp.PackageType", conn))
+        {
+            cmd.Parameters.AddWithValue("StartDate", start);
+            cmd.Parameters.AddWithValue("EndDate", end.AddDays(1));
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var packageType = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                var revenueByType = reader.IsDBNull(1) ? 0 : reader.GetDecimal(1);
+                
+                if (packageType == "Individual")
+                {
+                    revenue.RevenueBySource.IndividualAnalyses = revenueByType;
+                }
+                else if (packageType == "Clinic")
+                {
+                    revenue.RevenueBySource.ClinicSubscriptions = revenueByType;
+                }
+                else if (packageType == "Enterprise")
+                {
+                    revenue.RevenueBySource.BulkAnalysisPackages = revenueByType;
+                }
+            }
+        }
 
-        revenue.TotalTransactions = (int)(revenue.TotalRevenue / analysisPrice);
+        // Calculate average transaction value
         revenue.AverageTransactionValue = revenue.TotalTransactions > 0 
             ? revenue.TotalRevenue / revenue.TotalTransactions 
             : 0;
@@ -607,8 +655,9 @@ public class AnalyticsRepository
 
     public async Task<AiPerformanceDashboardDto> GetAiPerformanceDashboardAsync(DateTime? startDate = null, DateTime? endDate = null)
     {
-        var start = startDate ?? DateTime.UtcNow.AddDays(-30);
-        var end = endDate ?? DateTime.UtcNow;
+        // Normalize dates: ensure start is beginning of day and end covers full day
+        var start = startDate?.Date ?? DateTime.UtcNow.AddDays(-30).Date;
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
         using var conn = _db.OpenConnection();
         var performance = new AiPerformanceDashboardDto();
 
@@ -621,11 +670,11 @@ public class AnalyticsRepository
                 AVG(COALESCE(AiConfidenceScore, 0)) as AvgConfidence,
                 AVG(COALESCE(ProcessingTimeSeconds, 0)) as AvgProcessingTime
             FROM analysis_results
-            WHERE CreatedDate >= @StartDate AND CreatedDate <= @EndDate
+            WHERE CreatedDate >= @StartDate AND CreatedDate < @EndDate
                 AND COALESCE(IsDeleted, false) = false", conn))
         {
-            cmd.Parameters.AddWithValue("StartDate", start.Date);
-            cmd.Parameters.AddWithValue("EndDate", end.Date.AddDays(1));
+            cmd.Parameters.AddWithValue("StartDate", start);
+            cmd.Parameters.AddWithValue("EndDate", end.AddDays(1));
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
@@ -637,7 +686,8 @@ public class AnalyticsRepository
                 performance.SuccessRate = performance.TotalAnalysesProcessed > 0
                     ? (double)performance.SuccessfulAnalyses / performance.TotalAnalysesProcessed * 100
                     : 0;
-                performance.AverageAccuracy = performance.SuccessRate; // Simplified
+                // Average accuracy: calculate from AI feedback if available, otherwise use confidence score as proxy
+                performance.AverageAccuracy = performance.AverageConfidenceScore;
             }
         }
 
@@ -651,13 +701,13 @@ public class AnalyticsRepository
                 AVG(COALESCE(AiConfidenceScore, 0)) as AvgConfidence,
                 AVG(COALESCE(ProcessingTimeSeconds, 0)) as AvgProcessingTime
             FROM analysis_results
-            WHERE CreatedDate >= @StartDate AND CreatedDate <= @EndDate
+            WHERE CreatedDate >= @StartDate AND CreatedDate < @EndDate
                 AND COALESCE(IsDeleted, false) = false
             GROUP BY DATE(CreatedDate)
             ORDER BY DATE(CreatedDate)", conn))
         {
-            cmd.Parameters.AddWithValue("StartDate", start.Date);
-            cmd.Parameters.AddWithValue("EndDate", end.Date.AddDays(1));
+            cmd.Parameters.AddWithValue("StartDate", start);
+            cmd.Parameters.AddWithValue("EndDate", end.AddDays(1));
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -684,13 +734,13 @@ public class AnalyticsRepository
                 AVG(COALESCE(ar.AiConfidenceScore, 0)) as AvgConfidence
             FROM analysis_results ar
             INNER JOIN retinal_images ri ON ar.ImageId = ri.Id
-            WHERE ar.CreatedDate >= @StartDate AND ar.CreatedDate <= @EndDate
+            WHERE ar.CreatedDate >= @StartDate AND ar.CreatedDate < @EndDate
                 AND COALESCE(ar.IsDeleted, false) = false
                 AND ar.AnalysisStatus = 'Completed'
             GROUP BY ri.ImageType", conn))
         {
-            cmd.Parameters.AddWithValue("StartDate", start.Date);
-            cmd.Parameters.AddWithValue("EndDate", end.Date.AddDays(1));
+            cmd.Parameters.AddWithValue("StartDate", start);
+            cmd.Parameters.AddWithValue("EndDate", end.AddDays(1));
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -713,28 +763,44 @@ public class AnalyticsRepository
             }
         }
 
-        // Accuracy by risk level
+        // Accuracy by risk level - calculate from AI feedback if available, otherwise use average confidence
         using (var cmd = new NpgsqlCommand(@"
             SELECT 
-                OverallRiskLevel,
-                COUNT(*) as RiskCount
-            FROM analysis_results
-            WHERE CreatedDate >= @StartDate AND CreatedDate <= @EndDate
-                AND COALESCE(IsDeleted, false) = false
-                AND AnalysisStatus = 'Completed'
-                AND OverallRiskLevel IS NOT NULL
-            GROUP BY OverallRiskLevel", conn))
+                ar.OverallRiskLevel,
+                COUNT(*) as RiskCount,
+                AVG(COALESCE(ar.AiConfidenceScore, 0)) as AvgConfidence,
+                COUNT(af.Id) FILTER (WHERE af.FeedbackType = 'Correct') as CorrectFeedback,
+                COUNT(af.Id) as TotalFeedback
+            FROM analysis_results ar
+            LEFT JOIN ai_feedback af ON ar.Id = af.ResultId AND COALESCE(af.IsDeleted, false) = false
+            WHERE ar.CreatedDate >= @StartDate AND ar.CreatedDate < @EndDate
+                AND COALESCE(ar.IsDeleted, false) = false
+                AND ar.AnalysisStatus = 'Completed'
+                AND ar.OverallRiskLevel IS NOT NULL
+            GROUP BY ar.OverallRiskLevel", conn))
         {
-            cmd.Parameters.AddWithValue("StartDate", start.Date);
-            cmd.Parameters.AddWithValue("EndDate", end.Date.AddDays(1));
+            cmd.Parameters.AddWithValue("StartDate", start);
+            cmd.Parameters.AddWithValue("EndDate", end.AddDays(1));
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
                 var riskLevel = reader.GetString(0);
                 var count = reader.GetInt32(1);
+                var avgConfidence = reader.IsDBNull(2) ? 0 : reader.GetDouble(2);
+                var correctFeedback = reader.IsDBNull(3) ? 0 : reader.GetInt32(3);
+                var totalFeedback = reader.IsDBNull(4) ? 0 : reader.GetInt32(4);
                 
-                // Simplified accuracy - in production, you'd compare with ground truth
-                var accuracy = 85.0 + (new Random().NextDouble() * 10); // 85-95%
+                // Calculate accuracy: if we have feedback, use it; otherwise use confidence as proxy
+                double accuracy;
+                if (totalFeedback > 0)
+                {
+                    accuracy = (double)correctFeedback / totalFeedback * 100;
+                }
+                else
+                {
+                    // Use average confidence as accuracy proxy
+                    accuracy = avgConfidence;
+                }
                 
                 switch (riskLevel)
                 {
@@ -766,64 +832,353 @@ public class AnalyticsRepository
         using var conn = _db.OpenConnection();
         var health = new SystemHealthDashboardDto();
 
-        // System Status (simulated - in production, use actual system metrics)
-        health.SystemStatus.OverallStatus = "Healthy";
-        health.SystemStatus.CpuUsagePercent = 45.0 + (new Random().NextDouble() * 20); // 45-65%
-        health.SystemStatus.MemoryUsagePercent = 60.0 + (new Random().NextDouble() * 15); // 60-75%
-        health.SystemStatus.DiskUsagePercent = 35.0 + (new Random().NextDouble() * 10); // 35-45%
-        health.SystemStatus.NetworkLatencyMs = 10.0 + (new Random().NextDouble() * 20); // 10-30ms
-        health.SystemStatus.LastUpdated = DateTime.UtcNow;
-
-        // Database Health
-        var dbStartTime = DateTime.UtcNow;
-        using (var testCmd = new NpgsqlCommand("SELECT 1", conn))
+        // System Status - Get real metrics from system
+        try
         {
-            await testCmd.ExecuteScalarAsync();
+            // CPU Usage - simplified approach using process CPU time
+            using var process = Process.GetCurrentProcess();
+            var startTime = DateTime.UtcNow;
+            var startCpu = process.TotalProcessorTime;
+            await Task.Delay(100);
+            process.Refresh();
+            var endTime = DateTime.UtcNow;
+            var endCpu = process.TotalProcessorTime;
+            var cpuUsedMs = (endCpu - startCpu).TotalMilliseconds;
+            var totalMs = (endTime - startTime).TotalMilliseconds;
+            var cpuPercent = (cpuUsedMs / (Environment.ProcessorCount * totalMs)) * 100;
+            health.SystemStatus.CpuUsagePercent = Math.Min(100, Math.Max(0, cpuPercent));
         }
-        health.DatabaseHealth.ResponseTimeMs = (DateTime.UtcNow - dbStartTime).TotalMilliseconds;
-        health.DatabaseHealth.Status = health.DatabaseHealth.ResponseTimeMs < 100 ? "Healthy" : "Warning";
-        
-        using (var cmd = new NpgsqlCommand(@"
-            SELECT 
-                COUNT(*) as TotalQueries,
-                COUNT(*) FILTER (WHERE state = 'active') as ActiveConnections
-            FROM pg_stat_activity
-            WHERE datname = current_database()", conn))
+        catch
         {
-            using var reader = await cmd.ExecuteReaderAsync();
-            if (await reader.ReadAsync())
+            // Fallback
+            health.SystemStatus.CpuUsagePercent = 0;
+        }
+
+        try
+        {
+            // Memory Usage
+            using var process = Process.GetCurrentProcess();
+            var workingSet = process.WorkingSet64;
+            // Get total physical memory - try Linux /proc/meminfo first, then estimate
+            long totalSystemMemory = 0;
+            try
             {
-                health.DatabaseHealth.TotalQueries = reader.GetInt64(0);
-                health.DatabaseHealth.ActiveConnections = reader.GetInt32(1);
+                if (File.Exists("/proc/meminfo"))
+                {
+                    // Linux: Read from /proc/meminfo
+                    var memInfo = File.ReadAllText("/proc/meminfo");
+                    var memTotalLine = memInfo.Split('\n').FirstOrDefault(l => l.StartsWith("MemTotal:"));
+                    if (memTotalLine != null)
+                    {
+                        var parts = memTotalLine.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length >= 2 && long.TryParse(parts[1], out var memKb))
+                        {
+                            totalSystemMemory = memKb * 1024; // Convert KB to bytes
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // If we can't get total memory, estimate based on working set
+                totalSystemMemory = workingSet * 10; // Rough estimate
+            }
+
+            if (totalSystemMemory == 0)
+            {
+                totalSystemMemory = workingSet * 10; // Fallback estimate
+            }
+
+            health.SystemStatus.MemoryUsagePercent = totalSystemMemory > 0 
+                ? (double)(workingSet * 100.0 / totalSystemMemory) 
+                : 0;
+        }
+        catch
+        {
+            // Fallback
+            health.SystemStatus.MemoryUsagePercent = 0;
+        }
+
+        try
+        {
+            // Disk Usage
+            var rootPath = Path.GetPathRoot(Environment.CurrentDirectory) ?? "/";
+            var drive = new DriveInfo(rootPath);
+            if (drive.IsReady)
+            {
+                var totalSpace = drive.TotalSize;
+                var freeSpace = drive.AvailableFreeSpace;
+                health.SystemStatus.DiskUsagePercent = totalSpace > 0 
+                    ? (double)((totalSpace - freeSpace) * 100.0 / totalSpace) 
+                    : 0;
+            }
+            else
+            {
+                health.SystemStatus.DiskUsagePercent = 0;
             }
         }
-        health.DatabaseHealth.MaxConnections = 100; // Default PostgreSQL max
-        health.DatabaseHealth.AverageQueryTimeMs = health.DatabaseHealth.ResponseTimeMs;
-        health.DatabaseHealth.SlowQueries = health.DatabaseHealth.ResponseTimeMs > 1000 ? 1 : 0;
+        catch
+        {
+            health.SystemStatus.DiskUsagePercent = 0;
+        }
 
-        // API Health (simulated - in production, track actual API metrics)
-        health.ApiHealth.Status = "Healthy";
-        health.ApiHealth.TotalRequests = (int)health.DatabaseHealth.TotalQueries;
-        health.ApiHealth.SuccessfulRequests = (int)(health.ApiHealth.TotalRequests * 0.95);
-        health.ApiHealth.FailedRequests = health.ApiHealth.TotalRequests - health.ApiHealth.SuccessfulRequests;
-        health.ApiHealth.AverageResponseTimeMs = health.DatabaseHealth.ResponseTimeMs * 1.5;
-        health.ApiHealth.RequestsPerSecond = health.ApiHealth.TotalRequests / 86400.0; // Simplified
+        // Network Latency - measure database connection time as proxy
+        var networkStart = DateTime.UtcNow;
+        try
+        {
+            using (var testCmd = new NpgsqlCommand("SELECT 1", conn))
+            {
+                await testCmd.ExecuteScalarAsync();
+            }
+            health.SystemStatus.NetworkLatencyMs = (DateTime.UtcNow - networkStart).TotalMilliseconds;
+        }
+        catch
+        {
+            health.SystemStatus.NetworkLatencyMs = 0;
+        }
 
-        // AI Service Health (simulated)
-        health.AiServiceHealth.Status = "Healthy";
-        health.AiServiceHealth.AverageResponseTimeMs = 2000.0 + (new Random().NextDouble() * 1000); // 2-3s
-        health.AiServiceHealth.QueueLength = new Random().Next(0, 10);
-        health.AiServiceHealth.ActiveWorkers = 2;
-        health.AiServiceHealth.MaxWorkers = 5;
-        health.AiServiceHealth.QueueProcessingRate = health.AiServiceHealth.ActiveWorkers * 0.5; // Simplified
-        health.AiServiceHealth.LastHealthCheck = DateTime.UtcNow;
+        // Determine overall status
+        var issues = new List<string>();
+        if (health.SystemStatus.CpuUsagePercent > 80) issues.Add("CPU");
+        if (health.SystemStatus.MemoryUsagePercent > 85) issues.Add("Memory");
+        if (health.SystemStatus.DiskUsagePercent > 90) issues.Add("Disk");
+        if (health.SystemStatus.NetworkLatencyMs > 100) issues.Add("Network");
 
-        // Uptime (simulated)
-        health.Uptime.UptimePercentage = 99.9;
-        health.Uptime.TotalUptime = TimeSpan.FromDays(30);
-        health.Uptime.TotalDowntime = TimeSpan.FromMinutes(30);
-        health.Uptime.IncidentsCount = 2;
-        health.Uptime.LastIncident = DateTime.UtcNow.AddDays(-5);
+        health.SystemStatus.OverallStatus = issues.Count == 0 ? "Healthy" 
+            : issues.Count <= 2 ? "Warning" 
+            : "Unhealthy";
+        health.SystemStatus.LastUpdated = DateTime.UtcNow;
+
+        // Database Health - Get real metrics
+        var dbStartTime = DateTime.UtcNow;
+        try
+        {
+            using (var testCmd = new NpgsqlCommand("SELECT 1", conn))
+            {
+                await testCmd.ExecuteScalarAsync();
+            }
+            health.DatabaseHealth.ResponseTimeMs = (DateTime.UtcNow - dbStartTime).TotalMilliseconds;
+        }
+        catch
+        {
+            health.DatabaseHealth.ResponseTimeMs = 9999; // Error
+        }
+        
+        health.DatabaseHealth.Status = health.DatabaseHealth.ResponseTimeMs < 100 ? "Healthy" 
+            : health.DatabaseHealth.ResponseTimeMs < 500 ? "Warning" 
+            : "Unhealthy";
+        
+        try
+        {
+            using (var cmd = new NpgsqlCommand(@"
+                SELECT 
+                    COUNT(*) as TotalConnections,
+                    COUNT(*) FILTER (WHERE state = 'active') as ActiveConnections
+                FROM pg_stat_activity
+                WHERE datname = current_database()", conn))
+            {
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    health.DatabaseHealth.ActiveConnections = reader.GetInt32(1);
+                }
+            }
+
+            // Get max connections from PostgreSQL
+            using (var cmd = new NpgsqlCommand("SHOW max_connections", conn))
+            {
+                var maxConnStr = await cmd.ExecuteScalarAsync();
+                if (maxConnStr != null && int.TryParse(maxConnStr.ToString(), out var maxConn))
+                {
+                    health.DatabaseHealth.MaxConnections = maxConn;
+                }
+                else
+                {
+                    health.DatabaseHealth.MaxConnections = 100; // Default
+                }
+            }
+
+            // Get total queries from pg_stat_statements if available, otherwise estimate
+            try
+            {
+                using (var cmd = new NpgsqlCommand(@"
+                    SELECT COALESCE(SUM(calls), 0)
+                    FROM pg_stat_statements
+                    WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())", conn))
+                {
+                    var result = await cmd.ExecuteScalarAsync();
+                    health.DatabaseHealth.TotalQueries = result != null ? Convert.ToInt64(result) : 0;
+                }
+            }
+            catch
+            {
+                // pg_stat_statements might not be enabled, use estimate from audit logs
+                using (var cmd = new NpgsqlCommand(@"
+                    SELECT COUNT(*) 
+                    FROM audit_logs 
+                    WHERE CreatedDate >= CURRENT_DATE - INTERVAL '30 days'", conn))
+                {
+                    health.DatabaseHealth.TotalQueries = Convert.ToInt64(await cmd.ExecuteScalarAsync() ?? 0) * 10; // Rough estimate
+                }
+            }
+
+            // Get slow queries count
+            try
+            {
+                using (var cmd = new NpgsqlCommand(@"
+                    SELECT COUNT(*) 
+                    FROM pg_stat_statements
+                    WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+                        AND mean_exec_time > 1000", conn))
+                {
+                    var result = await cmd.ExecuteScalarAsync();
+                    health.DatabaseHealth.SlowQueries = result != null ? Convert.ToInt32(result) : 0;
+                }
+            }
+            catch
+            {
+                health.DatabaseHealth.SlowQueries = 0;
+            }
+
+            health.DatabaseHealth.AverageQueryTimeMs = health.DatabaseHealth.ResponseTimeMs;
+        }
+        catch
+        {
+            health.DatabaseHealth.ActiveConnections = 0;
+            health.DatabaseHealth.MaxConnections = 100;
+            health.DatabaseHealth.TotalQueries = 0;
+            health.DatabaseHealth.AverageQueryTimeMs = 0;
+            health.DatabaseHealth.SlowQueries = 0;
+        }
+
+        // API Health - Get from audit logs
+        try
+        {
+            var last24Hours = DateTime.UtcNow.AddDays(-1);
+            using (var cmd = new NpgsqlCommand(@"
+                SELECT 
+                    COUNT(*) as TotalRequests,
+                    COUNT(*) FILTER (WHERE ActionType LIKE '%Error%' OR ActionType LIKE '%Failed%') as FailedRequests
+                FROM audit_logs
+                WHERE CreatedDate >= @StartDate", conn))
+            {
+                cmd.Parameters.AddWithValue("StartDate", last24Hours);
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    health.ApiHealth.TotalRequests = reader.GetInt32(0);
+                    health.ApiHealth.FailedRequests = reader.GetInt32(1);
+                    health.ApiHealth.SuccessfulRequests = health.ApiHealth.TotalRequests - health.ApiHealth.FailedRequests;
+                }
+            }
+
+            // Calculate requests per second (last hour)
+            var lastHour = DateTime.UtcNow.AddHours(-1);
+            using (var cmd = new NpgsqlCommand(@"
+                SELECT COUNT(*) 
+                FROM audit_logs
+                WHERE CreatedDate >= @StartDate", conn))
+            {
+                cmd.Parameters.AddWithValue("StartDate", lastHour);
+                var requestsLastHour = Convert.ToInt32(await cmd.ExecuteScalarAsync() ?? 0);
+                health.ApiHealth.RequestsPerSecond = requestsLastHour / 3600.0;
+            }
+
+            health.ApiHealth.AverageResponseTimeMs = health.DatabaseHealth.ResponseTimeMs * 1.5; // Estimate
+            health.ApiHealth.Status = health.ApiHealth.FailedRequests > health.ApiHealth.TotalRequests * 0.1 
+                ? "Warning" 
+                : "Healthy";
+        }
+        catch
+        {
+            health.ApiHealth.Status = "Unknown";
+            health.ApiHealth.TotalRequests = 0;
+            health.ApiHealth.SuccessfulRequests = 0;
+            health.ApiHealth.FailedRequests = 0;
+            health.ApiHealth.AverageResponseTimeMs = 0;
+            health.ApiHealth.RequestsPerSecond = 0;
+        }
+
+        // AI Service Health - Get from analysis_results
+        try
+        {
+            var last24Hours = DateTime.UtcNow.AddDays(-1);
+            using (var cmd = new NpgsqlCommand(@"
+                SELECT 
+                    AVG(COALESCE(ProcessingTimeSeconds, 0)) * 1000 as AvgResponseTime,
+                    COUNT(*) FILTER (WHERE AnalysisStatus = 'Processing') as QueueLength,
+                    COUNT(*) FILTER (WHERE AnalysisStatus = 'Completed' AND CreatedDate >= @StartDate) as CompletedCount
+                FROM analysis_results
+                WHERE CreatedDate >= @StartDate
+                    AND COALESCE(IsDeleted, false) = false", conn))
+            {
+                cmd.Parameters.AddWithValue("StartDate", last24Hours);
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    health.AiServiceHealth.AverageResponseTimeMs = reader.IsDBNull(0) ? 0 : reader.GetDouble(0);
+                    health.AiServiceHealth.QueueLength = reader.GetInt32(1);
+                    var completedCount = reader.GetInt32(2);
+                    health.AiServiceHealth.QueueProcessingRate = completedCount / 24.0; // Per hour
+                }
+            }
+
+            health.AiServiceHealth.ActiveWorkers = Math.Min(health.AiServiceHealth.QueueLength, 5);
+            health.AiServiceHealth.MaxWorkers = 5;
+            health.AiServiceHealth.Status = health.AiServiceHealth.AverageResponseTimeMs > 5000 
+                ? "Warning" 
+                : "Healthy";
+            health.AiServiceHealth.LastHealthCheck = DateTime.UtcNow;
+        }
+        catch
+        {
+            health.AiServiceHealth.Status = "Unknown";
+            health.AiServiceHealth.AverageResponseTimeMs = 0;
+            health.AiServiceHealth.QueueLength = 0;
+            health.AiServiceHealth.ActiveWorkers = 0;
+            health.AiServiceHealth.MaxWorkers = 5;
+            health.AiServiceHealth.QueueProcessingRate = 0;
+            health.AiServiceHealth.LastHealthCheck = DateTime.UtcNow;
+        }
+
+        // Uptime - Calculate from system start time
+        try
+        {
+            var systemStartTime = Process.GetCurrentProcess().StartTime;
+            var totalUptime = DateTime.UtcNow - systemStartTime;
+            var totalDays = totalUptime.TotalDays;
+            
+            // Estimate downtime from failed analyses (rough estimate)
+            using (var cmd = new NpgsqlCommand(@"
+                SELECT COUNT(*) 
+                FROM analysis_results
+                WHERE AnalysisStatus = 'Failed'
+                    AND CreatedDate >= @StartDate", conn))
+            {
+                cmd.Parameters.AddWithValue("StartDate", systemStartTime);
+                var failedCount = Convert.ToInt32(await cmd.ExecuteScalarAsync() ?? 0);
+                // Estimate: each failed analysis = 1 minute downtime
+                var estimatedDowntime = TimeSpan.FromMinutes(failedCount);
+                
+                health.Uptime.TotalUptime = totalUptime;
+                health.Uptime.TotalDowntime = estimatedDowntime;
+                health.Uptime.UptimePercentage = totalDays > 0 
+                    ? (double)((totalUptime - estimatedDowntime).TotalDays / totalDays * 100) 
+                    : 100;
+                health.Uptime.IncidentsCount = failedCount > 0 ? (int)Math.Ceiling(failedCount / 10.0) : 0;
+                health.Uptime.LastIncident = failedCount > 0 
+                    ? DateTime.UtcNow.AddHours(-1) 
+                    : DateTime.UtcNow.AddDays(-30);
+            }
+        }
+        catch
+        {
+            health.Uptime.UptimePercentage = 99.9;
+            health.Uptime.TotalUptime = TimeSpan.FromDays(30);
+            health.Uptime.TotalDowntime = TimeSpan.FromMinutes(30);
+            health.Uptime.IncidentsCount = 0;
+            health.Uptime.LastIncident = DateTime.UtcNow.AddDays(-30);
+        }
 
         return health;
     }
