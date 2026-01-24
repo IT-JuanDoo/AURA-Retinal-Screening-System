@@ -1,9 +1,10 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../../store/authStore';
 import imageService, { ImageUploadResponse } from '../../services/imageService';
 import analysisService from '../../services/analysisService';
 import toast from 'react-hot-toast';
+import { getApiErrorMessage } from '../../utils/getApiErrorMessage';
+import PatientHeader from '../../components/patient/PatientHeader';
 
 interface UploadedImage {
   id: string;
@@ -16,9 +17,10 @@ interface UploadedImage {
 }
 
 const ImageUploadPage = () => {
-  const { user } = useAuthStore();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const startAnalysisInFlightRef = useRef(false);
+  const uploadProgressTimersRef = useRef<Record<string, number>>({});
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -88,7 +90,7 @@ const ImageUploadPage = () => {
       );
 
       // Simulate upload progress
-      const progressInterval = setInterval(() => {
+      const progressInterval = window.setInterval(() => {
         setUploadedImages((prev) =>
           prev.map((img) =>
             img.id === image.id
@@ -97,10 +99,12 @@ const ImageUploadPage = () => {
           )
         );
       }, 200);
+      uploadProgressTimersRef.current[image.id] = progressInterval;
 
       const response = await imageService.uploadImage(image.file);
 
-      clearInterval(progressInterval);
+      window.clearInterval(progressInterval);
+      delete uploadProgressTimersRef.current[image.id];
 
       setUploadedImages((prev) =>
         prev.map((img) =>
@@ -115,6 +119,12 @@ const ImageUploadPage = () => {
         )
       );
     } catch (error: any) {
+      const timer = uploadProgressTimersRef.current[image.id];
+      if (timer) {
+        window.clearInterval(timer);
+        delete uploadProgressTimersRef.current[image.id];
+      }
+
       setUploadedImages((prev) =>
         prev.map((img) =>
           img.id === image.id
@@ -126,7 +136,9 @@ const ImageUploadPage = () => {
             : img
         )
       );
-      toast.error(`Lỗi khi tải lên ${image.file.name}: ${error.message}`);
+      toast.error(
+        `Lỗi khi tải lên ${image.file.name}: ${getApiErrorMessage(error, 'Không thể tải ảnh lên')}`
+      );
     }
   };
 
@@ -160,14 +172,24 @@ const ImageUploadPage = () => {
   }, [handleFileSelect]);
 
   const handleRemoveImage = (id: string) => {
+    const timer = uploadProgressTimersRef.current[id];
+    if (timer) {
+      window.clearInterval(timer);
+      delete uploadProgressTimersRef.current[id];
+    }
     setUploadedImages((prev) => prev.filter((img) => img.id !== id));
   };
 
   const handleClearAll = () => {
+    Object.values(uploadProgressTimersRef.current).forEach((timer) => window.clearInterval(timer));
+    uploadProgressTimersRef.current = {};
     setUploadedImages([]);
   };
 
   const handleStartAnalysis = async () => {
+    // Chặn double-click / gọi trùng request
+    if (startAnalysisInFlightRef.current) return;
+
     const readyImages = uploadedImages.filter(
       (img) => img.status === 'uploaded' && img.uploadResponse
     );
@@ -178,15 +200,25 @@ const ImageUploadPage = () => {
     }
 
     setIsAnalyzing(true);
+    startAnalysisInFlightRef.current = true;
 
     try {
       const imageIds = readyImages
         .map((img) => img.uploadResponse?.id)
         .filter((id): id is string => !!id);
 
-      const response = await analysisService.startAnalysis({ imageIds });
+      if (imageIds.length === 0) {
+        toast.error('Không tìm thấy ID ảnh hợp lệ sau khi upload');
+        return;
+      }
 
-      toast.success('Phân tích đã được bắt đầu');
+      // Show loading toast
+      const loadingToast = toast.loading('Đang bắt đầu phân tích AI... (có thể mất 15-30 giây)');
+      
+      const response = await analysisService.startAnalysis({ imageIds });
+      
+      toast.dismiss(loadingToast);
+      toast.success('Phân tích đã được bắt đầu thành công');
 
       // Navigate to results page or show results
       if (Array.isArray(response) && response.length > 0) {
@@ -195,57 +227,31 @@ const ImageUploadPage = () => {
         navigate(`/analysis/${response.analysisId}`);
       }
     } catch (error: any) {
-      toast.error(`Lỗi khi bắt đầu phân tích: ${error.message}`);
+      toast.error(
+        `Lỗi khi bắt đầu phân tích: ${getApiErrorMessage(error, 'Không thể bắt đầu phân tích')}`
+      );
     } finally {
       setIsAnalyzing(false);
+      startAnalysisInFlightRef.current = false;
     }
   };
 
   const readyCount = uploadedImages.filter((img) => img.status === 'uploaded').length;
 
   return (
-    <div className="relative flex h-auto min-h-screen w-full flex-col bg-background-light dark:bg-background-dark font-display text-text-main-light dark:text-text-main-dark overflow-x-hidden transition-colors duration-200">
+    <div className="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 font-sans antialiased min-h-screen flex flex-col transition-colors duration-200">
       {/* Header */}
-      <header className="sticky top-0 z-50 flex items-center justify-between whitespace-nowrap border-b border-solid border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark px-4 md:px-10 py-3 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="size-8 text-primary flex items-center justify-center">
-            <span className="material-symbols-outlined text-3xl">ophthalmology</span>
-          </div>
-          <h2 className="text-lg font-bold leading-tight tracking-[-0.015em]">AURA Health</h2>
-        </div>
-        <div className="flex flex-1 justify-end gap-4 md:gap-8 items-center">
-          <div className="hidden md:flex items-center gap-6 md:gap-9">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="text-sm font-medium leading-normal hover:text-primary transition-colors"
-            >
-              Cổng Bệnh nhân
-            </button>
-            <button className="text-sm font-medium leading-normal hover:text-primary transition-colors">
-              Trợ giúp
-            </button>
-          </div>
-          <div className="flex items-center gap-4">
-            <button className="flex size-10 cursor-pointer items-center justify-center overflow-hidden rounded-full hover:bg-border-light dark:hover:bg-border-dark text-text-main-light dark:text-text-main-dark transition-colors relative">
-              <span className="material-symbols-outlined">notifications</span>
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-surface-light dark:border-surface-dark"></span>
-            </button>
-            <div className="size-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">
-              {user?.firstName?.[0] || user?.email?.[0] || 'U'}
-            </div>
-          </div>
-        </div>
-      </header>
+      <PatientHeader />
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col items-center py-8 md:py-12 px-4 md:px-8 w-full">
-        <div className="w-full max-w-[800px] flex flex-col gap-8">
+      <main className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+        <div className="w-full max-w-3xl mx-auto flex flex-col gap-8">
           {/* Title Section */}
-          <div className="flex flex-col gap-3">
-            <h1 className="text-3xl md:text-4xl font-black leading-tight tracking-[-0.033em]">
+          <div className="flex flex-col gap-4 text-center md:text-left">
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-black leading-tight tracking-tight text-slate-900 dark:text-white">
               Tải ảnh võng mạc
             </h1>
-            <p className="text-text-sub-light dark:text-text-sub-dark text-base md:text-lg font-normal leading-normal max-w-[640px]">
+            <p className="text-slate-600 dark:text-slate-400 text-base md:text-lg leading-relaxed max-w-2xl mx-auto md:mx-0">
               Vui lòng tải lên ảnh chụp đáy mắt (Fundus) hoặc ảnh cắt lớp quang học (OCT). AI của
               chúng tôi sẽ phân tích các dấu hiệu sức khỏe mạch máu để phát hiện sớm các nguy cơ
               tiềm ẩn.
@@ -254,10 +260,10 @@ const ImageUploadPage = () => {
 
           {/* Upload Zone */}
           <div
-            className={`w-full rounded-xl border-2 border-dashed transition-all duration-300 group relative overflow-hidden ${
+            className={`w-full rounded-2xl border-2 border-dashed transition-all duration-300 group relative overflow-hidden bg-white dark:bg-slate-900 ${
               isDragging
-                ? 'border-primary bg-primary/[0.05] dark:bg-primary/[0.1]'
-                : 'border-primary/30 dark:border-primary/30 bg-primary/[0.02] hover:bg-primary/[0.05] dark:bg-surface-dark hover:border-primary'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-lg'
+                : 'border-slate-300 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 shadow-sm'
             }`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -271,19 +277,20 @@ const ImageUploadPage = () => {
               className="hidden"
               onChange={handleFileInputChange}
             />
-            <div className="flex flex-col items-center justify-center gap-6 py-16 px-6 text-center">
-              <div className="size-20 rounded-full bg-white dark:bg-surface-dark shadow-md flex items-center justify-center text-primary group-hover:scale-110 group-hover:text-primary transition-all duration-300">
-                <span className="material-symbols-outlined text-5xl">cloud_upload</span>
+            <div className="flex flex-col items-center justify-center gap-6 py-20 px-6 text-center">
+              <div className={`size-24 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-500 dark:text-blue-400 transition-all duration-300 ${
+                isDragging ? 'scale-110 shadow-lg' : 'group-hover:scale-105 shadow-md'
+              }`}>
+                <span className="material-symbols-outlined text-6xl">cloud_upload</span>
               </div>
-              <div className="flex flex-col items-center gap-2">
-                <p className="text-lg font-bold leading-tight text-text-main-light dark:text-text-main-dark">
+              <div className="flex flex-col items-center gap-3">
+                <p className="text-xl font-bold leading-tight text-slate-900 dark:text-white">
                   Kéo thả ảnh vào đây hoặc nhấn để chọn
                 </p>
-                <p className="text-text-sub-light dark:text-text-sub-dark text-sm max-w-md">
-                  Hỗ trợ định dạng: JPG, PNG, DICOM (Fundus hoặc OCT).
-                  <br />
-                  Kích thước tối đa: 50MB/ảnh.
-                </p>
+                <div className="flex flex-col gap-1 text-slate-600 dark:text-slate-400 text-sm">
+                  <p>Hỗ trợ định dạng: <span className="font-semibold text-slate-700 dark:text-slate-300">JPG, PNG, DICOM</span> (Fundus hoặc OCT)</p>
+                  <p>Kích thước tối đa: <span className="font-semibold text-slate-700 dark:text-slate-300">50MB/ảnh</span></p>
+                </div>
               </div>
               <button 
                 type="button"
@@ -294,9 +301,9 @@ const ImageUploadPage = () => {
                     fileInputRef.current.click();
                   }
                 }}
-                className="bg-primary hover:bg-primary/90 text-white px-8 py-3 rounded-lg text-sm font-bold shadow-lg shadow-primary/20 transition-all mt-2 flex items-center gap-2 relative z-20"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3.5 rounded-lg text-base font-semibold shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2 relative z-20"
               >
-                <span className="material-symbols-outlined text-lg">add_photo_alternate</span>
+                <span className="material-symbols-outlined text-xl">add_photo_alternate</span>
                 Chọn ảnh từ thiết bị
               </button>
             </div>
@@ -304,16 +311,16 @@ const ImageUploadPage = () => {
 
           {/* Selected Images List */}
           {uploadedImages.length > 0 && (
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between pb-2 border-b border-border-light dark:border-border-dark">
-                <h3 className="font-bold text-lg text-text-main-light dark:text-text-main-dark">
-                  Ảnh đã chọn ({uploadedImages.length})
+            <div className="flex flex-col gap-6 bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-700">
+                <h3 className="font-bold text-xl text-slate-900 dark:text-white">
+                  Ảnh đã chọn <span className="text-blue-600 dark:text-blue-400">({uploadedImages.length})</span>
                 </h3>
                 <button
                   onClick={handleClearAll}
-                  className="text-primary text-sm font-medium hover:underline flex items-center gap-1"
+                  className="text-red-600 dark:text-red-400 text-sm font-semibold hover:text-red-700 dark:hover:text-red-300 hover:underline flex items-center gap-2 transition-colors"
                 >
-                  <span className="material-symbols-outlined text-base">delete_sweep</span>
+                  <span className="material-symbols-outlined text-lg">delete_sweep</span>
                   Xóa tất cả
                 </button>
               </div>
@@ -322,7 +329,7 @@ const ImageUploadPage = () => {
                 {uploadedImages.map((image) => (
                   <div
                     key={image.id}
-                    className="flex flex-col md:flex-row gap-4 p-4 rounded-xl bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark shadow-sm hover:shadow-md transition-shadow relative overflow-hidden"
+                    className="flex flex-col md:flex-row gap-4 p-5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all relative overflow-hidden"
                   >
                     {/* Image Thumbnail */}
                     <div className="w-full md:w-24 h-48 md:h-24 shrink-0 rounded-lg overflow-hidden bg-black relative shadow-inner">
@@ -408,25 +415,36 @@ const ImageUploadPage = () => {
           )}
 
           {/* Action Buttons */}
-          <div className="sticky bottom-0 bg-background-light dark:bg-background-dark pt-4 pb-8 border-t border-transparent z-10 flex flex-col gap-6 mt-4">
-            <div className="flex flex-col-reverse sm:flex-row gap-4 w-full">
+          <div className="flex flex-col gap-6 pt-6 border-t border-slate-200 dark:border-slate-800">
+            <div className="flex flex-col sm:flex-row gap-4 w-full">
               <button
                 onClick={() => navigate('/dashboard')}
-                className="flex-1 px-6 py-3.5 rounded-lg border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark text-text-main-light dark:text-text-main-dark font-bold hover:bg-gray-50 dark:hover:bg-surface-dark/80 transition-colors"
+                className="flex-1 px-6 py-3.5 rounded-lg border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
               >
                 Hủy bỏ
               </button>
               <button
                 onClick={handleStartAnalysis}
                 disabled={readyCount === 0 || isAnalyzing}
-                className="flex-[2] px-6 py-3.5 rounded-lg bg-primary hover:bg-primary/90 text-white font-bold shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-[2] px-8 py-3.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white font-bold shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 group"
               >
-                <span className="material-symbols-outlined group-hover:animate-pulse">analytics</span>
-                {isAnalyzing ? 'Đang xử lý...' : 'Bắt đầu phân tích'}
+                {isAnalyzing ? (
+                  <>
+                    <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                    <span>Đang xử lý AI... (vui lòng đợi)</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined group-hover:animate-pulse">analytics</span>
+                    <span>Bắt đầu phân tích</span>
+                  </>
+                )}
               </button>
             </div>
-            <div className="flex items-center justify-center gap-2 text-text-sub-light dark:text-text-sub-dark text-xs opacity-90 bg-surface-light dark:bg-surface-dark py-2 px-4 rounded-full w-fit mx-auto border border-border-light dark:border-border-dark shadow-sm">
-              <span className="material-symbols-outlined text-sm text-green-600 dark:text-green-500">
+            
+            {/* Privacy Statement */}
+            <div className="flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400 text-xs bg-slate-50 dark:bg-slate-800/50 py-3 px-5 rounded-lg border border-slate-200 dark:border-slate-700">
+              <span className="material-symbols-outlined text-base text-green-600 dark:text-green-400">
                 lock
               </span>
               <span>Dữ liệu của bạn được mã hóa an toàn & tuân thủ chuẩn HIPAA.</span>

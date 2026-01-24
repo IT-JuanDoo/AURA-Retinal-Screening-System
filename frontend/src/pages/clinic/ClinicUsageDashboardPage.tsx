@@ -68,7 +68,7 @@ const ClinicUsageDashboardPage = () => {
     );
   }
 
-  const { usageStatistics, imageAnalysisTracking } = statistics;
+  const { usageStatistics } = statistics;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-8">

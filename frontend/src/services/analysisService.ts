@@ -63,11 +63,15 @@ export interface AnalysisResult {
 const analysisService = {
   /**
    * Start analysis for one or more images
+   * Note: This may take 15-30 seconds due to AI processing
    */
   async startAnalysis(request: AnalysisRequest): Promise<AnalysisResponse | AnalysisResponse[]> {
     const response = await api.post<AnalysisResponse | AnalysisResponse[]>(
       '/analysis/start',
-      request
+      request,
+      {
+        timeout: 90000, // 90 seconds for analysis start (includes delay + AI processing)
+      }
     );
     return response.data;
   },

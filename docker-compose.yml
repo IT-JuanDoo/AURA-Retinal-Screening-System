@@ -98,6 +98,16 @@ services:
       - App__Version=1.0.0
       - App__UseHttpsRedirection=false
 
+      # Analysis (DEV/DEMO): disable credits requirement so analysis can run without user_packages setup
+      - Analysis__RequireCredits=false
+
+      # Analysis: allow fallback to mock if AI service unavailable (set to false to force AI only)
+      # Tạm thời bật lại để test, sau đó set = false khi AI Core đã chạy ổn định
+      - Analysis__FallbackToMock=true
+      
+      # Analysis: simulated processing delay in milliseconds (to make it feel more realistic)
+      - Analysis__ProcessingDelayMs=8000
+
       # Google OAuth
       - OAuth__Google__ClientId=${GOOGLE_CLIENT_ID:-1004537461818-uh893ns4v68194fcqgq9e41s2bvhpc97.apps.googleusercontent.com}
       - OAuth__Google__ClientSecret=${GOOGLE_CLIENT_SECRET:-}
@@ -121,14 +131,15 @@ services:
       - Email__FromName=AURA Health System
 
       # AI Core Service
-      - AICore__BaseUrl=http://aicore:8000/api
-      - AICore__Timeout=30000
+      - AICore__BaseUrl=http://aicore:8000
+      - AICore__Timeout=60000
 
       # Microservices URLs
       - AuthService__BaseUrl=http://auth-service:5001
       - UserService__BaseUrl=http://user-service:5002
       - ImageService__BaseUrl=http://image-service:5003
-      - AnalysisService__BaseUrl=http://analysis-service:5004
+      # AnalysisService__BaseUrl - Commented out to call aicore directly
+      # - AnalysisService__BaseUrl=http://analysis-service:5004
       - NotificationService__BaseUrl=http://notification-service:5005
       - AdminService__BaseUrl=http://admin-service:5006
 
@@ -167,7 +178,7 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -431,6 +442,8 @@ services:
     networks:
       - aura-network
     depends_on:
+      backend:
+        condition: service_healthy
       kong:
         condition: service_started
 

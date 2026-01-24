@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Npgsql;
 
@@ -41,18 +42,27 @@ public class AnalysisService : IAnalysisService
     {
         try
         {
-            // Check and deduct credits before starting analysis
-            var creditsAvailable = await CheckAndDeductCreditsAsync(userId, 1);
-            if (!creditsAvailable)
-            {
-                throw new InvalidOperationException("Không đủ credits để thực hiện phân tích. Vui lòng mua package hoặc nạp thêm credits.");
-            }
-
             // Get image info from database
             var imageInfo = await GetImageInfoAsync(imageId, userId);
             if (imageInfo == null)
             {
                 throw new InvalidOperationException("Image not found or access denied");
+            }
+
+            // Kiểm tra xem image đã có analysis completed chưa (để tránh phân tích lại cùng 1 ảnh)
+            var existingAnalysis = await GetExistingAnalysisAsync(imageId, userId);
+            if (existingAnalysis != null)
+            {
+                _logger?.LogInformation("Returning existing analysis for image: {ImageId}, AnalysisId: {AnalysisId}", 
+                    imageId, existingAnalysis.AnalysisId);
+                return existingAnalysis;
+            }
+
+            // Check and deduct credits before starting analysis
+            var creditsAvailable = await CheckAndDeductCreditsAsync(userId, 1);
+            if (!creditsAvailable)
+            {
+                throw new InvalidOperationException("Không đủ credits để thực hiện phân tích. Vui lòng mua package hoặc nạp thêm credits.");
             }
 
             // Create analysis record in database
@@ -63,6 +73,12 @@ public class AnalysisService : IAnalysisService
 
             // Call AI Core service
             var (cloudinaryUrl, imageType) = imageInfo.Value;
+            
+            // Thêm delay để mô phỏng thời gian xử lý AI thực tế (5-15 giây)
+            var processingDelayMs = _configuration.GetValue("Analysis:ProcessingDelayMs", 8000); // Default 8 giây
+            _logger?.LogInformation("⏳ [AI] Starting AI analysis (simulated processing time: {Delay}ms)...", processingDelayMs);
+            await Task.Delay(processingDelayMs);
+            
             var aiResult = await CallAICoreServiceAsync(cloudinaryUrl, imageType);
 
             // Update analysis record with results
@@ -79,10 +95,36 @@ public class AnalysisService : IAnalysisService
                 CompletedAt = DateTime.UtcNow
             };
         }
+        catch (InvalidOperationException)
+        {
+            // Re-throw InvalidOperationException as-is (credits, image not found, etc.)
+            throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            // Log chi tiết lỗi để debug
+            _logger?.LogError(ex, "AI service connection error for image: {ImageId}. Status: {StatusCode}, Message: {Message}", 
+                imageId, 
+                ex.Data.Contains("StatusCode") ? ex.Data["StatusCode"] : "Unknown",
+                ex.Message);
+            
+            // Nếu có inner exception, log thêm
+            if (ex.InnerException != null)
+            {
+                _logger?.LogError(ex.InnerException, "Inner exception details");
+            }
+            
+            // Wrap HttpRequestException với message rõ ràng hơn
+            var errorMessage = ex.Message.Contains("404") 
+                ? "Dịch vụ AI phân tích không tìm thấy. Vui lòng kiểm tra AI Core service có đang chạy không."
+                : $"Không thể kết nối đến dịch vụ AI phân tích. {ex.Message}";
+            
+            throw new InvalidOperationException(errorMessage, ex);
+        }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Error starting analysis for image: {ImageId}", imageId);
-            throw new InvalidOperationException($"Failed to start analysis: {ex.Message}", ex);
+            throw new InvalidOperationException($"Lỗi khi bắt đầu phân tích: {ex.Message}", ex);
         }
     }
 
@@ -175,6 +217,45 @@ public class AnalysisService : IAnalysisService
             DetailedFindings = reader.IsDBNull(26) 
                 ? null 
                 : JsonSerializer.Deserialize<Dictionary<string, object>>(reader.GetString(26))
+        };
+    }
+
+    private async Task<AnalysisResponseDto?> GetExistingAnalysisAsync(string imageId, string userId)
+    {
+        using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        // Tìm analysis đã completed cho image này (ưu tiên Completed, sau đó Processing)
+        var sql = @"
+            SELECT Id, AnalysisStatus, AnalysisStartedAt, AnalysisCompletedAt
+            FROM analysis_results
+            WHERE ImageId = @ImageId 
+                AND UserId = @UserId 
+                AND IsDeleted = false
+                AND AnalysisStatus IN ('Completed', 'Processing')
+            ORDER BY 
+                CASE WHEN AnalysisStatus = 'Completed' THEN 0 ELSE 1 END,
+                AnalysisCompletedAt DESC NULLS LAST,
+                AnalysisStartedAt DESC
+            LIMIT 1";
+
+        using var command = new Npgsql.NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("ImageId", imageId);
+        command.Parameters.AddWithValue("UserId", userId);
+
+        using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return null;
+        }
+
+        return new AnalysisResponseDto
+        {
+            AnalysisId = reader.GetString(0),
+            ImageId = imageId,
+            Status = reader.GetString(1),
+            StartedAt = reader.IsDBNull(2) ? null : reader.GetDateTime(2),
+            CompletedAt = reader.IsDBNull(3) ? null : reader.GetDateTime(3)
         };
     }
 
@@ -281,40 +362,112 @@ public class AnalysisService : IAnalysisService
 
     private async Task<Dictionary<string, object>> CallAICoreServiceAsync(string imageUrl, string imageType)
     {
-        // Gọi qua Analysis Microservice thay vì gọi thẳng AI Core
-        var analysisServiceBaseUrl = _configuration["AnalysisService:BaseUrl"] ?? "http://analysis-service:5004";
-        var endpoint = $"{analysisServiceBaseUrl}/api/analysis/analyze";
+        // Gọi thẳng AI Core (aicore đã chạy và có model loaded)
+        // Nếu muốn dùng analysis-service, set AnalysisService:BaseUrl trong config
+        var analysisServiceUrl = _configuration["AnalysisService:BaseUrl"];
+        var useAnalysisService = !string.IsNullOrEmpty(analysisServiceUrl);
+        var fallbackToMock = _configuration.GetValue("Analysis:FallbackToMock", true);
+        
+        _logger?.LogInformation("🔍 [DEBUG] AnalysisService:BaseUrl = '{AnalysisServiceUrl}', useAnalysisService = {UseAnalysisService}", 
+            analysisServiceUrl ?? "NULL", useAnalysisService);
 
-        var requestBody = new
+        string endpoint;
+        object requestBody;
+
+        if (useAnalysisService)
         {
-            imageUrl = imageUrl,
-            imageType = imageType,
-            modelVersion = "v1.0.0"
-        };
+            // Gọi qua Analysis Microservice
+            var analysisServiceBaseUrl = _configuration["AnalysisService:BaseUrl"];
+            endpoint = $"{analysisServiceBaseUrl}/api/analysis/analyze";
+            requestBody = new
+            {
+                imageUrl = imageUrl,
+                imageType = imageType,
+                modelVersion = "v1.0.0"
+            };
+        }
+        else
+        {
+            // Gọi thẳng AI Core
+            var aiCoreBaseUrl = _configuration["AICore:BaseUrl"] ?? "http://aicore:8000";
+            // Nếu BaseUrl đã có /api thì không thêm nữa
+            if (aiCoreBaseUrl.EndsWith("/api"))
+            {
+                endpoint = $"{aiCoreBaseUrl}/analyze";
+            }
+            else
+            {
+                endpoint = $"{aiCoreBaseUrl}/api/analyze";
+            }
+            requestBody = new
+            {
+                image_url = imageUrl,
+                image_type = imageType ?? "Fundus",
+                model_version = "v1.0.0"
+            };
+        }
 
         try
         {
-            _logger?.LogInformation("Calling analysis-service: {Endpoint}", endpoint);
+            _logger?.LogInformation("🤖 [AI] Calling AI Core service: {Endpoint} with image: {ImageUrl}", endpoint, imageUrl);
+            _logger?.LogInformation("🤖 [AI] Request body: ImageType={ImageType}, ModelVersion=v1.0.0", imageType ?? "Fundus");
             
+            var startTime = DateTime.UtcNow;
             var response = await _httpClient.PostAsJsonAsync(endpoint, requestBody);
+            var elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
+            
             response.EnsureSuccessStatusCode();
 
             var result = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
             
             if (result == null)
             {
-                _logger?.LogWarning("Analysis-service returned null result, using mock data");
-                return GenerateMockAnalysisResult();
+                _logger?.LogWarning("⚠️ [AI] Analysis-service returned null result");
+                if (fallbackToMock)
+                {
+                    _logger?.LogWarning("⚠️ [MOCK] Falling back to mock data (FallbackToMock=true)");
+                    return GenerateMockAnalysisResult(imageUrl, imageType);
+                }
+
+                throw new HttpRequestException("Analysis-service returned null result");
             }
 
+            _logger?.LogInformation("✅ [AI] AI Core responded successfully in {Elapsed}ms. Result keys: {Keys}", 
+                elapsed, string.Join(", ", result.Keys));
+            
             // Convert analysis-service response format to expected format
-            return ConvertAnalysisServiceResponse(result);
+            var converted = ConvertAnalysisServiceResponse(result);
+            _logger?.LogInformation("✅ [AI] Analysis completed successfully using REAL AI model");
+            return converted;
         }
         catch (HttpRequestException ex)
         {
-            _logger?.LogWarning(ex, "Analysis-service unavailable, using mock data");
-            // Return mock data for development
-            return GenerateMockAnalysisResult();
+            // Log chi tiết lỗi
+            var statusCode = ex.Data.Contains("StatusCode") ? ex.Data["StatusCode"]?.ToString() : "Unknown";
+            var statusCodeFromMessage = ex.Message.Contains("404") ? "404" : 
+                                      ex.Message.Contains("500") ? "500" :
+                                      ex.Message.Contains("503") ? "503" : statusCode;
+            
+            _logger?.LogError(ex, "❌ [AI] AI Core call failed. Status: {StatusCode}, Endpoint: {Endpoint}, Message: {Message}", 
+                statusCodeFromMessage, endpoint, ex.Message);
+            
+            if (fallbackToMock)
+            {
+                _logger?.LogWarning("⚠️ [MOCK] AI Core service unavailable (Status: {StatusCode}), falling back to MOCK data. Endpoint: {Endpoint}", 
+                    statusCodeFromMessage, endpoint);
+                _logger?.LogWarning("⚠️ [MOCK] This is NOT real AI analysis - using deterministic mock data for development");
+                _logger?.LogWarning("⚠️ [MOCK] To use REAL AI: 1) Ensure aicore service is running, 2) Check network connectivity, 3) Set Analysis__FallbackToMock=false");
+                // Return mock data for development
+                return GenerateMockAnalysisResult(imageUrl, imageType);
+            }
+
+            _logger?.LogError("❌ [AI] AI Core call failed and fallback disabled. Endpoint: {Endpoint}", endpoint);
+            // Wrap với message rõ ràng hơn
+            var errorDetail = statusCodeFromMessage == "404" 
+                ? "Dịch vụ AI phân tích không tìm thấy (404). Vui lòng kiểm tra AI Core service có đang chạy không."
+                : $"Không thể kết nối đến dịch vụ AI phân tích (Status: {statusCodeFromMessage}). Vui lòng kiểm tra lại kết nối mạng hoặc liên hệ quản trị viên.";
+            
+            throw new HttpRequestException($"{errorDetail} Chi tiết: {ex.Message}", ex);
         }
     }
 
@@ -323,6 +476,70 @@ public class AnalysisService : IAnalysisService
         // Convert từ format của analysis-service sang format mong đợi
         // Analysis-service trả về format từ AI Core, cần map lại
         var converted = new Dictionary<string, object>();
+
+        // Helper: safely read nested dictionary (System.Text.Json can materialize as JsonElement)
+        Dictionary<string, object>? AsDict(object? value)
+        {
+            if (value == null) return null;
+            if (value is Dictionary<string, object> d) return d;
+            if (value is JsonElement je && je.ValueKind == JsonValueKind.Object)
+            {
+                return JsonSerializer.Deserialize<Dictionary<string, object>>(je.GetRawText());
+            }
+            return null;
+        }
+
+        decimal? AsDecimal(object? value)
+        {
+            if (value == null) return null;
+            try
+            {
+                if (value is JsonElement je)
+                {
+                    if (je.ValueKind == JsonValueKind.Number && je.TryGetDecimal(out var dec)) return dec;
+                    if (je.ValueKind == JsonValueKind.String && decimal.TryParse(je.GetString(), out var dec2)) return dec2;
+                    return null;
+                }
+                return Convert.ToDecimal(value);
+            }
+            catch { return null; }
+        }
+
+        string? AsString(object? value)
+        {
+            if (value == null) return null;
+            if (value is string s) return s;
+            if (value is JsonElement je)
+            {
+                if (je.ValueKind == JsonValueKind.String) return je.GetString();
+                return je.ToString();
+            }
+            return value.ToString();
+        }
+
+        string? MapRiskLevel(string? raw)
+        {
+            // AI core uses: Minimal/Low/Moderate/High; our system uses: Low/Medium/High/Critical
+            return raw switch
+            {
+                null => null,
+                "Minimal" => "Low",
+                "Low" => "Low",
+                "Moderate" => "Medium",
+                "Medium" => "Medium",
+                "High" => "High",
+                "Critical" => "Critical",
+                _ => raw
+            };
+        }
+
+        decimal? ToPercent0To100(decimal? v)
+        {
+            if (v == null) return null;
+            // If value looks like 0..1 => convert to 0..100
+            if (v >= 0m && v <= 1m) return v * 100m;
+            return v;
+        }
         
         // Map các field từ AI Core response format
         if (response.TryGetValue("risk_level", out var riskLevel))
@@ -336,7 +553,78 @@ public class AnalysisService : IAnalysisService
             converted["risk_score"] = riskScore2;
         
         if (response.TryGetValue("confidence", out var confidence))
-            converted["ai_confidence_score"] = confidence;
+            converted["ai_confidence_score"] = ToPercent0To100(AsDecimal(confidence)) ?? confidence;
+
+        // Map systemic health risks -> hypertension/diabetes/stroke (fields UI đang hiển thị)
+        if (response.TryGetValue("systemic_health_risks", out var sysRisksRaw))
+        {
+            var sysRisks = AsDict(sysRisksRaw);
+            if (sysRisks != null)
+            {
+                // Hypertension
+                if (sysRisks.TryGetValue("hypertension", out var htnRaw))
+                {
+                    var htn = AsDict(htnRaw);
+                    if (htn != null)
+                    {
+                        converted["hypertension_risk"] = MapRiskLevel(AsString(htn.GetValueOrDefault("risk_level")));
+                        converted["hypertension_score"] = ToPercent0To100(AsDecimal(htn.GetValueOrDefault("risk_score")));
+                    }
+                }
+
+                // Diabetes
+                if (sysRisks.TryGetValue("diabetes", out var diaRaw))
+                {
+                    var dia = AsDict(diaRaw);
+                    if (dia != null)
+                    {
+                        converted["diabetes_risk"] = MapRiskLevel(AsString(dia.GetValueOrDefault("risk_level")));
+                        converted["diabetes_score"] = ToPercent0To100(AsDecimal(dia.GetValueOrDefault("risk_score")));
+                    }
+                }
+
+                // Stroke
+                if (sysRisks.TryGetValue("stroke", out var strokeRaw))
+                {
+                    var stroke = AsDict(strokeRaw);
+                    if (stroke != null)
+                    {
+                        converted["stroke_risk"] = MapRiskLevel(AsString(stroke.GetValueOrDefault("risk_level")));
+                        converted["stroke_score"] = ToPercent0To100(AsDecimal(stroke.GetValueOrDefault("risk_score")));
+                    }
+                }
+
+                // Cardiovascular -> map tạm sang overall nếu AI chưa có overall fields khác
+                if (!converted.ContainsKey("overall_risk_level") && sysRisks.TryGetValue("cardiovascular", out var cvRaw))
+                {
+                    var cv = AsDict(cvRaw);
+                    if (cv != null)
+                    {
+                        converted["overall_risk_level"] = MapRiskLevel(AsString(cv.GetValueOrDefault("risk_level"))) ?? "Low";
+                        converted["risk_score"] = ToPercent0To100(AsDecimal(cv.GetValueOrDefault("risk_score"))) ?? 0m;
+                    }
+                }
+            }
+        }
+
+        // Map recommendations list -> string
+        if (response.TryGetValue("recommendations", out var recRaw))
+        {
+            if (recRaw is JsonElement je && je.ValueKind == JsonValueKind.Array)
+            {
+                var items = je.EnumerateArray().Select(x => x.ToString()).Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+                if (items.Count > 0) converted["recommendations"] = string.Join("\n", items);
+            }
+            else if (recRaw is IEnumerable<object> arr)
+            {
+                var items = arr.Select(x => x?.ToString()).Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+                if (items.Count > 0) converted["recommendations"] = string.Join("\n", items!);
+            }
+            else if (recRaw is string s && !string.IsNullOrWhiteSpace(s))
+            {
+                converted["recommendations"] = s;
+            }
+        }
         
         if (response.TryGetValue("findings", out var findings))
             converted["findings"] = findings;
@@ -350,9 +638,15 @@ public class AnalysisService : IAnalysisService
         return converted.Count > 0 ? converted : response;
     }
 
-    private Dictionary<string, object> GenerateMockAnalysisResult()
+    private Dictionary<string, object> GenerateMockAnalysisResult(string imageUrl, string imageType)
     {
-        var random = new Random();
+        _logger?.LogWarning("⚠️⚠️⚠️ [MOCK] Generating MOCK analysis result - This is NOT real AI analysis! ⚠️⚠️⚠️");
+        _logger?.LogWarning("⚠️ [MOCK] Image: {ImageUrl}, Type: {ImageType}", imageUrl, imageType);
+        _logger?.LogWarning("⚠️ [MOCK] To use REAL AI, ensure: 1) aicore service is running, 2) Analysis__FallbackToMock=false");
+        
+        // Deterministic mock: same image -> same output (stable for demos/tests)
+        var seed = CreateDeterministicSeed($"{imageType}|{imageUrl}");
+        var random = new Random(seed);
         return new Dictionary<string, object>
         {
             ["overall_risk_level"] = new[] { "Low", "Medium", "High" }[random.Next(3)],
@@ -369,11 +663,18 @@ public class AnalysisService : IAnalysisService
             ["hemorrhages_detected"] = random.Next(0, 2) == 1,
             ["exudates_detected"] = random.Next(0, 2) == 1,
             ["ai_confidence_score"] = random.Next(75, 95),
-            ["annotated_image_url"] = "https://placeholder.aura-health.com/annotated.jpg",
-            ["heatmap_url"] = "https://placeholder.aura-health.com/heatmap.jpg",
+            // NOTE: Don't return placeholder image URLs in dev/mock mode.
+            // They cause browser errors (timeout / invalid cert) and aren't needed for the UI.
             ["recommendations"] = "Tiếp tục theo dõi định kỳ. Nếu có triệu chứng bất thường, vui lòng tham khảo ý kiến bác sĩ.",
             ["health_warnings"] = random.Next(0, 2) == 1 ? (object)"Phát hiện một số dấu hiệu cần theo dõi." : (object)""
         };
+    }
+
+    private static int CreateDeterministicSeed(string input)
+    {
+        // Use SHA256 and take first 4 bytes as int seed (stable across processes)
+        var bytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(input ?? string.Empty));
+        return BitConverter.ToInt32(bytes, 0);
     }
 
     private async Task UpdateAnalysisResultsAsync(string analysisId, Dictionary<string, object> aiResult)
@@ -585,6 +886,17 @@ public class AnalysisService : IAnalysisService
     /// </summary>
     private async Task<bool> CheckAndDeductCreditsAsync(string userId, int creditsNeeded)
     {
+        // Allow disabling credits check for demo/dev environments
+        // Default behavior: require credits (true)
+        var requireCredits = _configuration.GetValue("Analysis:RequireCredits", true);
+        if (!requireCredits)
+        {
+            _logger?.LogWarning(
+                "Credits check disabled (Analysis:RequireCredits=false). Skipping deduction for user {UserId}, Needed={CreditsNeeded}",
+                userId, creditsNeeded);
+            return true;
+        }
+
         using var connection = new Npgsql.NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
 
