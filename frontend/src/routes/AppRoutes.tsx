@@ -20,6 +20,8 @@ import ClinicBulkUploadPage from "../pages/clinic/ClinicBulkUploadPage";
 import ClinicAlertsPage from "../pages/clinic/ClinicAlertsPage";
 import PatientTrendPage from "../pages/clinic/PatientTrendPage";
 import ClinicUsageDashboardPage from "../pages/clinic/ClinicUsageDashboardPage";
+import PatientReportsPage from "../pages/patient/PatientReportsPage";
+import ClinicReportGenerationPage from "../pages/clinic/ClinicReportGenerationPage";
 import { useAuthStore } from "../store/authStore";
 import { useAdminAuthStore } from "../store/adminAuthStore";
 
@@ -205,6 +207,24 @@ const AppRoutes = () => {
         }
       />
 
+      {/* Patient Reports - View analysis results history */}
+      <Route
+        path="/reports"
+        element={
+          <ProtectedRoute>
+            <PatientReportsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/history"
+        element={
+          <ProtectedRoute>
+            <PatientReportsPage />
+          </ProtectedRoute>
+        }
+      />
+
         {/* Clinic routes */}
         <Route
           path="/clinic/bulk-upload"
@@ -235,6 +255,14 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute>
               <ClinicUsageDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/clinic/reports"
+          element={
+            <ProtectedRoute>
+              <ClinicReportGenerationPage />
             </ProtectedRoute>
           }
         />

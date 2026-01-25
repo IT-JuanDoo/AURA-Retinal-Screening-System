@@ -284,6 +284,9 @@ builder.Services.AddScoped<Aura.Application.Services.Alerts.IHighRiskAlertServic
 // FR-27: Usage Tracking Service
 builder.Services.AddScoped<Aura.Application.Services.UsageTracking.IUsageTrackingService, Aura.Application.Services.UsageTracking.UsageTrackingService>();
 
+// FR-26: Clinic Report Generation Service
+builder.Services.AddScoped<Aura.Application.Services.Reports.IClinicReportService, Aura.Application.Services.Reports.ClinicReportService>();
+
 // Notifications (PostgreSQL backed with real-time streaming)
 builder.Services.AddScoped<Aura.Application.Services.Notifications.INotificationService, Aura.Infrastructure.Services.Notifications.NotificationService>();
 
