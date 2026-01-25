@@ -441,12 +441,13 @@ public class ImageService : IImageService
             _logger?.LogWarning("User {UserId} does not exist in database, creating basic user record", userId);
             
             // Create a basic user record to allow image upload
+            // Note: PostgreSQL converts unquoted identifiers to lowercase, so use lowercase column names
             var createUserSql = @"
                 INSERT INTO users (
-                    Id, Email, FirstName, LastName, PasswordHash, 
-                    IsEmailVerified, IsActive, CreatedDate, IsDeleted
+                    id, email, firstname, lastname, password, 
+                    isemailverified, isactive, createddate, isdeleted
                 ) VALUES (
-                    @Id, @Email, @FirstName, @LastName, @PasswordHash,
+                    @Id, @Email, @FirstName, @LastName, @Password,
                     @IsEmailVerified, @IsActive, @CreatedDate, @IsDeleted
                 )";
             
@@ -455,7 +456,7 @@ public class ImageService : IImageService
             createUserCommand.Parameters.AddWithValue("Email", userEmail ?? $"user_{userId.Substring(0, 8)}@aura.local");
             createUserCommand.Parameters.AddWithValue("FirstName", firstName ?? "User");
             createUserCommand.Parameters.AddWithValue("LastName", lastName ?? userId.Substring(0, 8));
-            createUserCommand.Parameters.AddWithValue("PasswordHash", "N/A"); // OAuth users don't have password
+            createUserCommand.Parameters.AddWithValue("Password", "N/A"); // OAuth users don't have password
             createUserCommand.Parameters.AddWithValue("IsEmailVerified", false);
             createUserCommand.Parameters.AddWithValue("IsActive", true);
             createUserCommand.Parameters.AddWithValue("CreatedDate", DateTime.UtcNow.Date);
