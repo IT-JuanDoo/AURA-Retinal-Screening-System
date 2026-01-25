@@ -216,14 +216,6 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/history"
-        element={
-          <ProtectedRoute>
-            <PatientReportsPage />
-          </ProtectedRoute>
-        }
-      />
 
         {/* Clinic routes */}
         <Route

@@ -73,19 +73,6 @@ const PatientHeader = () => {
               Tải ảnh
             </Link>
             <Link 
-              to="/history" 
-              className={`text-sm leading-normal flex items-center gap-2 transition-colors ${
-                isActive('/history')
-                  ? 'text-blue-500 font-semibold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-500 font-medium'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Lịch sử
-            </Link>
-            <Link 
               to="/reports" 
               className={`text-sm leading-normal flex items-center gap-2 transition-colors ${
                 isActive('/reports')
