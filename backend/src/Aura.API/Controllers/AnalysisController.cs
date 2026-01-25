@@ -5,6 +5,7 @@ using Aura.Application.Services.Export;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using Npgsql;
 
 namespace Aura.API.Controllers;
 
@@ -68,13 +69,28 @@ public class AnalysisController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "Invalid analysis request from user {UserId}", userId);
+            _logger.LogWarning(ex, "Invalid analysis request from user {UserId}: {Message}", userId, ex.Message);
             return BadRequest(new { message = ex.Message });
+        }
+        catch (Npgsql.PostgresException pgEx)
+        {
+            _logger.LogError(pgEx, "PostgreSQL error starting analysis: {Message}, Code: {SqlState}", 
+                pgEx.Message, pgEx.SqlState);
+            return StatusCode(500, new { 
+                message = "Lỗi database khi bắt đầu phân tích", 
+                error = pgEx.Message,
+                sqlState = pgEx.SqlState
+            });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error starting analysis for user {UserId}", userId);
-            return StatusCode(500, new { message = "Không thể bắt đầu phân tích" });
+            _logger.LogError(ex, "Error starting analysis for user {UserId}: {Error}", userId, ex.Message);
+            _logger.LogError(ex, "Stack trace: {StackTrace}", ex.StackTrace);
+            return StatusCode(500, new { 
+                message = "Không thể bắt đầu phân tích", 
+                error = ex.Message,
+                innerException = ex.InnerException?.Message
+            });
         }
     }
 

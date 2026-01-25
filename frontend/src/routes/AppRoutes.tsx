@@ -22,6 +22,7 @@ import PatientTrendPage from "../pages/clinic/PatientTrendPage";
 import ClinicUsageDashboardPage from "../pages/clinic/ClinicUsageDashboardPage";
 import PatientReportsPage from "../pages/patient/PatientReportsPage";
 import ClinicReportGenerationPage from "../pages/clinic/ClinicReportGenerationPage";
+import PackagesPage from "../pages/patient/PackagesPage";
 import { useAuthStore } from "../store/authStore";
 import { useAdminAuthStore } from "../store/adminAuthStore";
 
@@ -213,6 +214,15 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <PatientReportsPage />
+          </ProtectedRoute>
+        }
+      />
+      {/* Packages - View and purchase service packages */}
+      <Route
+        path="/packages"
+        element={
+          <ProtectedRoute>
+            <PackagesPage />
           </ProtectedRoute>
         }
       />

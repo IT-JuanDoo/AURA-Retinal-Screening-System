@@ -85,6 +85,19 @@ const PatientHeader = () => {
               </svg>
               Báo cáo
             </Link>
+            <Link 
+              to="/packages" 
+              className={`text-sm leading-normal flex items-center gap-2 transition-colors ${
+                isActive('/packages')
+                  ? 'text-blue-500 font-semibold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-500 font-medium'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+              Gói dịch vụ
+            </Link>
             
             {/* Clinic Features Dropdown */}
             <div className="relative group">

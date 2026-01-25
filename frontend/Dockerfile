@@ -4,7 +4,7 @@
 # =============================================================================
 
 # Stage 1: Build
-FROM node:20-alpine AS build
+FROM node:20.11-alpine AS build
 WORKDIR /app
 
 # Copy package files
@@ -39,7 +39,7 @@ ENV VITE_APP_VERSION=$VITE_APP_VERSION
 RUN npm run build
 
 # Stage 2: Production with Nginx
-FROM nginx:alpine AS production
+FROM nginx:1.25-alpine AS production
 WORKDIR /usr/share/nginx/html
 
 # Remove default nginx static assets

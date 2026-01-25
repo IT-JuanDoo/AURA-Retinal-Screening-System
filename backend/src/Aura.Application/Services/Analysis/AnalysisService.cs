@@ -59,17 +59,45 @@ public class AnalysisService : IAnalysisService
             }
 
             // Check and deduct credits before starting analysis
-            var creditsAvailable = await CheckAndDeductCreditsAsync(userId, 1);
-            if (!creditsAvailable)
+            try
             {
-                throw new InvalidOperationException("Không đủ credits để thực hiện phân tích. Vui lòng mua package hoặc nạp thêm credits.");
+                var creditsAvailable = await CheckAndDeductCreditsAsync(userId, 1);
+                if (!creditsAvailable)
+                {
+                    throw new InvalidOperationException("Không đủ credits để thực hiện phân tích. Vui lòng mua package hoặc nạp thêm credits.");
+                }
+            }
+            catch (Npgsql.PostgresException pgEx)
+            {
+                _logger?.LogError(pgEx, "Database error checking credits: {Message}, Code: {SqlState}", 
+                    pgEx.Message, pgEx.SqlState);
+                throw new InvalidOperationException($"Lỗi database khi kiểm tra credits: {pgEx.Message}");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error checking/deducting credits: {Message}", ex.Message);
+                throw new InvalidOperationException($"Không thể kiểm tra credits: {ex.Message}");
             }
 
             // Create analysis record in database
             var analysisId = Guid.NewGuid().ToString();
             var modelVersionId = await GetActiveModelVersionIdAsync();
 
-            await CreateAnalysisRecordAsync(analysisId, imageId, userId, modelVersionId);
+            try
+            {
+                await CreateAnalysisRecordAsync(analysisId, imageId, userId, modelVersionId);
+            }
+            catch (Npgsql.PostgresException pgEx)
+            {
+                _logger?.LogError(pgEx, "Database error creating analysis record: {Message}, Code: {SqlState}", 
+                    pgEx.Message, pgEx.SqlState);
+                throw new InvalidOperationException($"Lỗi database khi tạo analysis record: {pgEx.Message}");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error creating analysis record: {Message}", ex.Message);
+                throw new InvalidOperationException($"Không thể tạo analysis record: {ex.Message}");
+            }
 
             // Call AI Core service
             var (cloudinaryUrl, imageType) = imageInfo.Value;
@@ -79,10 +107,37 @@ public class AnalysisService : IAnalysisService
             _logger?.LogInformation("⏳ [AI] Starting AI analysis (simulated processing time: {Delay}ms)...", processingDelayMs);
             await Task.Delay(processingDelayMs);
             
-            var aiResult = await CallAICoreServiceAsync(cloudinaryUrl, imageType);
+            Dictionary<string, object> aiResult;
+            try
+            {
+                aiResult = await CallAICoreServiceAsync(cloudinaryUrl, imageType);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error calling AI Core service: {Message}", ex.Message);
+                // Update analysis record with failed status
+                await UpdateAnalysisStatusAsync(analysisId, "Failed");
+                throw new InvalidOperationException($"Lỗi khi gọi dịch vụ AI: {ex.Message}");
+            }
 
             // Update analysis record with results
-            await UpdateAnalysisResultsAsync(analysisId, aiResult);
+            try
+            {
+                await UpdateAnalysisResultsAsync(analysisId, aiResult);
+            }
+            catch (Npgsql.PostgresException pgEx)
+            {
+                _logger?.LogError(pgEx, "Database error updating analysis results: {Message}, Code: {SqlState}", 
+                    pgEx.Message, pgEx.SqlState);
+                // Don't throw - analysis was successful, just couldn't save results
+                _logger?.LogWarning("Analysis completed but failed to save results to database");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error updating analysis results: {Message}", ex.Message);
+                // Don't throw - analysis was successful, just couldn't save results
+                _logger?.LogWarning("Analysis completed but failed to save results to database");
+            }
 
             _logger?.LogInformation("Analysis completed: {AnalysisId}, Image: {ImageId}", analysisId, imageId);
 
@@ -973,5 +1028,31 @@ public class AnalysisService : IAnalysisService
         }
 
         return true;
+    }
+
+    private async Task UpdateAnalysisStatusAsync(string analysisId, string status)
+    {
+        try
+        {
+            using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var sql = @"
+                UPDATE analysis_results
+                SET AnalysisStatus = @AnalysisStatus,
+                    UpdatedDate = CURRENT_DATE
+                WHERE Id = @AnalysisId";
+
+            using var command = new Npgsql.NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("AnalysisId", analysisId);
+            command.Parameters.AddWithValue("AnalysisStatus", status);
+
+            await command.ExecuteNonQueryAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error updating analysis status: {Message}", ex.Message);
+            // Don't throw - this is a cleanup operation
+        }
     }
 }
