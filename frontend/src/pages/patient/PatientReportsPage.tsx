@@ -1,15 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import PatientHeader from "../../components/patient/PatientHeader";
 import analysisService, { AnalysisResult } from "../../services/analysisService";
 import toast from "react-hot-toast";
 
+type ViewMode = "timeline" | "list";
+type FilterStatus = "all" | "Completed" | "Processing" | "Failed";
+
 const PatientReportsPage = () => {
   const navigate = useNavigate();
   const [reports, setReports] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterRisk, setFilterRisk] = useState<string>("all"); // "all", "Low", "Medium", "High", "Critical"
-  const [sortBy, setSortBy] = useState<string>("date-desc"); // "date-desc", "date-asc", "risk-desc"
+  const [viewMode, setViewMode] = useState<ViewMode>("timeline");
+  const [filterRisk, setFilterRisk] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  const [sortBy, setSortBy] = useState<string>("date-desc");
+  const [dateRangeStart, setDateRangeStart] = useState<string>("");
+  const [dateRangeEnd, setDateRangeEnd] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   useEffect(() => {
     loadReports();
@@ -19,11 +27,7 @@ const PatientReportsPage = () => {
     try {
       setLoading(true);
       const data = await analysisService.getUserAnalysisResults();
-      // Filter only completed analyses
-      const completedReports = data.filter(
-        (r) => r.analysisStatus === "Completed"
-      );
-      setReports(completedReports);
+      setReports(data);
     } catch (error: any) {
       console.error("Error loading reports:", error);
       toast.error("Lỗi khi tải lịch sử báo cáo");
@@ -35,15 +39,15 @@ const PatientReportsPage = () => {
   const getRiskColor = (risk?: string) => {
     switch (risk) {
       case "Low":
-        return "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400";
+        return "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700";
       case "Medium":
-        return "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400";
+        return "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700";
       case "High":
-        return "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400";
+        return "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700";
       case "Critical":
-        return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
+        return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-300 dark:border-red-700";
       default:
-        return "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-400";
+        return "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-400 border-slate-300 dark:border-slate-700";
     }
   };
 
@@ -83,6 +87,19 @@ const PatientReportsPage = () => {
     }
   };
 
+  const getStatusColor = (status?: string) => {
+    switch (status) {
+      case "Completed":
+        return "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400";
+      case "Processing":
+        return "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400";
+      case "Failed":
+        return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
+      default:
+        return "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-400";
+    }
+  };
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A";
     const date = new Date(dateString);
@@ -95,12 +112,69 @@ const PatientReportsPage = () => {
     });
   };
 
-  const filteredAndSortedReports = reports
-    .filter((report) => {
-      if (filterRisk === "all") return true;
-      return report.overallRiskLevel === filterRisk;
-    })
-    .sort((a, b) => {
+  const formatDateGroup = (dateString?: string) => {
+    if (!dateString) return "Không xác định";
+    const date = new Date(dateString);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (date.toDateString() === today.toDateString()) {
+      return "Hôm nay";
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return "Hôm qua";
+    } else {
+      return date.toLocaleDateString("vi-VN", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    }
+  };
+
+  // Filter and sort reports
+  const filteredAndSortedReports = useMemo(() => {
+    let filtered = [...reports];
+
+    // Risk filter
+    if (filterRisk !== "all") {
+      filtered = filtered.filter((r) => r.overallRiskLevel === filterRisk);
+    }
+
+    // Status filter
+    if (filterStatus !== "all") {
+      filtered = filtered.filter((r) => r.analysisStatus === filterStatus);
+    }
+
+    // Date range filter
+    if (dateRangeStart) {
+      const startDate = new Date(dateRangeStart);
+      filtered = filtered.filter((r) => {
+        if (!r.analysisStartedAt) return false;
+        return new Date(r.analysisStartedAt) >= startDate;
+      });
+    }
+    if (dateRangeEnd) {
+      const endDate = new Date(dateRangeEnd);
+      endDate.setHours(23, 59, 59, 999);
+      filtered = filtered.filter((r) => {
+        if (!r.analysisStartedAt) return false;
+        return new Date(r.analysisStartedAt) <= endDate;
+      });
+    }
+
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter((r) => {
+        const riskLabel = getRiskLabel(r.overallRiskLevel).toLowerCase();
+        const dateStr = formatDate(r.analysisStartedAt).toLowerCase();
+        return riskLabel.includes(query) || dateStr.includes(query);
+      });
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
       if (sortBy === "date-desc") {
         const dateA = a.analysisStartedAt ? new Date(a.analysisStartedAt).getTime() : 0;
         const dateB = b.analysisStartedAt ? new Date(b.analysisStartedAt).getTime() : 0;
@@ -117,6 +191,46 @@ const PatientReportsPage = () => {
       }
       return 0;
     });
+
+    return filtered;
+  }, [reports, filterRisk, filterStatus, dateRangeStart, dateRangeEnd, searchQuery, sortBy]);
+
+  // Group reports by date for timeline view
+  const groupedReports = useMemo(() => {
+    const groups: Record<string, AnalysisResult[]> = {};
+    
+    filteredAndSortedReports.forEach((report) => {
+      const dateKey = report.analysisStartedAt 
+        ? new Date(report.analysisStartedAt).toDateString()
+        : "Unknown";
+      
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
+      }
+      groups[dateKey].push(report);
+    });
+
+    return Object.entries(groups)
+      .map(([date, reports]) => ({
+        date,
+        reports,
+      }))
+      .sort((a, b) => {
+        if (a.date === "Unknown") return 1;
+        if (b.date === "Unknown") return -1;
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      });
+  }, [filteredAndSortedReports]);
+
+  const clearFilters = () => {
+    setFilterRisk("all");
+    setFilterStatus("all");
+    setDateRangeStart("");
+    setDateRangeEnd("");
+    setSearchQuery("");
+  };
+
+  const hasActiveFilters = filterRisk !== "all" || filterStatus !== "all" || dateRangeStart || dateRangeEnd || searchQuery;
 
   if (loading) {
     return (
@@ -136,54 +250,168 @@ const PatientReportsPage = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-            Lịch Sử Báo Cáo
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400">
-            Xem lại tất cả các kết quả phân tích AI của bạn
-          </p>
-        </div>
-
-        {/* Filters and Sort */}
-        <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-4 mb-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            {/* Risk Filter */}
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Lọc theo mức độ rủi ro
-              </label>
-              <select
-                value={filterRisk}
-                onChange={(e) => setFilterRisk(e.target.value)}
-                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-              >
-                <option value="all">Tất cả</option>
-                <option value="Low">Rủi ro thấp</option>
-                <option value="Medium">Rủi ro trung bình</option>
-                <option value="High">Rủi ro cao</option>
-                <option value="Critical">Rủi ro nghiêm trọng</option>
-              </select>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
+                Lịch Sử Phân Tích
+              </h1>
+              <p className="text-slate-600 dark:text-slate-400">
+                Xem lại tất cả các kết quả phân tích AI của bạn
+              </p>
             </div>
-
-            {/* Sort */}
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Sắp xếp theo
-              </label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+            
+            {/* View Toggle */}
+            <div className="flex items-center gap-2 bg-white dark:bg-slate-900 rounded-lg p-1 border border-slate-200 dark:border-slate-800">
+              <button
+                onClick={() => setViewMode("timeline")}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  viewMode === "timeline"
+                    ? "bg-blue-600 text-white"
+                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
               >
-                <option value="date-desc">Mới nhất</option>
-                <option value="date-asc">Cũ nhất</option>
-                <option value="risk-desc">Rủi ro cao nhất</option>
-              </select>
+                <span className="flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Timeline
+                </span>
+              </button>
+              <button
+                onClick={() => setViewMode("list")}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  viewMode === "list"
+                    ? "bg-blue-600 text-white"
+                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                  Danh sách
+                </span>
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Reports List */}
+        {/* Advanced Filters */}
+        <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-4 mb-6">
+          <div className="flex flex-col gap-4">
+            {/* Search */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Tìm kiếm
+              </label>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm kiếm theo rủi ro, ngày..."
+                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              {/* Risk Filter */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Mức độ rủi ro
+                </label>
+                <select
+                  value={filterRisk}
+                  onChange={(e) => setFilterRisk(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                >
+                  <option value="all">Tất cả</option>
+                  <option value="Low">Rủi ro thấp</option>
+                  <option value="Medium">Rủi ro trung bình</option>
+                  <option value="High">Rủi ro cao</option>
+                  <option value="Critical">Rủi ro nghiêm trọng</option>
+                </select>
+              </div>
+
+              {/* Status Filter */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Trạng thái
+                </label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as FilterStatus)}
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                >
+                  <option value="all">Tất cả</option>
+                  <option value="Completed">Hoàn thành</option>
+                  <option value="Processing">Đang xử lý</option>
+                  <option value="Failed">Thất bại</option>
+                </select>
+              </div>
+
+              {/* Date Range Start */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Từ ngày
+                </label>
+                <input
+                  type="date"
+                  value={dateRangeStart}
+                  onChange={(e) => setDateRangeStart(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {/* Date Range End */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Đến ngày
+                </label>
+                <input
+                  type="date"
+                  value={dateRangeEnd}
+                  onChange={(e) => setDateRangeEnd(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {/* Sort */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Sắp xếp
+                </label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                >
+                  <option value="date-desc">Mới nhất</option>
+                  <option value="date-asc">Cũ nhất</option>
+                  <option value="risk-desc">Rủi ro cao nhất</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Clear Filters */}
+            {hasActiveFilters && (
+              <div className="flex justify-end">
+                <button
+                  onClick={clearFilters}
+                  className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                >
+                  Xóa bộ lọc
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Results Count */}
+        <div className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+          Hiển thị {filteredAndSortedReports.length} / {reports.length} báo cáo
+        </div>
+
+        {/* Reports Display */}
         {filteredAndSortedReports.length === 0 ? (
           <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-12 text-center">
             <svg
@@ -203,11 +431,18 @@ const PatientReportsPage = () => {
               Chưa có báo cáo nào
             </h3>
             <p className="text-slate-600 dark:text-slate-400 mb-6">
-              {filterRisk !== "all"
-                ? "Không tìm thấy báo cáo với mức độ rủi ro đã chọn."
+              {hasActiveFilters
+                ? "Không tìm thấy báo cáo với bộ lọc đã chọn."
                 : "Bạn chưa có kết quả phân tích nào. Hãy tải ảnh lên để bắt đầu."}
             </p>
-            {filterRisk === "all" && (
+            {hasActiveFilters ? (
+              <button
+                onClick={clearFilters}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+              >
+                Xóa bộ lọc
+              </button>
+            ) : (
               <Link
                 to="/upload"
                 className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
@@ -219,7 +454,118 @@ const PatientReportsPage = () => {
               </Link>
             )}
           </div>
+        ) : viewMode === "timeline" ? (
+          // Timeline View
+          <div className="relative">
+            {/* Timeline Line */}
+            <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700"></div>
+            
+            <div className="space-y-8">
+              {groupedReports.map((group) => (
+                <div key={group.date} className="relative">
+                  {/* Date Header */}
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="relative z-10 flex items-center justify-center w-16 h-16 rounded-full bg-blue-600 text-white font-bold text-sm shadow-lg">
+                      {new Date(group.date).getDate()}
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                        {formatDateGroup(group.date)}
+                      </h2>
+                      <p className="text-sm text-slate-600 dark:text-slate-400">
+                        {group.reports.length} {group.reports.length === 1 ? "phân tích" : "phân tích"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Reports for this date */}
+                  <div className="ml-8 space-y-4">
+                    {group.reports.map((report) => (
+                      <div
+                        key={report.id}
+                        className="relative bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6 hover:shadow-md transition-all cursor-pointer group"
+                        onClick={() => navigate(`/analysis/${report.id}`)}
+                      >
+                        {/* Timeline Dot */}
+                        <div className={`absolute -left-12 top-6 w-4 h-4 rounded-full border-4 border-white dark:border-slate-900 ${getRiskColor(report.overallRiskLevel).split(" ")[0]}`}></div>
+                        
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                          <div className="flex items-start gap-4 flex-1">
+                            {/* Risk Icon */}
+                            <div
+                              className={`h-12 w-12 rounded-lg flex items-center justify-center flex-shrink-0 border-2 ${getRiskColor(
+                                report.overallRiskLevel
+                              )}`}
+                            >
+                              {getRiskIcon(report.overallRiskLevel)}
+                            </div>
+
+                            {/* Report Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-3 mb-2 flex-wrap">
+                                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                                  Phân tích võng mạc
+                                </h3>
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-semibold ${getRiskColor(
+                                    report.overallRiskLevel
+                                  )}`}
+                                >
+                                  {getRiskLabel(report.overallRiskLevel)}
+                                </span>
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(
+                                    report.analysisStatus
+                                  )}`}
+                                >
+                                  {report.analysisStatus}
+                                </span>
+                              </div>
+                              <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
+                                {formatDate(report.analysisStartedAt)}
+                              </p>
+                              <div className="flex flex-wrap gap-4 text-sm">
+                                {report.riskScore !== undefined && (
+                                  <span className="text-slate-600 dark:text-slate-400">
+                                    Điểm tổng: <span className="font-semibold text-slate-900 dark:text-white">{report.riskScore}/100</span>
+                                  </span>
+                                )}
+                                {report.hypertensionRisk && (
+                                  <span className="text-slate-600 dark:text-slate-400">
+                                    Tim mạch: <span className="font-semibold text-slate-900 dark:text-white">{report.hypertensionRisk}</span>
+                                  </span>
+                                )}
+                                {report.diabetesRisk && (
+                                  <span className="text-slate-600 dark:text-slate-400">
+                                    Tiểu đường: <span className="font-semibold text-slate-900 dark:text-white">{report.diabetesRisk}</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/analysis/${report.id}`);
+                              }}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                            >
+                              Xem chi tiết
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         ) : (
+          // List View
           <div className="space-y-4">
             {filteredAndSortedReports.map((report) => (
               <div
@@ -231,7 +577,7 @@ const PatientReportsPage = () => {
                   <div className="flex items-start gap-4 flex-1">
                     {/* Risk Icon */}
                     <div
-                      className={`h-12 w-12 rounded-lg flex items-center justify-center flex-shrink-0 ${getRiskColor(
+                      className={`h-12 w-12 rounded-lg flex items-center justify-center flex-shrink-0 border-2 ${getRiskColor(
                         report.overallRiskLevel
                       )}`}
                     >
@@ -240,7 +586,7 @@ const PatientReportsPage = () => {
 
                     {/* Report Info */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
                         <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                           Phân tích võng mạc
                         </h3>
@@ -250,6 +596,13 @@ const PatientReportsPage = () => {
                           )}`}
                         >
                           {getRiskLabel(report.overallRiskLevel)}
+                        </span>
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(
+                            report.analysisStatus
+                          )}`}
+                        >
+                          {report.analysisStatus}
                         </span>
                       </div>
                       <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
