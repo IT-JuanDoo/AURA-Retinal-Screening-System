@@ -130,6 +130,112 @@ public class AuthService : IAuthService
                 };
             }
 
+            // If registering as doctor, create doctor record
+            if (registerDto.UserType?.ToLower() == "doctor")
+            {
+                try
+                {
+                    // Check if doctor already exists
+                    var checkDoctorQuery = @"
+                        SELECT id FROM doctors 
+                        WHERE id = @userId OR email = @email";
+                    
+                    bool doctorExists = false;
+                    using (var checkCmd = new NpgsqlCommand(checkDoctorQuery, conn))
+                    {
+                        checkCmd.Parameters.AddWithValue("userId", userId);
+                        checkCmd.Parameters.AddWithValue("email", registerDto.Email.ToLower());
+                        using var checkReader = checkCmd.ExecuteReader();
+                        doctorExists = checkReader.Read();
+                    }
+
+                    if (!doctorExists)
+                    {
+                        // Generate license number if not provided
+                        var licenseNumber = !string.IsNullOrWhiteSpace(registerDto.LicenseNumber)
+                            ? registerDto.LicenseNumber
+                            : $"DR-{userId.Substring(0, Math.Min(8, userId.Length)).ToUpper()}-{DateTime.UtcNow:yyyyMMdd}";
+
+                        var insertDoctorQuery = @"
+                            INSERT INTO doctors (
+                                id, email, username, firstname, lastname, phone,
+                                licensenumber, specialization, yearsofexperience,
+                                qualification, hospitalaffiliation,
+                                isverified, isactive, createddate, isdeleted
+                            )
+                            VALUES (
+                                @id, @email, @username, @firstname, @lastname, @phone,
+                                @licensenumber, @specialization, @yearsofexperience,
+                                @qualification, @hospitalaffiliation,
+                                false, true, @createddate, false
+                            )";
+
+                        using (var doctorCmd = new NpgsqlCommand(insertDoctorQuery, conn))
+                        {
+                            doctorCmd.Parameters.AddWithValue("id", userId);
+                            doctorCmd.Parameters.AddWithValue("email", registerDto.Email.ToLower());
+                            doctorCmd.Parameters.AddWithValue("username", (object?)username ?? DBNull.Value);
+                            doctorCmd.Parameters.AddWithValue("firstname", (object?)registerDto.FirstName ?? DBNull.Value);
+                            doctorCmd.Parameters.AddWithValue("lastname", (object?)registerDto.LastName ?? DBNull.Value);
+                            doctorCmd.Parameters.AddWithValue("phone", (object?)registerDto.Phone ?? DBNull.Value);
+                            doctorCmd.Parameters.AddWithValue("licensenumber", licenseNumber);
+                            doctorCmd.Parameters.AddWithValue("specialization", (object?)registerDto.Specialization ?? DBNull.Value);
+                            doctorCmd.Parameters.AddWithValue("yearsofexperience", (object?)registerDto.YearsOfExperience ?? DBNull.Value);
+                            doctorCmd.Parameters.AddWithValue("qualification", (object?)registerDto.Qualification ?? DBNull.Value);
+                            doctorCmd.Parameters.AddWithValue("hospitalaffiliation", (object?)registerDto.HospitalAffiliation ?? DBNull.Value);
+                            doctorCmd.Parameters.AddWithValue("createddate", DateTime.UtcNow.Date);
+                            
+                            doctorCmd.ExecuteNonQuery();
+                        }
+
+                        // Try to assign Doctor role (if role exists)
+                        try
+                        {
+                            var getDoctorRoleQuery = @"
+                                SELECT id FROM roles 
+                                WHERE LOWER(name) = 'doctor' AND isdeleted = false 
+                                LIMIT 1";
+                            
+                            string? doctorRoleId = null;
+                            using (var roleCmd = new NpgsqlCommand(getDoctorRoleQuery, conn))
+                            {
+                                var roleResult = roleCmd.ExecuteScalar();
+                                doctorRoleId = roleResult?.ToString();
+                            }
+
+                            if (!string.IsNullOrEmpty(doctorRoleId))
+                            {
+                                var assignRoleQuery = @"
+                                    INSERT INTO user_roles (id, userid, roleid, isprimary, createddate, isdeleted)
+                                    VALUES (@id, @userid, @roleid, true, @createddate, false)
+                                    ON CONFLICT (userid, roleid) DO NOTHING";
+                                
+                                using (var assignCmd = new NpgsqlCommand(assignRoleQuery, conn))
+                                {
+                                    assignCmd.Parameters.AddWithValue("id", Guid.NewGuid().ToString());
+                                    assignCmd.Parameters.AddWithValue("userid", userId);
+                                    assignCmd.Parameters.AddWithValue("roleid", doctorRoleId);
+                                    assignCmd.Parameters.AddWithValue("createddate", DateTime.UtcNow.Date);
+                                    assignCmd.ExecuteNonQuery();
+                                }
+                            }
+                        }
+                        catch (Exception roleEx)
+                        {
+                            // Log but don't fail registration if role assignment fails
+                            _logger.LogWarning(roleEx, "Failed to assign Doctor role during registration for {UserId}", userId);
+                        }
+
+                        _logger.LogInformation("Doctor record created during registration: {Email}, ID: {UserId}", user.Email, userId);
+                    }
+                }
+                catch (Exception doctorEx)
+                {
+                    _logger.LogError(doctorEx, "Failed to create doctor record during registration for {UserId}", userId);
+                    // Don't fail registration if doctor creation fails - user can still login
+                }
+            }
+
             // Create email verification token (still in-memory for now)
             var verificationToken = new EmailVerificationToken
             {
@@ -142,7 +248,8 @@ public class AuthService : IAuthService
             // Send verification email
             await _emailService.SendVerificationEmailAsync(user.Email, verificationToken.Token, user.FirstName);
 
-            _logger.LogInformation("User registered successfully and saved to database: {Email}, ID: {UserId}", user.Email, userId);
+            _logger.LogInformation("User registered successfully and saved to database: {Email}, ID: {UserId}, Type: {UserType}", 
+                user.Email, userId, registerDto.UserType ?? "patient");
 
             return new AuthResponseDto
             {

@@ -5,7 +5,7 @@ import patientSearchService, {
   PatientSearchResponse,
 } from '../../services/patientSearchService';
 import toast from 'react-hot-toast';
-import PatientHeader from '../../components/patient/PatientHeader';
+import DoctorHeader from '../../components/doctor/DoctorHeader';
 import { useDebounce } from '../../hooks/useDebounce';
 
 const PatientSearchPage = () => {
@@ -94,7 +94,7 @@ const PatientSearchPage = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-      <PatientHeader />
+      <DoctorHeader />
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}

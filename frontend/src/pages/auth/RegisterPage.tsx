@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useGoogleLogin } from '@react-oauth/google';
 import FacebookLogin from '@greatsumini/react-facebook-login';
 import { useAuthStore } from '../../store/authStore';
@@ -10,14 +10,25 @@ const facebookAppId = (import.meta as any).env.VITE_FACEBOOK_APP_ID || '';
 
 const RegisterPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { register, googleLogin, facebookLogin, isLoading, error, clearError } = useAuthStore();
+  
+  const [userType, setUserType] = useState<'patient' | 'doctor'>(
+    searchParams.get('type') === 'doctor' ? 'doctor' : 'patient'
+  );
   
   const [formData, setFormData] = useState({
     fullName: '',
     phone: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    // Doctor-specific fields
+    licenseNumber: '',
+    specialization: '',
+    yearsOfExperience: '',
+    qualification: '',
+    hospitalAffiliation: ''
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -48,17 +59,39 @@ const RegisterPage = () => {
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    const success = await register({
+    const registerData: any = {
       email: formData.email,
       password: formData.password,
       firstName: firstName,
       lastName: lastName,
-      phone: formData.phone
-    });
+      phone: formData.phone,
+      userType: userType
+    };
+
+    // Add doctor-specific fields if registering as doctor
+    if (userType === 'doctor') {
+      if (formData.licenseNumber) {
+        registerData.licenseNumber = formData.licenseNumber;
+      }
+      if (formData.specialization) {
+        registerData.specialization = formData.specialization;
+      }
+      if (formData.yearsOfExperience) {
+        registerData.yearsOfExperience = parseInt(formData.yearsOfExperience) || null;
+      }
+      if (formData.qualification) {
+        registerData.qualification = formData.qualification;
+      }
+      if (formData.hospitalAffiliation) {
+        registerData.hospitalAffiliation = formData.hospitalAffiliation;
+      }
+    }
+
+    const success = await register(registerData);
 
     if (success) {
       toast.success('Đăng ký thành công! Vui lòng kiểm tra email để xác thực.');
-      navigate('/login');
+      navigate(`/login${userType === 'doctor' ? '?type=doctor' : ''}`);
     } else {
       toast.error(error || 'Đăng ký thất bại');
     }
@@ -213,10 +246,34 @@ const RegisterPage = () => {
               </p>
             </div>
 
-            {/* Tabs */}
+            {/* User Type Tabs */}
+            <div className="flex p-1 bg-background-light dark:bg-surface-dark rounded-xl border border-border-light dark:border-border-dark">
+              <button
+                onClick={() => setUserType('patient')}
+                className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all text-center ${
+                  userType === 'patient'
+                    ? 'bg-white dark:bg-background-dark text-text-main dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/5'
+                    : 'text-text-secondary hover:text-text-main dark:text-gray-400 dark:hover:text-white'
+                }`}
+              >
+                Bệnh nhân
+              </button>
+              <button
+                onClick={() => setUserType('doctor')}
+                className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all text-center ${
+                  userType === 'doctor'
+                    ? 'bg-white dark:bg-background-dark text-text-main dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/5'
+                    : 'text-text-secondary hover:text-text-main dark:text-gray-400 dark:hover:text-white'
+                }`}
+              >
+                Bác sĩ
+              </button>
+            </div>
+
+            {/* Login/Register Tabs */}
             <div className="flex p-1 bg-background-light dark:bg-surface-dark rounded-xl border border-border-light dark:border-border-dark">
               <Link
-                to="/login"
+                to={`/login${userType === 'doctor' ? '?type=doctor' : ''}`}
                 className="flex-1 py-2.5 text-sm font-semibold rounded-lg text-text-secondary hover:text-text-main dark:text-gray-400 dark:hover:text-white transition-all text-center"
               >
                 Đăng nhập
@@ -334,6 +391,99 @@ const RegisterPage = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Doctor-specific fields */}
+              {userType === 'doctor' && (
+                <>
+                  <div className="pt-2 pb-1 border-t border-border-light dark:border-border-dark">
+                    <p className="text-xs font-semibold text-text-secondary dark:text-gray-400 uppercase tracking-wider">
+                      Thông tin chuyên môn
+                    </p>
+                  </div>
+                  
+                  {/* License Number */}
+                  <div className="space-y-1">
+                    <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="licenseNumber">
+                      Số giấy phép hành nghề
+                    </label>
+                    <input
+                      className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
+                      id="licenseNumber"
+                      name="licenseNumber"
+                      placeholder="VD: DR-12345678"
+                      type="text"
+                      value={formData.licenseNumber}
+                      onChange={handleChange}
+                    />
+                  </div>
+
+                  {/* Specialization */}
+                  <div className="space-y-1">
+                    <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="specialization">
+                      Chuyên khoa
+                    </label>
+                    <input
+                      className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
+                      id="specialization"
+                      name="specialization"
+                      placeholder="VD: Nhãn khoa, Nội khoa..."
+                      type="text"
+                      value={formData.specialization}
+                      onChange={handleChange}
+                    />
+                  </div>
+
+                  {/* Years of Experience & Qualification */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="yearsOfExperience">
+                        Số năm kinh nghiệm
+                      </label>
+                      <input
+                        className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
+                        id="yearsOfExperience"
+                        name="yearsOfExperience"
+                        placeholder="VD: 5"
+                        type="number"
+                        min="0"
+                        value={formData.yearsOfExperience}
+                        onChange={handleChange}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="qualification">
+                        Bằng cấp
+                      </label>
+                      <input
+                        className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
+                        id="qualification"
+                        name="qualification"
+                        placeholder="VD: Tiến sĩ, Thạc sĩ..."
+                        type="text"
+                        value={formData.qualification}
+                        onChange={handleChange}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Hospital Affiliation */}
+                  <div className="space-y-1">
+                    <label className="block text-sm font-medium text-text-main dark:text-white" htmlFor="hospitalAffiliation">
+                      Nơi công tác
+                    </label>
+                    <input
+                      className="block w-full px-3 py-2.5 rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-dark text-text-main dark:text-white focus:ring-2 focus:ring-primary focus:border-primary text-sm shadow-sm placeholder:text-gray-400 transition-all"
+                      id="hospitalAffiliation"
+                      name="hospitalAffiliation"
+                      placeholder="VD: Bệnh viện Mắt Trung ương..."
+                      type="text"
+                      value={formData.hospitalAffiliation}
+                      onChange={handleChange}
+                    />
+                  </div>
+                </>
+              )}
 
               {/* Password Row */}
               <div className="grid grid-cols-2 gap-3">

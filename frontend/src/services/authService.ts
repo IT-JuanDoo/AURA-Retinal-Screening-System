@@ -11,6 +11,13 @@ export interface RegisterCredentials {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  userType?: 'patient' | 'doctor';
+  // Doctor-specific fields
+  licenseNumber?: string;
+  specialization?: string;
+  yearsOfExperience?: number | null;
+  qualification?: string;
+  hospitalAffiliation?: string;
 }
 
 export interface UserInfo {

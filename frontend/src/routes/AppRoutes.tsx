@@ -24,6 +24,7 @@ import PatientReportsPage from "../pages/patient/PatientReportsPage";
 import ClinicReportGenerationPage from "../pages/clinic/ClinicReportGenerationPage";
 import PackagesPage from "../pages/patient/PackagesPage";
 import PatientSearchPage from "../pages/doctor/PatientSearchPage";
+import DoctorDashboardPage from "../pages/doctor/DoctorDashboardPage";
 import { useAuthStore } from "../store/authStore";
 import { useAdminAuthStore } from "../store/adminAuthStore";
 
@@ -90,6 +91,12 @@ const AppRoutes = () => {
           <PublicRoute>
             <RegisterPage />
           </PublicRoute>
+        }
+      />
+      <Route
+        path="/doctor/login"
+        element={
+          <Navigate to="/login?type=doctor" replace />
         }
       />
 
@@ -270,12 +277,28 @@ const AppRoutes = () => {
           }
         />
 
-        {/* Doctor routes - Patient Search */}
+        {/* Doctor routes */}
+        <Route
+          path="/doctor/dashboard"
+          element={
+            <ProtectedRoute>
+              <DoctorDashboardPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/doctor/patients/search"
           element={
             <ProtectedRoute>
               <PatientSearchPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/doctor/patients/:patientId"
+          element={
+            <ProtectedRoute>
+              <PatientProfilePage />
             </ProtectedRoute>
           }
         />
