@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import PatientHeader from "../../components/patient/PatientHeader";
 import analysisService, { AnalysisResult } from "../../services/analysisService";
 import toast from "react-hot-toast";
@@ -9,6 +9,7 @@ type FilterStatus = "all" | "Completed" | "Processing" | "Failed";
 
 const PatientReportsPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [reports, setReports] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("timeline");
@@ -21,7 +22,7 @@ const PatientReportsPage = () => {
 
   useEffect(() => {
     loadReports();
-  }, []);
+  }, [location.pathname]); // Reload when route changes
 
   const loadReports = async () => {
     try {

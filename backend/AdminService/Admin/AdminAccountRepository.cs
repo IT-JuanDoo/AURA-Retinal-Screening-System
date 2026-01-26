@@ -67,18 +67,22 @@ limit 1;", conn);
     {
         using var conn = _db.OpenConnection();
         using var cmd = new NpgsqlCommand(@"
-select id, email, username, firstname, lastname, coalesce(isemailverified,false) as isemailverified, coalesce(isactive,true) as isactive
-from users
-where coalesce(isdeleted,false)=false
-  and (@isActive is null or coalesce(isactive,true)=@isActive)
+select u.id, u.email, u.username, u.firstname, u.lastname, coalesce(u.isemailverified,false) as isemailverified, coalesce(u.isactive,true) as isactive
+from users u
+where coalesce(u.isdeleted,false)=false
+  and not exists (
+    select 1 from doctors d 
+    where d.id = u.id and coalesce(d.isdeleted,false)=false
+  )
+  and (@isActive is null or coalesce(u.isactive,true)=@isActive)
   and (
     @search is null
-    or lower(email) like '%'||lower(@search)||'%'
-    or lower(coalesce(username,'')) like '%'||lower(@search)||'%'
-    or lower(coalesce(firstname,'')) like '%'||lower(@search)||'%'
-    or lower(coalesce(lastname,'')) like '%'||lower(@search)||'%'
+    or lower(u.email) like '%'||lower(@search)||'%'
+    or lower(coalesce(u.username,'')) like '%'||lower(@search)||'%'
+    or lower(coalesce(u.firstname,'')) like '%'||lower(@search)||'%'
+    or lower(coalesce(u.lastname,'')) like '%'||lower(@search)||'%'
   )
-order by createddate desc nulls last
+order by u.createddate desc nulls last
 limit 200;", conn);
 
         var searchParam = new NpgsqlParameter("search", NpgsqlTypes.NpgsqlDbType.Text) { Value = (object?)search ?? DBNull.Value };

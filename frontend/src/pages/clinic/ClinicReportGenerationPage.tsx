@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import clinicReportService, {
   CreateClinicReportDto,
   ClinicReportDto,
@@ -21,10 +22,12 @@ const ClinicReportGenerationPage = () => {
   const [generating, setGenerating] = useState(false);
   const [recentReports, setRecentReports] = useState<ClinicReportDto[]>([]);
 
+  const location = useLocation();
+
   useEffect(() => {
     loadTemplates();
     loadRecentReports();
-  }, []);
+  }, [location.pathname]); // Reload when route changes
 
   useEffect(() => {
     if (selectedTemplate) {

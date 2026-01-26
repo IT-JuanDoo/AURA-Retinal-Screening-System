@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import alertService, {
   HighRiskAlert,
   ClinicAlertSummary,
@@ -9,6 +9,7 @@ import toast from "react-hot-toast";
 
 const ClinicAlertsPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [summary, setSummary] = useState<ClinicAlertSummary | null>(null);
   const [alerts, setAlerts] = useState<HighRiskAlert[]>([]);
   const [abnormalTrends, setAbnormalTrends] = useState<AbnormalTrend[]>([]);
@@ -21,7 +22,7 @@ const ClinicAlertsPage = () => {
     // Refresh every 30 seconds
     const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
-  }, [unacknowledgedOnly]);
+  }, [unacknowledgedOnly, location.pathname]); // Reload when route changes or filter changes
 
   const loadData = async () => {
     try {

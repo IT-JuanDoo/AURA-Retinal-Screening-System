@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import doctorService, { DoctorDto, DoctorStatisticsDto } from '../../services/doctorService';
 import patientSearchService from '../../services/patientSearchService';
 import toast from 'react-hot-toast';
@@ -7,6 +7,7 @@ import DoctorHeader from '../../components/doctor/DoctorHeader';
 
 const DoctorDashboardPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [doctor, setDoctor] = useState<DoctorDto | null>(null);
   const [statistics, setStatistics] = useState<DoctorStatisticsDto | null>(null);
   const [patients, setPatients] = useState<any[]>([]);
@@ -15,7 +16,7 @@ const DoctorDashboardPage = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [location.pathname]); // Reload when route changes
 
   const loadData = async () => {
     try {

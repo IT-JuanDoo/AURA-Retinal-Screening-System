@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import messageService from '../../services/messageService';
 import PatientHeader from '../../components/patient/PatientHeader';
@@ -43,10 +43,12 @@ const mockHealthData = {
 const PatientDashboard = () => {
   const { user } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
   const [selectedPeriod, setSelectedPeriod] = useState('6months');
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
+    // Reload data when route changes (component mounts or navigates to this page)
     messageService.getUnreadCount()
       .then(count => setUnreadCount(count))
       .catch(() => {});
@@ -59,7 +61,7 @@ const PatientDashboard = () => {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [location.pathname]); // Reload when pathname changes
 
   return (
     <div className="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 font-sans antialiased min-h-screen flex flex-col transition-colors duration-200">

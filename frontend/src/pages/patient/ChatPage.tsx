@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuthStore } from "../../store/authStore";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import messageService, { Message, Conversation, CreateMessage } from "../../services/messageService";
 import signalRService from "../../services/signalRService";
 import toast from "react-hot-toast";
 
 const ChatPage = () => {
   const { user } = useAuthStore();
+  const location = useLocation();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -269,7 +270,7 @@ const ChatPage = () => {
   useEffect(() => {
     loadConversations();
     loadUnreadCount();
-  }, []);
+  }, [location.pathname]); // Reload when route changes
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);

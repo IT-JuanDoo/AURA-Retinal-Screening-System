@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useGoogleLogin } from '@react-oauth/google';
 import FacebookLogin from '@greatsumini/react-facebook-login';
@@ -18,29 +18,31 @@ const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [userType, setUserType] = useState<'patient' | 'doctor'>(
-    searchParams.get('type') === 'doctor' ? 'doctor' : 'patient'
-  );
+
+  // Clear form when searchParams change
+  useEffect(() => {
+    setEmail('');
+    setPassword('');
+    clearError();
+  }, [searchParams, clearError]);
 
   // Helper function to check if user is doctor and redirect accordingly
+  // Always check the actual role, not just the URL parameter
   const handlePostLoginRedirect = async () => {
-    if (userType === 'doctor') {
-      try {
-        // Try to get doctor profile - if successful, user is a doctor
-        await doctorService.getCurrentDoctor();
-        navigate('/doctor/dashboard');
-      } catch (error: any) {
-        // If 401/404, user is not a doctor
-        if (error?.response?.status === 401 || error?.response?.status === 404) {
-          toast.error('Tài khoản này chưa được cấp quyền Bác sĩ. Vui lòng liên hệ quản trị viên.');
-          navigate('/dashboard');
-        } else {
-          // Other errors - still redirect to patient dashboard
-          navigate('/dashboard');
-        }
+    try {
+      // Try to get doctor profile - if successful, user is a doctor
+      await doctorService.getCurrentDoctor();
+      // User is a doctor, redirect to doctor dashboard
+      navigate('/doctor/dashboard');
+    } catch (error: any) {
+      // If 401/404, user is not a doctor, redirect to patient dashboard
+      if (error?.response?.status === 401 || error?.response?.status === 404) {
+        // User is not a doctor, redirect to patient dashboard
+        navigate('/dashboard');
+      } else {
+        // Other errors (network, etc.) - still redirect to patient dashboard
+        navigate('/dashboard');
       }
-    } else {
-      navigate('/dashboard');
     }
   };
 
@@ -65,7 +67,7 @@ const LoginPage = () => {
         const success = await googleLogin(tokenResponse.access_token);
         if (success) {
           toast.success('Đăng nhập bằng Google thành công!');
-          navigate('/dashboard');
+          await handlePostLoginRedirect();
         } else {
           toast.error(error || 'Đăng nhập Google thất bại');
         }
@@ -202,47 +204,8 @@ const LoginPage = () => {
                 Chào mừng đến với AURA
               </h1>
               <p className="mt-1 text-sm text-text-secondary dark:text-gray-400">
-                {userType === 'doctor' 
-                  ? 'Đăng nhập với tư cách Bác sĩ để quản lý bệnh nhân'
-                  : 'Đăng nhập để truy cập hệ thống'}
+                Đăng nhập để truy cập hệ thống
               </p>
-            </div>
-
-            {/* User Type Tabs */}
-            <div className="flex p-1 bg-background-light dark:bg-surface-dark rounded-xl border border-border-light dark:border-border-dark">
-              <button
-                onClick={() => setUserType('patient')}
-                className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all text-center ${
-                  userType === 'patient'
-                    ? 'bg-white dark:bg-background-dark text-text-main dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/5'
-                    : 'text-text-secondary hover:text-text-main dark:text-gray-400 dark:hover:text-white'
-                }`}
-              >
-                Bệnh nhân
-              </button>
-              <button
-                onClick={() => setUserType('doctor')}
-                className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all text-center ${
-                  userType === 'doctor'
-                    ? 'bg-white dark:bg-background-dark text-text-main dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/5'
-                    : 'text-text-secondary hover:text-text-main dark:text-gray-400 dark:hover:text-white'
-                }`}
-              >
-                Bác sĩ
-              </button>
-            </div>
-
-            {/* Login/Register Tabs */}
-            <div className="flex p-1 bg-background-light dark:bg-surface-dark rounded-xl border border-border-light dark:border-border-dark">
-              <button className="flex-1 py-2.5 text-sm font-semibold rounded-lg bg-white dark:bg-background-dark text-text-main dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/5 transition-all text-center">
-                Đăng nhập
-              </button>
-              <Link
-                to="/register"
-                className="flex-1 py-2.5 text-sm font-semibold rounded-lg text-text-secondary hover:text-text-main dark:text-gray-400 dark:hover:text-white transition-all text-center"
-              >
-                Đăng ký
-              </Link>
             </div>
 
             {/* Social Login Buttons */}
@@ -405,6 +368,11 @@ const LoginPage = () => {
                   Điều khoản sử dụng
                 </a>
               </div>
+              <p className="mt-4 text-xs text-text-secondary dark:text-gray-500">
+                <Link className="hover:text-primary transition-colors" to="/register?type=doctor">
+                  Đăng kí bác sĩ
+                </Link>
+              </p>
             </div>
           </div>
         </div>

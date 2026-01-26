@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import imageService, { ImageUploadResponse } from '../../services/imageService';
 import analysisService from '../../services/analysisService';
 import { userPackageService, UserPackage } from '../../services/packageApi';
@@ -19,6 +19,7 @@ interface UploadedImage {
 
 const ImageUploadPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const startAnalysisInFlightRef = useRef(false);
   const uploadProgressTimersRef = useRef<Record<string, number>>({});
@@ -31,7 +32,7 @@ const ImageUploadPage = () => {
 
   // Load user package on mount and when window gains focus (user might have purchased package in another tab)
   useEffect(() => {
-    // Always reload package when component mounts (user might have completed analysis and came back)
+    // Always reload package when component mounts or route changes
     loadUserPackage();
     
     // Reload package when window gains focus (in case user purchased in another tab or completed analysis)
@@ -61,7 +62,7 @@ const ImageUploadPage = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(refreshInterval);
     };
-  }, []);
+  }, [location.pathname]); // Reload when route changes
 
   const loadUserPackage = async (showLogs = false) => {
     setLoadingPackage(true);

@@ -558,13 +558,8 @@ public class RbacRepository : IRbacRepository
                 // For Doctor role: save to doctors table
                 await CreateOrUpdateDoctorFromUserAsync(conn, transaction, userId, assignedBy);
                 
-                // Mark user as deleted so they don't appear in users list
-                using var deleteUserCmd = new NpgsqlCommand(@"
-                    UPDATE users 
-                    SET IsDeleted = true, UpdatedDate = CURRENT_DATE
-                    WHERE Id = @userId;", conn, transaction);
-                deleteUserCmd.Parameters.AddWithValue("userId", userId);
-                await deleteUserCmd.ExecuteNonQueryAsync();
+                // Note: User record is kept in users table for login purposes
+                // ListUsersAsync query already excludes doctors using NOT EXISTS
             }
             else if (roleName.Equals("Admin", StringComparison.OrdinalIgnoreCase) || 
                      roleName.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))

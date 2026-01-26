@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import PatientHeader from "../../components/patient/PatientHeader";
 import { userPackageApi, ServicePackage } from "../../services/packageApi";
 import PurchaseModal from "../../components/patient/PurchaseModal";
 import toast from "react-hot-toast";
 
 const PackagesPage = () => {
+  const location = useLocation();
   const [packages, setPackages] = useState<ServicePackage[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedType, setSelectedType] = useState<string>("all");
@@ -14,7 +16,7 @@ const PackagesPage = () => {
 
   useEffect(() => {
     loadPackages();
-  }, [selectedType]);
+  }, [selectedType, location.pathname]); // Reload when route changes or filter changes
 
   const loadPackages = async () => {
     setLoading(true);

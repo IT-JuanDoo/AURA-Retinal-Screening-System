@@ -882,13 +882,28 @@ COMMENT ON TABLE bulk_upload_batches IS 'Tracks bulk image upload batches from c
 -- =====================================================
 
 -- Insert default admin role
-INSERT INTO roles (Id, RoleName, CreatedDate, IsDeleted)
-VALUES ('admin-role-001', 'Admin', CURRENT_DATE, false)
+INSERT INTO roles (Id, RoleName, CreatedDate, IsDeleted, Note)
+VALUES ('admin-role-001', 'Admin', CURRENT_DATE, false, 'Quản trị viên hệ thống')
 ON CONFLICT (Id) DO NOTHING;
 
 -- Insert default super admin role
-INSERT INTO roles (Id, RoleName, CreatedDate, IsDeleted)
-VALUES ('superadmin-role-001', 'SuperAdmin', CURRENT_DATE, false)
+INSERT INTO roles (Id, RoleName, CreatedDate, IsDeleted, Note)
+VALUES ('superadmin-role-001', 'SuperAdmin', CURRENT_DATE, false, 'Quản trị viên cấp cao')
+ON CONFLICT (Id) DO NOTHING;
+
+-- Insert Doctor role (required for doctor registration and role assignment)
+INSERT INTO roles (Id, RoleName, CreatedDate, IsDeleted, Note)
+VALUES ('doctor-role-001', 'Doctor', CURRENT_DATE, false, 'Bác sĩ - có thể quản lý bệnh nhân và phân tích hình ảnh')
+ON CONFLICT (Id) DO NOTHING;
+
+-- Insert Patient role (for regular users)
+INSERT INTO roles (Id, RoleName, CreatedDate, IsDeleted, Note)
+VALUES ('patient-role-001', 'Patient', CURRENT_DATE, false, 'Bệnh nhân - người dùng thông thường của hệ thống')
+ON CONFLICT (Id) DO NOTHING;
+
+-- Insert Clinic role (for clinic management)
+INSERT INTO roles (Id, RoleName, CreatedDate, IsDeleted, Note)
+VALUES ('clinic-role-001', 'Clinic', CURRENT_DATE, false, 'Phòng khám - quản lý bác sĩ và bệnh nhân')
 ON CONFLICT (Id) DO NOTHING;
 
 -- Insert default admin account

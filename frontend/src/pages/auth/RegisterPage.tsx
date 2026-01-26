@@ -1,21 +1,37 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useGoogleLogin } from '@react-oauth/google';
-import FacebookLogin from '@greatsumini/react-facebook-login';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
-
-// Facebook App ID từ environment variables
-const facebookAppId = (import.meta as any).env.VITE_FACEBOOK_APP_ID || '';
 
 const RegisterPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { register, googleLogin, facebookLogin, isLoading, error, clearError } = useAuthStore();
+  const { register, isLoading, error, clearError } = useAuthStore();
   
+  // Determine user type from URL parameter, default to patient
+  // Update when searchParams change
   const [userType, setUserType] = useState<'patient' | 'doctor'>(
     searchParams.get('type') === 'doctor' ? 'doctor' : 'patient'
   );
+
+  // Update userType when searchParams change
+  useEffect(() => {
+    const type = searchParams.get('type') === 'doctor' ? 'doctor' : 'patient';
+    setUserType(type);
+    // Reset form when switching between patient/doctor
+    setFormData({
+      fullName: '',
+      phone: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      licenseNumber: '',
+      specialization: '',
+      yearsOfExperience: '',
+      qualification: '',
+      hospitalAffiliation: ''
+    });
+  }, [searchParams]);
   
   const [formData, setFormData] = useState({
     fullName: '',
@@ -97,53 +113,6 @@ const RegisterPage = () => {
     }
   };
 
-  // Google OAuth Register/Login Hook
-  const handleGoogleRegisterClick = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      try {
-        // Đăng ký/Đăng nhập bằng Google (backend sẽ tự động tạo tài khoản nếu chưa có)
-        const success = await googleLogin(tokenResponse.access_token);
-        if (success) {
-          toast.success('Đăng ký bằng Google thành công!');
-          navigate('/dashboard');
-        } else {
-          toast.error(error || 'Đăng ký Google thất bại');
-        }
-      } catch (err) {
-        console.error('Google register error:', err);
-        toast.error('Đăng ký Google thất bại');
-      }
-    },
-    onError: (errorResponse) => {
-      console.error('Google OAuth error:', errorResponse);
-      toast.error('Đăng ký Google thất bại');
-    },
-  });
-
-  const handleGoogleRegister = () => {
-    handleGoogleRegisterClick();
-  };
-
-  // Facebook OAuth Register/Login Handler
-  const handleFacebookRegisterSuccess = async (response: { accessToken: string }) => {
-    try {
-      const success = await facebookLogin(response.accessToken);
-      if (success) {
-        toast.success('Đăng ký bằng Facebook thành công!');
-        navigate('/dashboard');
-      } else {
-        toast.error(error || 'Đăng ký Facebook thất bại');
-      }
-    } catch (err) {
-      console.error('Facebook register error:', err);
-      toast.error('Đăng ký Facebook thất bại');
-    }
-  };
-
-  const handleFacebookRegisterError = (error: { status: string }) => {
-    console.error('Facebook OAuth error:', error);
-    toast.error('Đăng ký Facebook thất bại');
-  };
 
   return (
     <div className="bg-background-light dark:bg-background-dark h-screen flex font-display text-text-main dark:text-white transition-colors duration-200 overflow-hidden">
@@ -242,89 +211,10 @@ const RegisterPage = () => {
                 Tạo tài khoản mới
               </h1>
               <p className="mt-1 text-sm text-text-secondary dark:text-gray-400">
-                Nhập thông tin chi tiết để bắt đầu với AURA.
+                {userType === 'doctor' 
+                  ? 'Nhập thông tin chi tiết để đăng ký tài khoản Bác sĩ.'
+                  : 'Nhập thông tin chi tiết để bắt đầu với AURA.'}
               </p>
-            </div>
-
-            {/* User Type Tabs */}
-            <div className="flex p-1 bg-background-light dark:bg-surface-dark rounded-xl border border-border-light dark:border-border-dark">
-              <button
-                onClick={() => setUserType('patient')}
-                className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all text-center ${
-                  userType === 'patient'
-                    ? 'bg-white dark:bg-background-dark text-text-main dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/5'
-                    : 'text-text-secondary hover:text-text-main dark:text-gray-400 dark:hover:text-white'
-                }`}
-              >
-                Bệnh nhân
-              </button>
-              <button
-                onClick={() => setUserType('doctor')}
-                className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all text-center ${
-                  userType === 'doctor'
-                    ? 'bg-white dark:bg-background-dark text-text-main dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/5'
-                    : 'text-text-secondary hover:text-text-main dark:text-gray-400 dark:hover:text-white'
-                }`}
-              >
-                Bác sĩ
-              </button>
-            </div>
-
-            {/* Login/Register Tabs */}
-            <div className="flex p-1 bg-background-light dark:bg-surface-dark rounded-xl border border-border-light dark:border-border-dark">
-              <Link
-                to={`/login${userType === 'doctor' ? '?type=doctor' : ''}`}
-                className="flex-1 py-2.5 text-sm font-semibold rounded-lg text-text-secondary hover:text-text-main dark:text-gray-400 dark:hover:text-white transition-all text-center"
-              >
-                Đăng nhập
-              </Link>
-              <button className="flex-1 py-2.5 text-sm font-semibold rounded-lg bg-white dark:bg-background-dark text-text-main dark:text-white shadow-sm ring-1 ring-black/5 dark:ring-white/5 transition-all text-center">
-                Đăng ký
-              </button>
-            </div>
-
-            {/* Social Register Buttons */}
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={handleGoogleRegister}
-                disabled={isLoading}
-                className="flex items-center justify-center gap-2 px-3 py-2.5 border border-border-light dark:border-border-dark rounded-lg hover:bg-background-light dark:hover:bg-surface-dark transition-all bg-white dark:bg-transparent disabled:opacity-50"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                </svg>
-                <span className="text-sm font-medium text-text-main dark:text-white">Google</span>
-              </button>
-
-              <FacebookLogin
-                appId={facebookAppId}
-                onSuccess={handleFacebookRegisterSuccess}
-                onFail={handleFacebookRegisterError}
-                render={({ onClick }) => (
-                  <button
-                    onClick={onClick}
-                    disabled={isLoading || !facebookAppId}
-                    className="flex items-center justify-center gap-2 px-3 py-2.5 border border-border-light dark:border-border-dark rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all bg-white dark:bg-transparent disabled:opacity-50"
-                  >
-                    <svg className="w-5 h-5 text-[#1877F2]" fill="currentColor" viewBox="0 0 24 24">
-                      <path clipRule="evenodd" d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" fillRule="evenodd"/>
-                    </svg>
-                    <span className="text-sm font-medium text-text-main dark:text-white">Facebook</span>
-                  </button>
-                )}
-              />
-            </div>
-
-            {/* Divider */}
-            <div className="relative flex items-center">
-              <div className="flex-grow border-t border-border-light dark:border-border-dark"></div>
-              <span className="flex-shrink-0 mx-4 text-xs font-medium text-text-secondary uppercase tracking-wider">
-                hoặc đăng ký bằng email
-              </span>
-              <div className="flex-grow border-t border-border-light dark:border-border-dark"></div>
             </div>
 
             {/* Email Form */}
@@ -590,6 +480,23 @@ const RegisterPage = () => {
                   Điều khoản sử dụng
                 </a>
               </div>
+              {userType === 'patient' && (
+                <p className="mt-4 text-xs text-text-secondary dark:text-gray-500">
+                  <Link className="hover:text-primary transition-colors" to="/register?type=doctor">
+                    Đăng kí bác sĩ
+                  </Link>
+                </p>
+              )}
+              {userType === 'doctor' && (
+                <p className="mt-4 text-xs text-text-secondary dark:text-gray-500">
+                  <Link className="hover:text-primary transition-colors flex items-center justify-center gap-1" to="/login">
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
+                    Quay lại đăng nhập user
+                  </Link>
+                </p>
+              )}
             </div>
           </div>
         </div>

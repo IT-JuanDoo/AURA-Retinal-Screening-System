@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import LoginPage from "../pages/auth/LoginPage";
 import RegisterPage from "../pages/auth/RegisterPage";
 import AdminLoginPage from "../pages/admin/AdminLoginPage";
@@ -73,8 +73,10 @@ const AdminPublicRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 const AppRoutes = () => {
+  const location = useLocation();
+  
   return (
-    <Routes>
+    <Routes location={location} key={location.pathname}>
       {/* Public routes */}
       <Route path="/" element={<HomePage />} />
       <Route

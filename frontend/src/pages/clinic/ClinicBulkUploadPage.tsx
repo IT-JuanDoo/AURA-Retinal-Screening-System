@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import clinicImageService, {
   ClinicBulkUploadResponse,
   BatchAnalysisStatus,
@@ -7,6 +8,7 @@ import clinicImageService, {
 import toast from "react-hot-toast";
 
 const ClinicBulkUploadPage = () => {
+  const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -247,7 +249,7 @@ const ClinicBulkUploadPage = () => {
   };
 
   useEffect(() => {
-    // Load batch list on mount
+    // Load batch list on mount and when route changes
     loadBatchList();
 
     return () => {
@@ -258,7 +260,7 @@ const ClinicBulkUploadPage = () => {
         clearInterval(batchPollingInterval);
       }
     };
-  }, [pollingInterval, batchPollingInterval]);
+  }, [location.pathname]); // Reload when route changes
 
   const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
 

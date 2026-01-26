@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import usageTrackingService, {
   ClinicUsageStatistics,
   PackageUsage,
@@ -16,9 +17,11 @@ const ClinicUsageDashboardPage = () => {
     new Date().toISOString().split("T")[0]
   );
 
+  const location = useLocation();
+
   useEffect(() => {
     loadData();
-  }, [startDate, endDate]);
+  }, [startDate, endDate, location.pathname]); // Reload when route changes or date filters change
 
   const loadData = async () => {
     try {
