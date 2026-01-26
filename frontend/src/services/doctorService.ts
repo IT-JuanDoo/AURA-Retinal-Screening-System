@@ -32,10 +32,19 @@ export interface DoctorStatisticsDto {
 const doctorService = {
   /**
    * Get current doctor profile
+   * Returns null if user is not a doctor (404)
    */
-  async getCurrentDoctor(): Promise<DoctorDto> {
-    const response = await api.get<DoctorDto>('/doctors/me');
-    return response.data;
+  async getCurrentDoctor(): Promise<DoctorDto | null> {
+    try {
+      const response = await api.get<DoctorDto>('/doctors/me');
+      return response.data;
+    } catch (error: any) {
+      // 404 means user is not a doctor - this is normal, not an error
+      if (error?.response?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
   },
 
   /**

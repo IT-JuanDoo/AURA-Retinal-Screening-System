@@ -213,10 +213,10 @@ function OverviewTab({ dashboard }: { dashboard: GlobalDashboardDto }) {
         />
         <MetricCard
           title="Tổng doanh thu"
-          value={`$${dashboard.revenueDashboard.totalRevenue.toLocaleString(
+          value={`${dashboard.revenueDashboard.totalRevenue.toLocaleString(
             "vi-VN",
-            { minimumFractionDigits: 2 }
-          )}`}
+            { minimumFractionDigits: 0 }
+          )} ₫`}
           subtitle={`${dashboard.revenueDashboard.totalTransactions} giao dịch`}
           icon="💰"
           color="green"
@@ -267,7 +267,7 @@ function OverviewTab({ dashboard }: { dashboard: GlobalDashboardDto }) {
           data={dashboard.revenueDashboard.dailyRevenueList}
           dataKey="revenue"
           color="green"
-          formatValue={(v) => `$${v.toFixed(0)}`}
+          formatValue={(v) => `${v.toLocaleString("vi-VN", { minimumFractionDigits: 0 })} ₫`}
         />
       </div>
 
@@ -295,36 +295,36 @@ function RevenueTab({ revenue }: { revenue: RevenueDashboardDto }) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title="Tổng doanh thu"
-          value={`$${revenue.totalRevenue.toLocaleString("vi-VN", {
-            minimumFractionDigits: 2,
-          })}`}
+          value={`${revenue.totalRevenue.toLocaleString("vi-VN", {
+            minimumFractionDigits: 0,
+          })} ₫`}
           subtitle="Tất cả thời gian"
           icon="💰"
           color="green"
         />
         <MetricCard
           title="Doanh thu theo tháng"
-          value={`$${revenue.monthlyRevenue.toLocaleString("vi-VN", {
-            minimumFractionDigits: 2,
-          })}`}
+          value={`${revenue.monthlyRevenue.toLocaleString("vi-VN", {
+            minimumFractionDigits: 0,
+          })} ₫`}
           subtitle="Tháng này"
           icon="📅"
           color="blue"
         />
         <MetricCard
           title="Doanh thu theo tuần"
-          value={`$${revenue.weeklyRevenue.toLocaleString("vi-VN", {
-            minimumFractionDigits: 2,
-          })}`}
+          value={`${revenue.weeklyRevenue.toLocaleString("vi-VN", {
+            minimumFractionDigits: 0,
+          })} ₫`}
           subtitle="Tuần này"
           icon="📊"
           color="purple"
         />
         <MetricCard
           title="Doanh thu theo ngày"
-          value={`$${revenue.dailyRevenue.toLocaleString("vi-VN", {
-            minimumFractionDigits: 2,
-          })}`}
+          value={`${revenue.dailyRevenue.toLocaleString("vi-VN", {
+            minimumFractionDigits: 0,
+          })} ₫`}
           subtitle="Hôm nay"
           icon="📈"
           color="orange"
@@ -340,7 +340,7 @@ function RevenueTab({ revenue }: { revenue: RevenueDashboardDto }) {
           data={revenue.dailyRevenueList}
           dataKey="revenue"
           color="green"
-          formatValue={(v) => `$${v.toFixed(0)}`}
+          formatValue={(v) => `${v.toLocaleString("vi-VN", { minimumFractionDigits: 0 })} ₫`}
         />
       </div>
 
@@ -392,7 +392,7 @@ function RevenueTab({ revenue }: { revenue: RevenueDashboardDto }) {
             Giá trị giao dịch trung bình
           </p>
           <p className="text-3xl font-bold text-slate-900 dark:text-white mt-2">
-            ${revenue.averageTransactionValue.toFixed(2)}
+            {revenue.averageTransactionValue.toLocaleString("vi-VN", { minimumFractionDigits: 0 })} ₫
           </p>
         </div>
         <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
@@ -996,7 +996,7 @@ function RevenueSourceBar({
       <div className="flex justify-between mb-2">
         <span className="text-slate-600 dark:text-slate-400">{label}</span>
         <span className="font-semibold text-slate-900 dark:text-white">
-          ${value.toLocaleString("vi-VN", { minimumFractionDigits: 2 })} (
+          {value.toLocaleString("vi-VN", { minimumFractionDigits: 0 })} ₫ (
           {percentage.toFixed(1)}%)
         </span>
       </div>

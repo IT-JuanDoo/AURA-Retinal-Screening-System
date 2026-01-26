@@ -528,15 +528,13 @@ public class AuthService : IAuthService
         return Task.FromResult(true);
     }
 
-    public async Task<AuthResponseDto> GoogleLoginAsync(string idToken, string? ipAddress = null)
+    public async Task<AuthResponseDto> GoogleLoginAsync(string accessToken, string? ipAddress = null)
     {
         try
         {
-            // TODO: Verify Google ID token with Google API
-            // For now, simulate Google authentication
-            var googleUser = await VerifyGoogleTokenAsync(idToken);
-            if (googleUser == null)
+            if (string.IsNullOrWhiteSpace(accessToken))
             {
+                _logger.LogWarning("Google login attempted with empty access token");
                 return new AuthResponseDto
                 {
                     Success = false,
@@ -544,15 +542,28 @@ public class AuthService : IAuthService
                 };
             }
 
+            var googleUser = await VerifyGoogleTokenAsync(accessToken);
+            if (googleUser == null)
+            {
+                _logger.LogWarning("Google token verification failed for token: {TokenPrefix}...", 
+                    accessToken.Length > 10 ? accessToken.Substring(0, 10) : "invalid");
+                return new AuthResponseDto
+                {
+                    Success = false,
+                    Message = "Google token không hợp lệ hoặc đã hết hạn"
+                };
+            }
+
+            _logger.LogInformation("Google login successful for user: {Email}", googleUser.Email);
             return ProcessSocialLogin(googleUser, "google", ipAddress);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Google login failed");
+            _logger.LogError(ex, "Google login failed with exception");
             return new AuthResponseDto
             {
                 Success = false,
-                Message = "Đăng nhập Google thất bại"
+                Message = "Đăng nhập Google thất bại. Vui lòng thử lại."
             };
         }
     }
@@ -1042,14 +1053,42 @@ public class AuthService : IAuthService
         try
         {
             using var httpClient = new HttpClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(10); // Set timeout
             httpClient.DefaultRequestHeaders.Authorization = 
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
             
-            var response = await httpClient.GetAsync("https://www.googleapis.com/oauth2/v2/userinfo");
-            
-            if (!response.IsSuccessStatusCode)
+            // Thử dùng v2 endpoint trước (vẫn còn hoạt động), nếu fail thì thử v3
+            var endpoints = new[]
             {
-                _logger.LogWarning("Google token verification failed: {StatusCode}", response.StatusCode);
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                "https://www.googleapis.com/oauth2/v3/userinfo"
+            };
+            
+            HttpResponseMessage? response = null;
+            string? errorContent = null;
+            
+            foreach (var endpoint in endpoints)
+            {
+                try
+                {
+                    response = await httpClient.GetAsync(endpoint);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        break;
+                    }
+                    errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogWarning("Google API {Endpoint} failed: {StatusCode}, Response: {Error}", 
+                        endpoint, response.StatusCode, errorContent);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error calling Google API {Endpoint}", endpoint);
+                }
+            }
+            
+            if (response == null || !response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("All Google API endpoints failed. Last error: {Error}", errorContent);
                 return null;
             }
 

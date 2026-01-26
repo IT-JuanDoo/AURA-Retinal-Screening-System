@@ -31,18 +31,18 @@ const LoginPage = () => {
   const handlePostLoginRedirect = async () => {
     try {
       // Try to get doctor profile - if successful, user is a doctor
-      await doctorService.getCurrentDoctor();
-      // User is a doctor, redirect to doctor dashboard
-      navigate('/doctor/dashboard');
-    } catch (error: any) {
-      // If 401/404, user is not a doctor, redirect to patient dashboard
-      if (error?.response?.status === 401 || error?.response?.status === 404) {
+      const doctor = await doctorService.getCurrentDoctor();
+      if (doctor) {
+        // User is a doctor, redirect to doctor dashboard
+        navigate('/doctor/dashboard');
+      } else {
         // User is not a doctor, redirect to patient dashboard
         navigate('/dashboard');
-      } else {
-        // Other errors (network, etc.) - still redirect to patient dashboard
-        navigate('/dashboard');
       }
+    } catch (error: any) {
+      // On any error, redirect to patient dashboard (safer default)
+      console.warn('Error checking doctor status:', error);
+      navigate('/dashboard');
     }
   };
 
@@ -71,15 +71,17 @@ const LoginPage = () => {
         } else {
           toast.error(error || 'Đăng nhập Google thất bại');
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Google login error:', err);
-        toast.error('Đăng nhập Google thất bại');
+        const errorMessage = err?.response?.data?.message || 'Đăng nhập Google thất bại';
+        toast.error(errorMessage);
       }
     },
     onError: (errorResponse) => {
       console.error('Google OAuth error:', errorResponse);
-      toast.error('Đăng nhập Google thất bại');
+      toast.error('Đăng nhập Google thất bại. Vui lòng thử lại.');
     },
+    scope: 'openid email profile', // Thêm scope để lấy thông tin user
   });
 
   const handleGoogleLogin = () => {
