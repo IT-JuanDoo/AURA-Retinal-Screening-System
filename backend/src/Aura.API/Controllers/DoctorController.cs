@@ -1,6 +1,7 @@
 using Aura.Application.DTOs.Analysis;
 using Aura.Application.DTOs.Doctors;
 using Aura.Application.Services.Analysis;
+using Aura.Application.Services.Doctors;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -19,16 +20,19 @@ namespace Aura.API.Controllers;
 public class DoctorController : ControllerBase
 {
     private readonly IAnalysisService _analysisService;
+    private readonly IPatientSearchService _patientSearchService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<DoctorController> _logger;
     private readonly string _connectionString;
 
     public DoctorController(
         IAnalysisService analysisService,
+        IPatientSearchService patientSearchService,
         IConfiguration configuration,
         ILogger<DoctorController> logger)
     {
         _analysisService = analysisService ?? throw new ArgumentNullException(nameof(analysisService));
+        _patientSearchService = patientSearchService ?? throw new ArgumentNullException(nameof(patientSearchService));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
@@ -268,6 +272,56 @@ public class DoctorController : ControllerBase
     #endregion
 
     #region Patients Management
+
+    /// <summary>
+    /// Tìm kiếm và lọc bệnh nhân theo ID, tên, email và mức độ rủi ro (FR-18)
+    /// </summary>
+    /// <param name="searchQuery">Từ khóa tìm kiếm (ID, tên, email)</param>
+    /// <param name="riskLevel">Lọc theo mức độ rủi ro (Low, Medium, High, Critical)</param>
+    /// <param name="clinicId">Lọc theo clinic ID</param>
+    /// <param name="page">Số trang (mặc định: 1)</param>
+    /// <param name="pageSize">Số lượng mỗi trang (mặc định: 20)</param>
+    /// <param name="sortBy">Sắp xếp theo (AssignedAt, FirstName, LastName, Email, LatestAnalysisDate, LatestRiskLevel)</param>
+    /// <param name="sortDirection">Hướng sắp xếp (asc/desc, mặc định: desc)</param>
+    /// <returns>Danh sách bệnh nhân với phân trang</returns>
+    [HttpGet("patients/search")]
+    [ProducesResponseType(typeof(PatientSearchResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SearchPatients(
+        [FromQuery] string? searchQuery = null,
+        [FromQuery] string? riskLevel = null,
+        [FromQuery] string? clinicId = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDirection = null)
+    {
+        var doctorId = GetCurrentDoctorId();
+        if (doctorId == null) return Unauthorized(new { message = "Chưa xác thực bác sĩ" });
+
+        try
+        {
+            var searchDto = new PatientSearchDto
+            {
+                SearchQuery = searchQuery,
+                RiskLevel = riskLevel,
+                ClinicId = clinicId,
+                Page = page > 0 ? page : 1,
+                PageSize = pageSize > 0 && pageSize <= 100 ? pageSize : 20,
+                SortBy = sortBy,
+                SortDirection = sortDirection
+            };
+
+            var result = await _patientSearchService.SearchPatientsAsync(doctorId, searchDto);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching patients for doctor {DoctorId}", doctorId);
+            return StatusCode(500, new { message = "Không thể tìm kiếm bệnh nhân" });
+        }
+    }
 
     /// <summary>
     /// Lấy danh sách bệnh nhân được assign cho bác sĩ

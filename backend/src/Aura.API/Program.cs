@@ -287,6 +287,9 @@ builder.Services.AddScoped<Aura.Application.Services.UsageTracking.IUsageTrackin
 // FR-26: Clinic Report Generation Service
 builder.Services.AddScoped<Aura.Application.Services.Reports.IClinicReportService, Aura.Application.Services.Reports.ClinicReportService>();
 
+// FR-18: Patient Search Service
+builder.Services.AddScoped<Aura.Application.Services.Doctors.IPatientSearchService, Aura.Application.Services.Doctors.PatientSearchService>();
+
 // Notifications (PostgreSQL backed with real-time streaming)
 builder.Services.AddScoped<Aura.Application.Services.Notifications.INotificationService, Aura.Infrastructure.Services.Notifications.NotificationService>();
 

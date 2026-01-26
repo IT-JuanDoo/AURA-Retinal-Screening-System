@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import messageService from '../../services/messageService';
 import { useState, useEffect } from 'react';
@@ -6,7 +6,9 @@ import { useState, useEffect } from 'react';
 const PatientHeader = () => {
   const { user, logout } = useAuthStore();
   const location = useLocation();
+  const navigate = useNavigate();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     messageService.getUnreadCount()
@@ -30,6 +32,15 @@ const PatientHeader = () => {
     return location.pathname.startsWith(path);
   };
 
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/doctor/patients/search?searchQuery=${encodeURIComponent(searchQuery.trim())}`);
+    } else {
+      navigate('/doctor/patients/search');
+    }
+  };
+
   return (
     <header className="sticky top-0 z-50 w-full bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -43,6 +54,45 @@ const PatientHeader = () => {
             </div>
             <h2 className="text-slate-900 dark:text-white text-lg font-bold tracking-tight">AURA AI</h2>
           </Link>
+
+          {/* Search Bar */}
+          <div className="hidden md:flex flex-1 max-w-md mx-8">
+            <form onSubmit={handleSearch} className="w-full">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Tìm kiếm bệnh nhân..."
+                  className="w-full px-4 py-2 pl-10 pr-10 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+                <svg
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
 
           {/* Navigation */}
           <nav className="hidden md:flex items-center gap-8">
@@ -162,6 +212,19 @@ const PatientHeader = () => {
             </div>
             
             <Link 
+              to="/doctor/patients/search"
+              className={`text-sm leading-normal flex items-center gap-2 transition-colors ${
+                isActive('/doctor/patients/search')
+                  ? 'text-blue-500 font-semibold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-500 font-medium'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              Tìm kiếm
+            </Link>
+            <Link 
               to="/settings" 
               className={`text-sm leading-normal flex items-center gap-2 transition-colors ${
                 isActive('/settings')
@@ -176,6 +239,16 @@ const PatientHeader = () => {
               Cài đặt
             </Link>
           </nav>
+
+          {/* Mobile Search Button */}
+          <Link
+            to="/doctor/patients/search"
+            className="md:hidden text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </Link>
 
           {/* Right side */}
           <div className="flex items-center gap-4">
