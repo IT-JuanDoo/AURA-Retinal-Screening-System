@@ -37,7 +37,7 @@ const DoctorPatientsPage = () => {
       const data = await doctorService.getPatients(true);
       setPatients(data);
     } catch (error: any) {
-      // Error loading patients
+      console.error('Error loading patients:', error);
       toast.error('Không thể tải danh sách bệnh nhân');
     } finally {
       setLoading(false);
@@ -59,7 +59,7 @@ const DoctorPatientsPage = () => {
       });
       setPatients(results.patients);
     } catch (error: any) {
-      // Error searching patients
+      console.error('Error searching patients:', error);
       toast.error('Lỗi khi tìm kiếm bệnh nhân');
     } finally {
       setLoading(false);

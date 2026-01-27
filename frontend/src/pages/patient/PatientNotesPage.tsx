@@ -22,7 +22,7 @@ const PatientNotesPage = () => {
       const data = await medicalNotesService.getMyNotes();
       setNotes(data);
     } catch (error: any) {
-      // Error loading notes
+      console.error('Error loading notes:', error);
       if (error?.response?.status !== 404) {
         toast.error('Không thể tải ghi chú y tế');
       }

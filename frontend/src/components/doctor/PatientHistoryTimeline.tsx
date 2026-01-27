@@ -34,7 +34,7 @@ const PatientHistoryTimeline = ({ patientId }: PatientHistoryTimelineProps) => {
       });
       setAnalyses(response.data || []);
     } catch (error: any) {
-      // Error loading analysis history
+      console.error('Error loading analysis history:', error);
       toast.error('Lỗi khi tải lịch sử phân tích');
     } finally {
       setLoading(false);

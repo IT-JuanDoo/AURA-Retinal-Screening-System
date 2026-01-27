@@ -103,7 +103,7 @@ const usageTrackingService = {
       });
       return response.data;
     } catch (error) {
-      // Error fetching clinic usage statistics
+      console.error('Error fetching clinic usage statistics:', error);
       throw error;
     }
   },
@@ -125,7 +125,7 @@ const usageTrackingService = {
       });
       return response.data;
     } catch (error) {
-      // Error fetching user usage statistics
+      console.error('Error fetching user usage statistics:', error);
       throw error;
     }
   },
@@ -138,7 +138,7 @@ const usageTrackingService = {
       const response = await api.get<PackageUsage[]>('/api/UsageTracking/clinic/packages');
       return response.data;
     } catch (error) {
-      // Error fetching clinic package usage
+      console.error('Error fetching clinic package usage:', error);
       throw error;
     }
   },
@@ -151,7 +151,7 @@ const usageTrackingService = {
       const response = await api.get<PackageUsage[]>('/api/UsageTracking/user/packages');
       return response.data;
     } catch (error) {
-      // Error fetching user package usage
+      console.error('Error fetching user package usage:', error);
       throw error;
     }
   },

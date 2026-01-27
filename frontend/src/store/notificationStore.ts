@@ -21,7 +21,7 @@ export const useNotificationStore = create<State>((set, get) => ({
       const unread = arr.filter((x) => !x.read).length;
       set({ notifications: arr, unreadCount: unread });
     } catch (e) {
-      // Failed to load notifications
+      console.warn('Failed to load notifications', e);
     }
   },
   add: (n) => {
@@ -37,7 +37,7 @@ export const useNotificationStore = create<State>((set, get) => ({
       const unread = updated.filter((x) => !x.read).length;
       set({ notifications: updated, unreadCount: unread });
     } catch (e) {
-      // Failed to mark notification read
+      console.warn('Failed to mark notification read', e);
     }
   },
   markAllRead: async () => {
@@ -46,7 +46,7 @@ export const useNotificationStore = create<State>((set, get) => ({
       const updated = get().notifications.map((n) => ({ ...n, read: true }));
       set({ notifications: updated, unreadCount: 0 });
     } catch (e) {
-      // Failed to mark all read
+      console.warn('Failed to mark all read', e);
     }
   },
   clear: () => set({ notifications: [], unreadCount: 0 }),

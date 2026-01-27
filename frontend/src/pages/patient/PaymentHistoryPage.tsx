@@ -25,7 +25,7 @@ const PaymentHistoryPage = () => {
       setPayments(paymentsData);
       setMyPackages(packagesData);
     } catch (error: any) {
-      // Error loading data
+      console.error('Error loading data:', error);
       toast.error('Không thể tải dữ liệu');
     } finally {
       setLoading(false);

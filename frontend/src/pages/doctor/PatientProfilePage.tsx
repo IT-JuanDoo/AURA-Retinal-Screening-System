@@ -25,7 +25,7 @@ const PatientProfilePage = () => {
       const patientData = await doctorService.getPatient(patientId!);
       setPatient(patientData);
     } catch (error: any) {
-      // Error loading patient data
+      console.error('Error loading patient data:', error);
       toast.error(error?.response?.data?.message || 'Lỗi khi tải thông tin bệnh nhân');
     } finally {
       setLoading(false);
@@ -43,7 +43,7 @@ const PatientProfilePage = () => {
       toast.success('Đã gán bệnh nhân cho bác sĩ hiện tại');
       await loadPatientData();
     } catch (error: any) {
-      // Error assigning patient
+      console.error('Error assigning patient:', error);
       toast.error(error?.response?.data?.message || 'Lỗi khi gán bệnh nhân');
     } finally {
       setAssigning(false);

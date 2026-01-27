@@ -28,16 +28,18 @@ export function connectNotificationsSSE(onMessage: (n: Notification) => void) {
         const payload = JSON.parse(ev.data);
         onMessage(payload);
       } catch (e) {
-        // Invalid SSE notification payload
+        console.error('Invalid SSE notification payload', e);
       }
     };
 
     es.onerror = (err) => {
+      console.warn('Notifications SSE error', err);
       es.close();
     };
 
     return es;
   } catch (err) {
+    console.warn('Could not connect to notifications SSE', err);
     return null;
   }
 }
@@ -50,7 +52,7 @@ export function startPolling(onFetched: (arr: Notification[]) => void, interval 
       const arr = await fetchNotifications();
       if (mounted) onFetched(arr);
     } catch (e) {
-      // Polling notifications failed
+      console.warn('Polling notifications failed', e);
     }
   };
 

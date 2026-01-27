@@ -36,7 +36,7 @@ const ClinicAlertsPage = () => {
       setAlerts(alertsData);
       setAbnormalTrends(trendsData);
     } catch (error: any) {
-      // Error loading alerts
+      console.error("Error loading alerts:", error);
       toast.error(error?.response?.data?.message || "Lỗi khi tải dữ liệu cảnh báo");
     } finally {
       setLoading(false);

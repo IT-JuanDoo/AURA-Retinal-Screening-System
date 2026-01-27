@@ -51,7 +51,7 @@ const MedicalNotesPage = () => {
       const data = await medicalNotesService.getNotes();
       setNotes(data);
     } catch (error: any) {
-      // Error loading notes
+      console.error('Error loading notes:', error);
       setNotes([]);
     } finally {
       setLoading(false);
@@ -81,7 +81,7 @@ const MedicalNotesPage = () => {
       
       setPatients(patientList);
     } catch (error) {
-      // Error loading patients
+      console.error('Error loading patients:', error);
       setPatients([]);
     } finally {
       setLoadingPatients(false);
@@ -152,7 +152,7 @@ const MedicalNotesPage = () => {
       resetForm();
       loadNotes();
     } catch (error: any) {
-      // Error creating note
+      console.error('Error creating note:', error);
       toast.error(error?.response?.data?.message || 'Tạo ghi chú thất bại');
     } finally {
       setSaving(false);
@@ -175,7 +175,7 @@ const MedicalNotesPage = () => {
       resetForm();
       loadNotes();
     } catch (error: any) {
-      // Error updating note
+      console.error('Error updating note:', error);
       toast.error(error?.response?.data?.message || 'Cập nhật ghi chú thất bại');
     } finally {
       setSaving(false);
@@ -193,7 +193,7 @@ const MedicalNotesPage = () => {
       setNoteToDelete(null);
       loadNotes();
     } catch (error: any) {
-      // Error deleting note
+      console.error('Error deleting note:', error);
       toast.error(error?.response?.data?.message || 'Xóa ghi chú thất bại');
     } finally {
       setSaving(false);

@@ -88,7 +88,7 @@ export default function AdminRbacPage() {
       const data = await rolesApi.getRolePermissions(roleId);
       setRolePermissions(data);
     } catch (e: any) {
-      // Failed to load role permissions
+      console.error("Failed to load role permissions:", e);
     }
   };
 

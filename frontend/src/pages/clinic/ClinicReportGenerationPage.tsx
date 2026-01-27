@@ -64,7 +64,7 @@ const ClinicReportGenerationPage = () => {
       const data = await clinicReportService.getTemplates();
       setTemplates(data);
     } catch (error: any) {
-      // Error loading templates
+      console.error("Error loading templates:", error);
       toast.error("Lỗi khi tải danh sách templates");
     }
   };
@@ -74,7 +74,7 @@ const ClinicReportGenerationPage = () => {
       const reports = await clinicReportService.getReports();
       setRecentReports(reports.slice(0, 10)); // Show last 10 reports
     } catch (error: any) {
-      // Error loading recent reports
+      console.error("Error loading recent reports:", error);
     }
   };
 
@@ -85,7 +85,7 @@ const ClinicReportGenerationPage = () => {
       const info = await clinicReportService.getClinicInfo(id);
       setClinicInfo(info);
     } catch (error: any) {
-      // Error loading clinic info
+      console.error("Error loading clinic info:", error);
       toast.error("Không thể tải thông tin clinic");
     } finally {
       setLoading(false);
@@ -136,7 +136,7 @@ const ClinicReportGenerationPage = () => {
         window.open(report.reportFileUrl, "_blank");
       }
     } catch (error: any) {
-      // Error generating report
+      console.error("Error generating report:", error);
       toast.error(error?.response?.data?.message || "Lỗi khi tạo báo cáo");
     } finally {
       setGenerating(false);

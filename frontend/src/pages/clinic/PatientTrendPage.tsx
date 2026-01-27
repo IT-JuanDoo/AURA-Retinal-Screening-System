@@ -23,7 +23,7 @@ const PatientTrendPage = () => {
       const data = await alertService.getPatientRiskTrend(patientUserId, days);
       setTrend(data);
     } catch (error: any) {
-      // Error loading trend
+      console.error("Error loading trend:", error);
       toast.error(error?.response?.data?.message || "Lỗi khi tải xu hướng rủi ro");
     } finally {
       setLoading(false);

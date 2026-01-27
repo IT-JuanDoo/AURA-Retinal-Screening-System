@@ -92,7 +92,7 @@ const DoctorStatisticsPage = () => {
       const risks = calculateRiskDistribution(analysesData);
       setRiskDistribution(risks);
     } catch (error: any) {
-      // Error loading statistics
+      console.error('Error loading statistics:', error);
       setStatistics({
         totalPatients: 0,
         activeAssignments: 0,

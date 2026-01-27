@@ -35,7 +35,7 @@ const DoctorAnalysisPage = () => {
       const response = await doctorService.getAnalyses();
       setAnalyses(response);
     } catch (error: any) {
-      // Error loading analyses
+      console.error('Error loading analyses:', error);
       // Mock data for demo
       setAnalyses([]);
     } finally {
@@ -49,7 +49,7 @@ const DoctorAnalysisPage = () => {
       const result = await doctorService.getAnalysisById(id);
       setAnalysisDetail(result as AnalysisResult);
     } catch (error: any) {
-      // Error loading analysis detail
+      console.error('Error loading analysis detail:', error);
       toast.error(error?.response?.data?.message || 'Lỗi khi tải chi tiết phân tích');
       setAnalysisDetail(null);
     } finally {
