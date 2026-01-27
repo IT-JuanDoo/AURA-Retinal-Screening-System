@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using Npgsql;
+using Aura.Infrastructure.Services.RabbitMQ;
 
 namespace Aura.API.Controllers;
 
@@ -21,15 +22,18 @@ public class AnalysisController : ControllerBase
     private readonly IAnalysisService _analysisService;
     private readonly IExportService _exportService;
     private readonly ILogger<AnalysisController> _logger;
+    private readonly IRabbitMQService _rabbitMqService;
 
     public AnalysisController(
         IAnalysisService analysisService, 
         IExportService exportService,
-        ILogger<AnalysisController> logger)
+        ILogger<AnalysisController> logger,
+        IRabbitMQService rabbitMqService)
     {
         _analysisService = analysisService ?? throw new ArgumentNullException(nameof(analysisService));
         _exportService = exportService ?? throw new ArgumentNullException(nameof(exportService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _rabbitMqService = rabbitMqService ?? throw new ArgumentNullException(nameof(rabbitMqService));
     }
 
     #region Analysis Endpoints
@@ -54,19 +58,30 @@ public class AnalysisController : ControllerBase
         var userId = GetCurrentUserId();
         if (userId == null) return Unauthorized(new { message = "Chưa xác thực người dùng" });
 
-        try
-        {
-            if (request.ImageIds.Count == 1)
+            try
             {
-                var result = await _analysisService.StartAnalysisAsync(userId, request.ImageIds[0]);
-                return Ok(result);
+                if (request.ImageIds.Count == 1)
+                {
+                    var result = await _analysisService.StartAnalysisAsync(userId, request.ImageIds[0]);
+
+                    // Publish event analysis.completed cho 1 ảnh
+                    PublishAnalysisCompletedEvent(userId, result);
+
+                    return Ok(result);
+                }
+                else
+                {
+                    var results = await _analysisService.StartMultipleAnalysisAsync(userId, request.ImageIds);
+
+                    // Publish event analysis.completed cho từng ảnh (nếu Completed)
+                    foreach (var r in results)
+                    {
+                        PublishAnalysisCompletedEvent(userId, r);
+                    }
+
+                    return Ok(results);
+                }
             }
-            else
-            {
-                var results = await _analysisService.StartMultipleAnalysisAsync(userId, request.ImageIds);
-                return Ok(results);
-            }
-        }
         catch (InvalidOperationException ex)
         {
             _logger.LogWarning(ex, "Invalid analysis request from user {UserId}: {Message}", userId, ex.Message);
@@ -513,6 +528,40 @@ public class AnalysisController : ControllerBase
     private string? GetCurrentUserId()
     {
         return User.FindFirstValue(ClaimTypes.NameIdentifier);
+    }
+
+    /// <summary>
+    /// Gửi message analysis.completed lên RabbitMQ (analysis.exchange) để các service khác/NiFi xử lý
+    /// </summary>
+    private void PublishAnalysisCompletedEvent(string userId, AnalysisResponseDto result)
+    {
+        try
+        {
+            if (!string.Equals(result.Status, "Completed", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var message = new
+            {
+                Type = "analysis.completed",
+                AnalysisId = result.AnalysisId,
+                ImageId = result.ImageId,
+                UserId = userId,
+                StartedAt = result.StartedAt,
+                CompletedAt = result.CompletedAt ?? DateTime.UtcNow,
+                PublishedAt = DateTime.UtcNow
+            };
+
+            _rabbitMqService.Publish("analysis.exchange", "analysis.start", message);
+            _logger.LogInformation("Published analysis.completed event to RabbitMQ: {@Message}", message);
+        }
+        catch (Exception ex)
+        {
+            // Không làm hỏng luồng chính nếu RabbitMQ có vấn đề
+            _logger.LogError(ex, "Failed to publish analysis.completed event to RabbitMQ for AnalysisId {AnalysisId}", 
+                result.AnalysisId);
+        }
     }
 
     /// <summary>
