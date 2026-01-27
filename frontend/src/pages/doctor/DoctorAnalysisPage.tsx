@@ -1,32 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import DoctorHeader from '../../components/doctor/DoctorHeader';
-import doctorService from '../../services/doctorService';
+import doctorService, { DoctorAnalysisItem } from '../../services/doctorService';
 import AnalysisResultDisplay from '../../components/analysis/AnalysisResultDisplay';
 import { AnalysisResult } from '../../services/analysisService';
 import toast from 'react-hot-toast';
 
-interface AnalysisItem {
-  id: string;
-  imageId: string;
-  patientUserId: string;
-  patientName?: string;
-  analysisStatus: string;
-  overallRiskLevel?: string;
-  riskScore?: number;
-  diabeticRetinopathyDetected: boolean;
-  aiConfidenceScore?: number;
-  analysisCompletedAt?: string;
-  createdAt: string;
-  isValidated: boolean;
-  validatedBy?: string;
-  validatedAt?: string;
-}
-
 const DoctorAnalysisPage = () => {
   const navigate = useNavigate();
   const { analysisId } = useParams<{ analysisId?: string }>();
-  const [analyses, setAnalyses] = useState<AnalysisItem[]>([]);
+  const [analyses, setAnalyses] = useState<DoctorAnalysisItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [riskFilter, setRiskFilter] = useState<string>('all');

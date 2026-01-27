@@ -21,17 +21,86 @@ const DoctorDashboardPage = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [doctorData, statsData, patientsData] = await Promise.all([
+      
+      // Gọi tất cả API cần thiết song song
+      const [doctorData, patientsDataRaw, analysesDataRaw] = await Promise.all([
         doctorService.getCurrentDoctor().catch(() => null),
-        doctorService.getStatistics().catch(() => null),
         doctorService.getPatients(true).catch(() => []),
+        doctorService.getAnalyses().catch(() => []), // Lấy tất cả analyses để tính toán chính xác
       ]);
+
+      const patientsData = patientsDataRaw || [];
+      const analysesData = analysesDataRaw || [];
+
+      // Tính toán thống kê từ dữ liệu thật:
+      // 1. Tổng bệnh nhân: 
+      //    - Nếu có assignment: từ danh sách patients
+      //    - Nếu không có assignment nhưng có analyses: đếm số bệnh nhân duy nhất từ analyses (fallback)
+      // 2. Tổng phân tích: đếm từ analyses array
+      // 3. Đang chờ xử lý: đếm analyses có status = 'Pending' hoặc 'Processing'
+      // 4. Ghi chú y tế: tổng từ patients array (mỗi patient có medicalNotesCount)
+      const totalAnalyses = analysesData.length;
+      const pendingAnalyses = analysesData.filter(
+        (a: any) => a.analysisStatus === 'Pending' || a.analysisStatus === 'Processing'
+      ).length;
+      
+      // Tính tổng bệnh nhân: nếu có assignment thì dùng patientsData, nếu không thì đếm unique từ analyses
+      let totalPatients = patientsData.length;
+      if (totalPatients === 0 && analysesData.length > 0) {
+        // Fallback: đếm số bệnh nhân duy nhất từ analyses
+        const uniquePatientIds = new Set(analysesData.map((a: any) => a.patientUserId).filter(Boolean));
+        totalPatients = uniquePatientIds.size;
+      }
+      
+      const totalMedicalNotes = patientsData.reduce(
+        (sum, p) => sum + (p.medicalNotesCount || 0),
+        0
+      );
+
+      const computedStats: DoctorStatisticsDto = {
+        totalPatients: totalPatients,
+        activeAssignments: patientsData.length > 0 ? patientsData.length : totalPatients,
+        totalAnalyses: totalAnalyses,
+        pendingAnalyses: pendingAnalyses,
+        medicalNotesCount: totalMedicalNotes,
+        lastActivityDate: analysesData.length > 0 
+          ? analysesData[0]?.analysisCompletedAt || analysesData[0]?.createdAt
+          : undefined,
+      };
+
+      console.log('Computed statistics:', {
+        patients: totalPatients,
+        patientsFromAssignments: patientsData.length,
+        uniquePatientsFromAnalyses: analysesData.length > 0 && patientsData.length === 0 
+          ? new Set(analysesData.map((a: any) => a.patientUserId).filter(Boolean)).size 
+          : 0,
+        analyses: totalAnalyses,
+        pending: pendingAnalyses,
+        notes: totalMedicalNotes,
+        patientsData: patientsData.map((p: any) => ({
+          name: `${p.firstName} ${p.lastName}`,
+          analysisCount: p.analysisCount,
+          medicalNotesCount: p.medicalNotesCount,
+        })),
+      });
+
       setDoctor(doctorData);
-      setStatistics(statsData);
       setPatients(patientsData);
+      setStatistics(computedStats);
     } catch (error: any) {
       console.error('Error loading doctor data:', error);
       toast.error(error?.response?.data?.message || 'Lỗi khi tải dữ liệu');
+
+      // Nếu có lỗi, vẫn để UI an toàn với giá trị 0
+      setStatistics({
+        totalPatients: 0,
+        activeAssignments: 0,
+        totalAnalyses: 0,
+        pendingAnalyses: 0,
+        medicalNotesCount: 0,
+        lastActivityDate: undefined,
+      });
+      setPatients([]);
     } finally {
       setLoading(false);
     }
@@ -98,65 +167,87 @@ const DoctorDashboardPage = () => {
         </div>
 
         {/* Statistics Cards */}
-        {statistics && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Tổng bệnh nhân</p>
-                  <p className="text-3xl font-bold text-slate-900 dark:text-white">{statistics.totalPatients}</p>
-                </div>
-                <div className="size-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
-                  <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-3-3h-4a3 3 0 00-3 3v2zM16 4a3 3 0 100 6 3 3 0 000-6zM6.343 6.343a4 4 0 115.657 5.657M6 20h4a3 3 0 003-3v-4a3 3 0 00-3-3H6a3 3 0 00-3 3v4a3 3 0 003 3z" />
-                  </svg>
-                </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Tổng bệnh nhân</p>
+                {loading ? (
+                  <div className="h-9 w-16 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
+                ) : (
+                  <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                    {statistics?.totalPatients ?? 0}
+                  </p>
+                )}
               </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Tổng phân tích</p>
-                  <p className="text-3xl font-bold text-slate-900 dark:text-white">{statistics.totalAnalyses}</p>
-                </div>
-                <div className="size-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
-                  <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Đang chờ xử lý</p>
-                  <p className="text-3xl font-bold text-slate-900 dark:text-white">{statistics.pendingAnalyses}</p>
-                </div>
-                <div className="size-12 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center">
-                  <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Ghi chú y tế</p>
-                  <p className="text-3xl font-bold text-slate-900 dark:text-white">{statistics.medicalNotesCount}</p>
-                </div>
-                <div className="size-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
-                  <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                </div>
+              <div className="size-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-3-3h-4a3 3 0 00-3 3v2zM16 4a3 3 0 100 6 3 3 0 000-6zM6.343 6.343a4 4 0 115.657 5.657M6 20h4a3 3 0 003-3v-4a3 3 0 00-3-3H6a3 3 0 00-3 3v4a3 3 0 003 3z" />
+                </svg>
               </div>
             </div>
           </div>
-        )}
+
+          <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Tổng phân tích</p>
+                {loading ? (
+                  <div className="h-9 w-16 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
+                ) : (
+                  <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                    {statistics?.totalAnalyses ?? 0}
+                  </p>
+                )}
+              </div>
+              <div className="size-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Đang chờ xử lý</p>
+                {loading ? (
+                  <div className="h-9 w-16 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
+                ) : (
+                  <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                    {statistics?.pendingAnalyses ?? 0}
+                  </p>
+                )}
+              </div>
+              <div className="size-12 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">Ghi chú y tế</p>
+                {loading ? (
+                  <div className="h-9 w-16 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
+                ) : (
+                  <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                    {statistics?.medicalNotesCount ?? 0}
+                  </p>
+                )}
+              </div>
+              <div className="size-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Quick Search */}
         <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-8">

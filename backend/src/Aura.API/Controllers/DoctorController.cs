@@ -224,22 +224,68 @@ public class DoctorController : ControllerBase
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
+            // Cải thiện SQL query để tính chính xác hơn:
+            // 1. TotalPatients: Đếm số bệnh nhân được assign cho bác sĩ này
+            // 2. ActiveAssignments: Đếm số bệnh nhân đang active
+            // 3. TotalAnalyses: Đếm tất cả phân tích của các bệnh nhân được assign
+            // 4. PendingAnalyses: Đếm phân tích có status = 'Pending'
+            // 5. MedicalNotesCount: Đếm tất cả ghi chú y tế của bác sĩ này (không chỉ của bệnh nhân được assign)
             var sql = @"
+                WITH assigned_patients AS (
+                    SELECT DISTINCT UserId
+                    FROM patient_doctor_assignments
+                    WHERE DoctorId = @DoctorId 
+                        AND COALESCE(IsDeleted, false) = false
+                ),
+                active_assigned_patients AS (
+                    SELECT DISTINCT UserId
+                    FROM patient_doctor_assignments
+                    WHERE DoctorId = @DoctorId 
+                        AND IsActive = true
+                        AND COALESCE(IsDeleted, false) = false
+                )
                 SELECT 
-                    COUNT(DISTINCT pda.UserId) as TotalPatients,
-                    COUNT(DISTINCT CASE WHEN pda.IsActive = true THEN pda.UserId END) as ActiveAssignments,
-                    COUNT(DISTINCT ar.Id) as TotalAnalyses,
-                    COUNT(DISTINCT CASE WHEN ar.AnalysisStatus = 'Pending' THEN ar.Id END) as PendingAnalyses,
-                    COUNT(DISTINCT mn.Id) as MedicalNotesCount,
-                    MAX(GREATEST(
-                        COALESCE(pda.AssignedAt::date, '1970-01-01'::date),
-                        COALESCE(ar.CreatedDate, '1970-01-01'::date),
-                        COALESCE(mn.CreatedDate, '1970-01-01'::date)
-                    )::timestamp) as LastActivityDate
-                FROM patient_doctor_assignments pda
-                LEFT JOIN analysis_results ar ON ar.UserId = pda.UserId
-                LEFT JOIN medical_notes mn ON mn.DoctorId = @DoctorId AND mn.ResultId = ar.Id
-                WHERE pda.DoctorId = @DoctorId AND COALESCE(pda.IsDeleted, false) = false";
+                    (SELECT COUNT(*) FROM assigned_patients) as TotalPatients,
+                    (SELECT COUNT(*) FROM active_assigned_patients) as ActiveAssignments,
+                    COALESCE((
+                        SELECT COUNT(DISTINCT ar.Id)
+                        FROM analysis_results ar
+                        INNER JOIN assigned_patients ap ON ap.UserId = ar.UserId
+                        WHERE COALESCE(ar.IsDeleted, false) = false
+                    ), 0) as TotalAnalyses,
+                    COALESCE((
+                        SELECT COUNT(DISTINCT ar.Id)
+                        FROM analysis_results ar
+                        INNER JOIN assigned_patients ap ON ap.UserId = ar.UserId
+                        WHERE ar.AnalysisStatus = 'Pending'
+                            AND COALESCE(ar.IsDeleted, false) = false
+                    ), 0) as PendingAnalyses,
+                    COALESCE((
+                        SELECT COUNT(DISTINCT mn.Id)
+                        FROM medical_notes mn
+                        WHERE mn.DoctorId = @DoctorId
+                            AND COALESCE(mn.IsDeleted, false) = false
+                    ), 0) as MedicalNotesCount,
+                    GREATEST(
+                        COALESCE((
+                            SELECT MAX(pda.AssignedAt)
+                            FROM patient_doctor_assignments pda
+                            WHERE pda.DoctorId = @DoctorId
+                                AND COALESCE(pda.IsDeleted, false) = false
+                        ), '1970-01-01'::timestamp),
+                        COALESCE((
+                            SELECT MAX(ar.CreatedDate)
+                            FROM analysis_results ar
+                            INNER JOIN assigned_patients ap ON ap.UserId = ar.UserId
+                            WHERE COALESCE(ar.IsDeleted, false) = false
+                        ), '1970-01-01'::timestamp),
+                        COALESCE((
+                            SELECT MAX(mn.CreatedDate)
+                            FROM medical_notes mn
+                            WHERE mn.DoctorId = @DoctorId
+                                AND COALESCE(mn.IsDeleted, false) = false
+                        ), '1970-01-01'::timestamp)
+                    ) as LastActivityDate";
 
             using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("DoctorId", doctorId);
@@ -259,6 +305,9 @@ public class DoctorController : ControllerBase
                 MedicalNotesCount = reader.GetInt32(4),
                 LastActivityDate = reader.IsDBNull(5) ? null : reader.GetDateTime(5)
             };
+
+            _logger.LogInformation("Doctor statistics retrieved for {DoctorId}: Patients={TotalPatients}, Analyses={TotalAnalyses}, Pending={PendingAnalyses}, Notes={MedicalNotesCount}",
+                doctorId, statistics.TotalPatients, statistics.TotalAnalyses, statistics.PendingAnalyses, statistics.MedicalNotesCount);
 
             return Ok(statistics);
         }
@@ -474,10 +523,12 @@ public class DoctorController : ControllerBase
     #region Analyses Management
 
     /// <summary>
-    /// Lấy danh sách kết quả phân tích của các bệnh nhân được assign
+    /// Lấy danh sách kết quả phân tích của các bệnh nhân được assign.
+    /// Khi bác sĩ chưa có assignment nào: fallback lấy tất cả phân tích từ analysis_results.
+    /// UI Quản lý phân tích tính: Tổng phân tích, Chờ xác nhận, Đã xác nhận, Rủi ro cao.
     /// </summary>
     [HttpGet("analyses")]
-    [ProducesResponseType(typeof(List<AnalysisResultDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(List<DoctorAnalysisListItemDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetAnalyses([FromQuery] string? patientId = null)
     {
@@ -486,61 +537,112 @@ public class DoctorController : ControllerBase
 
         try
         {
-            // Get all patient IDs assigned to this doctor
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
             var patientIds = new List<string>();
             if (!string.IsNullOrEmpty(patientId))
             {
-                // Verify patient is assigned to this doctor
                 var verifySql = @"
                     SELECT UserId FROM patient_doctor_assignments
                     WHERE DoctorId = @DoctorId AND UserId = @PatientId 
                         AND COALESCE(IsDeleted, false) = false AND IsActive = true";
-                
                 using var verifyCmd = new NpgsqlCommand(verifySql, connection);
                 verifyCmd.Parameters.AddWithValue("DoctorId", doctorId);
                 verifyCmd.Parameters.AddWithValue("PatientId", patientId);
-                
-                var result = await verifyCmd.ExecuteScalarAsync();
-                if (result != null)
-                {
+                if (await verifyCmd.ExecuteScalarAsync() != null)
                     patientIds.Add(patientId);
-                }
             }
             else
             {
-                // Get all assigned patients
                 var patientsSql = @"
                     SELECT DISTINCT UserId FROM patient_doctor_assignments
                     WHERE DoctorId = @DoctorId 
                         AND COALESCE(IsDeleted, false) = false AND IsActive = true";
-                
                 using var patientsCmd = new NpgsqlCommand(patientsSql, connection);
                 patientsCmd.Parameters.AddWithValue("DoctorId", doctorId);
-                
-                using var reader = await patientsCmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
+                using var r = await patientsCmd.ExecuteReaderAsync();
+                while (await r.ReadAsync())
+                    patientIds.Add(r.GetString(0));
+            }
+
+            string sql;
+            if (patientIds.Count > 0)
+            {
+                sql = @"
+                    SELECT ar.Id, ar.ImageId, ar.UserId,
+                           COALESCE(u.FirstName || ' ' || u.LastName, u.Email) AS PatientName,
+                           ar.AnalysisStatus, ar.OverallRiskLevel, ar.RiskScore,
+                           COALESCE(ar.DiabeticRetinopathyDetected, false),
+                           ar.AiConfidenceScore, ar.AnalysisCompletedAt,
+                           COALESCE(ar.AnalysisStartedAt, ar.CreatedDate::timestamp) AS CreatedAt,
+                           (af.Id IS NOT NULL) AS IsValidated,
+                           af.CreatedBy AS ValidatedBy,
+                           af.CreatedDate::timestamp AS ValidatedAt
+                    FROM analysis_results ar
+                    INNER JOIN retinal_images ri ON ri.Id = ar.ImageId AND COALESCE(ri.IsDeleted, false) = false
+                    INNER JOIN patient_doctor_assignments pda ON pda.UserId = ar.UserId AND pda.DoctorId = @DoctorId
+                        AND COALESCE(pda.IsDeleted, false) = false AND pda.IsActive = true
+                    INNER JOIN users u ON u.Id = ar.UserId AND COALESCE(u.IsDeleted, false) = false
+                    LEFT JOIN ai_feedback af ON af.ResultId = ar.Id AND af.DoctorId = @DoctorId AND COALESCE(af.IsDeleted, false) = false
+                    WHERE COALESCE(ar.IsDeleted, false) = false
+                      AND ar.UserId = ANY(@PatientIds)
+                    ORDER BY ar.AnalysisCompletedAt DESC NULLS LAST, ar.AnalysisStartedAt DESC NULLS LAST, ar.CreatedDate DESC NULLS LAST";
+            }
+            else
+            {
+                _logger.LogInformation("Doctor {DoctorId} has no assignments; fallback to all analyses.", doctorId);
+                sql = @"
+                    SELECT ar.Id, ar.ImageId, ar.UserId,
+                           COALESCE(u.FirstName || ' ' || u.LastName, u.Email) AS PatientName,
+                           ar.AnalysisStatus, ar.OverallRiskLevel, ar.RiskScore,
+                           COALESCE(ar.DiabeticRetinopathyDetected, false),
+                           ar.AiConfidenceScore, ar.AnalysisCompletedAt,
+                           COALESCE(ar.AnalysisStartedAt, ar.CreatedDate::timestamp) AS CreatedAt,
+                           (af.Id IS NOT NULL) AS IsValidated,
+                           af.CreatedBy AS ValidatedBy,
+                           af.CreatedDate::timestamp AS ValidatedAt
+                    FROM analysis_results ar
+                    INNER JOIN retinal_images ri ON ri.Id = ar.ImageId AND COALESCE(ri.IsDeleted, false) = false
+                    INNER JOIN users u ON u.Id = ar.UserId AND COALESCE(u.IsDeleted, false) = false
+                    LEFT JOIN ai_feedback af ON af.ResultId = ar.Id AND af.DoctorId = @DoctorId AND COALESCE(af.IsDeleted, false) = false
+                    WHERE COALESCE(ar.IsDeleted, false) = false
+                    ORDER BY ar.AnalysisCompletedAt DESC NULLS LAST, ar.AnalysisStartedAt DESC NULLS LAST, ar.CreatedDate DESC NULLS LAST";
+            }
+
+            using var cmd = new NpgsqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("DoctorId", doctorId);
+            if (patientIds.Count > 0)
+            {
+                var patientIdsParam = new NpgsqlParameter("PatientIds", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text);
+                patientIdsParam.Value = patientIds.ToArray();
+                cmd.Parameters.Add(patientIdsParam);
+            }
+
+            var list = new List<DoctorAnalysisListItemDto>();
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                list.Add(new DoctorAnalysisListItemDto
                 {
-                    patientIds.Add(reader.GetString(0));
-                }
+                    Id = reader.GetString(0),
+                    ImageId = reader.GetString(1),
+                    PatientUserId = reader.GetString(2),
+                    PatientName = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    AnalysisStatus = reader.GetString(4),
+                    OverallRiskLevel = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    RiskScore = reader.IsDBNull(6) ? null : reader.GetDecimal(6),
+                    DiabeticRetinopathyDetected = reader.GetBoolean(7),
+                    AiConfidenceScore = reader.IsDBNull(8) ? null : reader.GetDecimal(8),
+                    AnalysisCompletedAt = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
+                    CreatedAt = reader.IsDBNull(10) ? null : reader.GetDateTime(10),
+                    IsValidated = reader.GetBoolean(11),
+                    ValidatedBy = reader.IsDBNull(12) ? null : reader.GetString(12),
+                    ValidatedAt = reader.IsDBNull(13) ? null : reader.GetDateTime(13)
+                });
             }
 
-            if (patientIds.Count == 0)
-            {
-                return Ok(new List<AnalysisResultDto>());
-            }
-
-            // Get analyses for these patients using AnalysisService
-            var allAnalyses = new List<AnalysisResultDto>();
-            foreach (var pid in patientIds)
-            {
-                var analyses = await _analysisService.GetUserAnalysisResultsAsync(pid);
-                allAnalyses.AddRange(analyses);
-            }
-
-            return Ok(allAnalyses.OrderByDescending(a => a.AnalysisStartedAt ?? a.AnalysisCompletedAt ?? DateTime.MinValue));
+            return Ok(list);
         }
         catch (Exception ex)
         {
@@ -550,7 +652,8 @@ public class DoctorController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy chi tiết một kết quả phân tích
+    /// Lấy chi tiết một kết quả phân tích.
+    /// Khi bác sĩ chưa có assignment: cho phép xem bất kỳ phân tích nào (fallback).
     /// </summary>
     [HttpGet("analyses/{analysisId}")]
     [ProducesResponseType(typeof(AnalysisResultDto), StatusCodes.Status200OK)]
@@ -563,34 +666,57 @@ public class DoctorController : ControllerBase
 
         try
         {
-            // First, get the analysis to find the patient ID
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            var sql = @"
-                SELECT ar.UserId FROM analysis_results ar
-                INNER JOIN patient_doctor_assignments pda ON pda.UserId = ar.UserId
-                WHERE ar.Id = @AnalysisId 
-                    AND pda.DoctorId = @DoctorId
-                    AND COALESCE(pda.IsDeleted, false) = false
-                    AND pda.IsActive = true";
+            string? userId = null;
+            var hasAssignments = false;
 
-            using var command = new NpgsqlCommand(sql, connection);
-            command.Parameters.AddWithValue("AnalysisId", analysisId);
-            command.Parameters.AddWithValue("DoctorId", doctorId);
+            var countSql = @"
+                SELECT EXISTS(
+                    SELECT 1 FROM patient_doctor_assignments
+                    WHERE DoctorId = @DoctorId AND COALESCE(IsDeleted, false) = false AND IsActive = true
+                )";
+            using (var countCmd = new NpgsqlCommand(countSql, connection))
+            {
+                countCmd.Parameters.AddWithValue("DoctorId", doctorId);
+                hasAssignments = (bool)(await countCmd.ExecuteScalarAsync() ?? false);
+            }
 
-            var userId = await command.ExecuteScalarAsync() as string;
-            if (userId == null)
+            if (hasAssignments)
+            {
+                var sql = @"
+                    SELECT ar.UserId FROM analysis_results ar
+                    INNER JOIN patient_doctor_assignments pda ON pda.UserId = ar.UserId
+                    WHERE ar.Id = @AnalysisId 
+                        AND pda.DoctorId = @DoctorId
+                        AND COALESCE(pda.IsDeleted, false) = false
+                        AND pda.IsActive = true
+                        AND COALESCE(ar.IsDeleted, false) = false";
+                using var cmd = new NpgsqlCommand(sql, connection);
+                cmd.Parameters.AddWithValue("AnalysisId", analysisId);
+                cmd.Parameters.AddWithValue("DoctorId", doctorId);
+                userId = await cmd.ExecuteScalarAsync() as string;
+            }
+            else
+            {
+                var fallbackSql = @"
+                    SELECT ar.UserId FROM analysis_results ar
+                    INNER JOIN retinal_images ri ON ri.Id = ar.ImageId AND COALESCE(ri.IsDeleted, false) = false
+                    WHERE ar.Id = @AnalysisId AND COALESCE(ar.IsDeleted, false) = false";
+                using var cmd = new NpgsqlCommand(fallbackSql, connection);
+                cmd.Parameters.AddWithValue("AnalysisId", analysisId);
+                userId = await cmd.ExecuteScalarAsync() as string;
+            }
+
+            if (string.IsNullOrEmpty(userId))
             {
                 return NotFound(new { message = "Không tìm thấy kết quả phân tích hoặc không có quyền truy cập" });
             }
 
-            // Get analysis details using AnalysisService
             var analysis = await _analysisService.GetAnalysisResultAsync(analysisId, userId);
             if (analysis == null)
-            {
                 return NotFound(new { message = "Không tìm thấy kết quả phân tích" });
-            }
 
             return Ok(analysis);
         }

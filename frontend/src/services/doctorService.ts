@@ -40,7 +40,7 @@ export interface DoctorAnalysisItem {
   diabeticRetinopathyDetected: boolean;
   aiConfidenceScore?: number;
   analysisCompletedAt?: string;
-  createdAt: string;
+  createdAt?: string;
   isValidated: boolean;
   validatedBy?: string;
   validatedAt?: string;
