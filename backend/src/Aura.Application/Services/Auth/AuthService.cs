@@ -315,8 +315,24 @@ public class AuthService : IAuthService
                 });
             }
 
-            // Generate tokens
-            var accessToken = _jwtService.GenerateAccessToken(user);
+            // Check if user is a doctor
+            string userType = "User";
+            var checkDoctorQuery = @"
+                SELECT id FROM doctors 
+                WHERE id = @userId AND isdeleted = false AND isactive = true";
+            
+            using (var doctorCmd = new NpgsqlCommand(checkDoctorQuery, conn))
+            {
+                doctorCmd.Parameters.AddWithValue("userId", user.Id);
+                var doctorResult = doctorCmd.ExecuteScalar();
+                if (doctorResult != null)
+                {
+                    userType = "Doctor";
+                }
+            }
+
+            // Generate tokens with user type
+            var accessToken = _jwtService.GenerateAccessToken(user, userType);
             var refreshToken = CreateRefreshToken(user.Id);
 
             // Update last login in database
@@ -332,7 +348,7 @@ public class AuthService : IAuthService
                 cmd.ExecuteNonQuery();
             }
 
-            _logger.LogInformation("User logged in: {Email}", user.Email);
+            _logger.LogInformation("User logged in: {Email}, UserType: {UserType}", user.Email, userType);
 
             return Task.FromResult(new AuthResponseDto
             {
@@ -341,7 +357,7 @@ public class AuthService : IAuthService
                 AccessToken = accessToken,
                 RefreshToken = refreshToken.Token,
                 ExpiresAt = DateTime.UtcNow.AddMinutes(int.Parse(_configuration["Jwt:ExpirationMinutes"] ?? "60")),
-                User = MapToUserInfo(user)
+                User = MapToUserInfo(user, userType)
             });
         }
         catch (Exception ex)
@@ -638,11 +654,27 @@ public class AuthService : IAuthService
                 return null;
             }
             
-            var userInfo = MapToUserInfo(user);
+            // Check if user is a doctor
+            string userType = "User";
+            var checkDoctorQuery = @"
+                SELECT id FROM doctors 
+                WHERE id = @userId AND isdeleted = false AND isactive = true";
+            
+            using (var doctorCmd = new NpgsqlCommand(checkDoctorQuery, conn))
+            {
+                doctorCmd.Parameters.AddWithValue("userId", userId);
+                var doctorResult = doctorCmd.ExecuteScalar();
+                if (doctorResult != null)
+                {
+                    userType = "Doctor";
+                }
+            }
+            
+            var userInfo = MapToUserInfo(user, userType);
             
             // Cache user for 5 minutes to reduce DB load
             await SetCachedUserAsync(cacheKey, userInfo, TimeSpan.FromMinutes(5));
-            _logger.LogDebug("User {UserId} cached for 5 minutes", userId);
+            _logger.LogDebug("User {UserId} cached for 5 minutes, UserType: {UserType}", userId, userType);
             
             return userInfo;
         }
@@ -973,8 +1005,24 @@ public class AuthService : IAuthService
                 };
             }
 
-            // Generate tokens
-            var accessToken = _jwtService.GenerateAccessToken(user);
+            // Check if user is a doctor
+            string userType = "User";
+            var checkDoctorQuery = @"
+                SELECT id FROM doctors 
+                WHERE id = @userId AND isdeleted = false AND isactive = true";
+            
+            using (var doctorCmd = new NpgsqlCommand(checkDoctorQuery, conn))
+            {
+                doctorCmd.Parameters.AddWithValue("userId", user.Id);
+                var doctorResult = doctorCmd.ExecuteScalar();
+                if (doctorResult != null)
+                {
+                    userType = "Doctor";
+                }
+            }
+
+            // Generate tokens with user type
+            var accessToken = _jwtService.GenerateAccessToken(user, userType);
             var refreshToken = CreateRefreshToken(user.Id, ipAddress);
 
             return new AuthResponseDto
@@ -984,7 +1032,7 @@ public class AuthService : IAuthService
                 AccessToken = accessToken,
                 RefreshToken = refreshToken.Token,
                 ExpiresAt = DateTime.UtcNow.AddMinutes(int.Parse(_configuration["Jwt:ExpirationMinutes"] ?? "60")),
-                User = MapToUserInfo(user)
+                User = MapToUserInfo(user, userType)
             };
         }
         catch (Exception ex)
@@ -1033,7 +1081,7 @@ public class AuthService : IAuthService
         return Convert.ToBase64String(randomBytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
     }
 
-    private static UserInfoDto MapToUserInfo(User user)
+    private static UserInfoDto MapToUserInfo(User user, string userType = "User")
     {
         return new UserInfoDto
         {
@@ -1043,7 +1091,8 @@ public class AuthService : IAuthService
             LastName = user.LastName,
             ProfileImageUrl = user.ProfileImageUrl,
             IsEmailVerified = user.IsEmailVerified,
-            AuthenticationProvider = user.AuthenticationProvider
+            AuthenticationProvider = user.AuthenticationProvider,
+            UserType = userType
         };
     }
 

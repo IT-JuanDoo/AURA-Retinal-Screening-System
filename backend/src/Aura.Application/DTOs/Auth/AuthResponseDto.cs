@@ -19,5 +19,6 @@ public class UserInfoDto
     public string? ProfileImageUrl { get; set; }
     public bool IsEmailVerified { get; set; }
     public string AuthenticationProvider { get; set; } = "email";
+    public string UserType { get; set; } = "User";  // "User" or "Doctor"
 }
 

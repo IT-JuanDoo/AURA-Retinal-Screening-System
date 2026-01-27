@@ -3,6 +3,8 @@ using Aura.Application.Services.Auth;
 using Aura.Application.Services.Users;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using Npgsql;
 using System.Security.Claims;
 
 namespace Aura.API.Controllers;
@@ -13,11 +15,16 @@ public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
     private readonly IAuthService _authService;
+    private readonly IConfiguration _configuration;
+    private readonly string _connectionString;
 
-    public UsersController(IUserService userService, IAuthService authService)
+    public UsersController(IUserService userService, IAuthService authService, IConfiguration configuration)
     {
         _userService = userService;
         _authService = authService;
+        _configuration = configuration;
+        _connectionString = configuration.GetConnectionString("DefaultConnection") 
+            ?? throw new InvalidOperationException("Database connection string not configured");
     }
 
     // GET: /api/users
@@ -241,6 +248,79 @@ public class UsersController : ControllerBase
         catch (Exception ex)
         {
             return BadRequest(new { message = $"Failed to upload avatar: {ex.Message}" });
+        }
+    }
+
+    /// <summary>
+    /// Lấy danh sách bác sĩ có thể chat của người dùng hiện tại
+    /// Bao gồm: bác sĩ được assign và bác sĩ đã feedback phân tích của user
+    /// </summary>
+    [HttpGet("me/doctors")]
+    [Authorize]
+    public async Task<IActionResult> GetMyDoctors()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized(new { message = "Không thể xác định người dùng" });
+        }
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            // Get doctors from: 1) patient_doctor_assignments 2) ai_feedback on user's analyses
+            var sql = @"
+                SELECT DISTINCT 
+                    d.Id, d.FirstName, d.LastName, d.Email, d.ProfileImageUrl, 
+                    d.Specialization, d.HospitalAffiliation
+                FROM doctors d
+                WHERE d.Id IN (
+                    -- Doctors assigned to this patient
+                    SELECT DISTINCT DoctorId 
+                    FROM patient_doctor_assignments 
+                    WHERE UserId = @UserId 
+                        AND COALESCE(IsDeleted, false) = false 
+                        AND IsActive = true
+                    
+                    UNION
+                    
+                    -- Doctors who provided feedback on patient's analyses
+                    SELECT DISTINCT af.DoctorId 
+                    FROM ai_feedback af
+                    INNER JOIN analysis_results ar ON ar.Id = af.ResultId
+                    WHERE ar.UserId = @UserId 
+                        AND COALESCE(af.IsDeleted, false) = false
+                )
+                AND COALESCE(d.IsDeleted, false) = false
+                AND d.IsActive = true
+                ORDER BY d.FirstName, d.LastName";
+
+            using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("UserId", userId);
+
+            var doctors = new List<object>();
+            using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                doctors.Add(new
+                {
+                    id = reader.GetString(0),
+                    firstName = reader.IsDBNull(1) ? null : reader.GetString(1),
+                    lastName = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    email = reader.GetString(3),
+                    profileImageUrl = reader.IsDBNull(4) ? null : reader.GetString(4),
+                    specialization = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    hospitalAffiliation = reader.IsDBNull(6) ? null : reader.GetString(6)
+                });
+            }
+
+            return Ok(doctors);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = $"Lỗi khi lấy danh sách bác sĩ: {ex.Message}" });
         }
     }
 }

@@ -25,7 +25,7 @@ public class JwtService : IJwtService
         _expirationMinutes = int.Parse(_configuration["Jwt:ExpirationMinutes"] ?? "60");
     }
 
-    public string GenerateAccessToken(User user)
+    public string GenerateAccessToken(User user, string? userType = null)
     {
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_secretKey));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
@@ -35,7 +35,8 @@ public class JwtService : IJwtService
             new Claim(ClaimTypes.NameIdentifier, user.Id),
             new Claim(ClaimTypes.Email, user.Email),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new Claim("auth_provider", user.AuthenticationProvider)
+            new Claim("auth_provider", user.AuthenticationProvider),
+            new Claim("user_type", userType ?? "User")  // Add user_type claim
         };
 
         if (!string.IsNullOrEmpty(user.FirstName))

@@ -47,6 +47,26 @@ const messageService = {
   },
 
   /**
+   * Start a new conversation or get existing one
+   * Sends an initial message to create the conversation
+   */
+  async startConversation(
+    receiverId: string,
+    receiverType: string,
+    initialMessage: string = "Xin chào, tôi muốn trao đổi với bạn."
+  ): Promise<{ conversationId: string; message: Message }> {
+    const message = await this.sendMessage({
+      receiverId,
+      receiverType,
+      content: initialMessage,
+    });
+    return {
+      conversationId: message.conversationId,
+      message,
+    };
+  },
+
+  /**
    * Get messages in a conversation
    */
   async getConversationMessages(

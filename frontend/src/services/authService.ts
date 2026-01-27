@@ -28,6 +28,7 @@ export interface UserInfo {
   profileImageUrl?: string;
   isEmailVerified: boolean;
   authenticationProvider: string;
+  userType?: string;  // "User" or "Doctor"
 }
 
 export interface AuthResponse {

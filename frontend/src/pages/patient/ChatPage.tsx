@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import messageService, { Message, Conversation, CreateMessage } from "../../services/messageService";
 import signalRService from "../../services/signalRService";
 import toast from "react-hot-toast";
+import api from "../../services/api";
 
 const ChatPage = () => {
   const { user } = useAuthStore();
@@ -20,6 +21,9 @@ const ChatPage = () => {
   const [searchResults, setSearchResults] = useState<Message[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [doctors, setDoctors] = useState<Array<{id: string; firstName?: string; lastName?: string; email: string; profileImageUrl?: string; specialization?: string}>>([]);
+  const [loadingDoctors, setLoadingDoctors] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -237,13 +241,22 @@ const ChatPage = () => {
         content: newMessage.trim(),
       };
 
-      await messageService.sendMessage(messageData);
+      const sentMessage = await messageService.sendMessage(messageData);
+      
+      // Add message to local state immediately for better UX
+      setMessages((prev) => [...prev, sentMessage]);
       setNewMessage("");
       setIsTyping(false);
+      
+      // Scroll to bottom
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
       
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
+      
+      // Reload conversations to update last message in sidebar
+      loadConversations();
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Gửi tin nhắn thất bại");
     }
@@ -271,6 +284,59 @@ const ChatPage = () => {
     loadConversations();
     loadUnreadCount();
   }, [location.pathname]); // Reload when route changes
+
+  // Load doctors for new chat modal
+  const loadDoctors = async () => {
+    setLoadingDoctors(true);
+    try {
+      const response = await api.get<Array<{id: string; firstName?: string; lastName?: string; email: string; profileImageUrl?: string; specialization?: string}>>('/users/me/doctors');
+      setDoctors(response.data);
+    } catch (error) {
+      console.error('Failed to load doctors:', error);
+      // If no assigned doctors, the list will be empty - this is OK
+      setDoctors([]);
+    } finally {
+      setLoadingDoctors(false);
+    }
+  };
+
+  // Start new conversation with a doctor
+  const handleStartNewChat = async (doctorId: string, doctorName: string) => {
+    try {
+      // Check if conversation already exists
+      const existingConv = conversations.find(c => c.otherUserId === doctorId);
+      if (existingConv) {
+        handleSelectConversation(existingConv);
+        setShowNewChatModal(false);
+        return;
+      }
+
+      // Create new conversation
+      toast.loading('Đang tạo cuộc trò chuyện...', { id: 'new-chat' });
+      await messageService.startConversation(
+        doctorId,
+        'Doctor',
+        `Xin chào bác sĩ ${doctorName}, tôi cần được tư vấn.`
+      );
+      
+      toast.success('Đã tạo cuộc trò chuyện mới', { id: 'new-chat' });
+      setShowNewChatModal(false);
+      
+      // Reload conversations - the new one will appear in the list
+      await loadConversations();
+    } catch (error) {
+      console.error('Failed to start new chat:', error);
+      toast.error('Không thể tạo cuộc trò chuyện mới', { id: 'new-chat' });
+    }
+  };
+
+  // Open new chat modal
+  const handleOpenNewChatModal = () => {
+    setShowNewChatModal(true);
+    if (doctors.length === 0) {
+      loadDoctors();
+    }
+  };
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -360,7 +426,11 @@ const ChatPage = () => {
           <div className="p-4 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">Tin nhắn</h2>
-              <button className="text-primary hover:bg-primary/10 p-2 rounded-lg transition-colors">
+              <button 
+                onClick={handleOpenNewChatModal}
+                className="text-primary hover:bg-primary/10 p-2 rounded-lg transition-colors"
+                title="Tạo cuộc trò chuyện mới"
+              >
                 <span className="material-symbols-outlined text-xl">edit_square</span>
               </button>
             </div>
@@ -374,7 +444,7 @@ const ChatPage = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="block w-full pl-10 pr-3 py-2 border-none rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-primary text-sm"
-                placeholder="Tìm kiếm bệnh nhân..."
+                placeholder="Tìm kiếm bác sĩ..."
               />
             </div>
           </div>
@@ -520,6 +590,15 @@ const ChatPage = () => {
 
               {/* Messages Stream */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/50 dark:bg-[#131d27]">
+                {/* Search No Results Message */}
+                {messageSearchQuery && searchResults.length === 0 && !isSearching && messages.length > 0 && (
+                  <div className="flex justify-center py-4">
+                    <span className="text-sm text-slate-500 dark:text-slate-400 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-2 rounded-lg">
+                      Không tìm thấy tin nhắn chứa "{messageSearchQuery}"
+                    </span>
+                  </div>
+                )}
+
                 {/* Today Divider */}
                 {messages.length > 0 && (
                   <div className="flex justify-center">
@@ -529,9 +608,12 @@ const ChatPage = () => {
                   </div>
                 )}
 
-                {(messageSearchQuery ? searchResults : messages).map((message) => {
+                {/* Always show all messages, highlight matching ones */}
+                {messages.map((message) => {
                   const isOwn = message.sendById === user.id;
-                  const isHighlighted = highlightedMessageId === message.id;
+                  // Highlight if it's in search results
+                  const isInSearchResults = searchResults.some(r => r.id === message.id);
+                  const isHighlighted = highlightedMessageId === message.id || (messageSearchQuery && isInSearchResults);
                   const searchMatch = messageSearchQuery 
                     ? message.content.toLowerCase().includes(messageSearchQuery.toLowerCase())
                     : false;
@@ -703,12 +785,114 @@ const ChatPage = () => {
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <span className="material-symbols-outlined text-6xl text-slate-400 mb-4">chat_bubble_outline</span>
-                <p className="text-slate-500 dark:text-slate-400">Chọn một cuộc trò chuyện để bắt đầu</p>
+                <p className="text-slate-500 dark:text-slate-400 mb-4">Chọn một cuộc trò chuyện để bắt đầu</p>
+                <button
+                  onClick={handleOpenNewChatModal}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[20px]">add</span>
+                  Tạo cuộc trò chuyện mới
+                </button>
               </div>
             </div>
           )}
         </main>
       </div>
+
+      {/* New Chat Modal */}
+      {showNewChatModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div 
+              className="fixed inset-0 bg-slate-900/50 transition-opacity"
+              onClick={() => setShowNewChatModal(false)}
+            ></div>
+
+            <div className="relative inline-block w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl text-left overflow-hidden shadow-xl transform transition-all">
+              <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    Tạo cuộc trò chuyện mới
+                  </h3>
+                  <button
+                    onClick={() => setShowNewChatModal(false)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    <span className="material-symbols-outlined">close</span>
+                  </button>
+                </div>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  Chọn bác sĩ để bắt đầu tư vấn
+                </p>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                {loadingDoctors ? (
+                  <div className="py-12 text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                    <p className="mt-4 text-sm text-slate-500">Đang tải danh sách bác sĩ...</p>
+                  </div>
+                ) : doctors.length === 0 ? (
+                  <div className="py-12 text-center px-6">
+                    <span className="material-symbols-outlined text-5xl text-slate-300 dark:text-slate-600 mb-4">person_search</span>
+                    <p className="text-slate-500 dark:text-slate-400 mb-2">Chưa có bác sĩ nào</p>
+                    <p className="text-sm text-slate-400 dark:text-slate-500">
+                      Bác sĩ sẽ xuất hiện khi họ được phân công hoặc đã xem kết quả phân tích của bạn
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {doctors.map((doctor) => {
+                      const doctorName = doctor.firstName && doctor.lastName 
+                        ? `${doctor.firstName} ${doctor.lastName}` 
+                        : doctor.email;
+                      const hasConversation = conversations.some(c => c.otherUserId === doctor.id);
+                      
+                      return (
+                        <button
+                          key={doctor.id}
+                          onClick={() => handleStartNewChat(doctor.id, doctorName)}
+                          className="w-full flex items-center gap-3 px-6 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors text-left"
+                        >
+                          <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0">
+                            {doctor.profileImageUrl ? (
+                              <img src={doctor.profileImageUrl} alt={doctorName} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-slate-600 dark:text-slate-300 font-medium">
+                                {doctorName.charAt(0).toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-slate-900 dark:text-white truncate">{doctorName}</p>
+                            {doctor.specialization && (
+                              <p className="text-sm text-primary truncate">{doctor.specialization}</p>
+                            )}
+                          </div>
+                          {hasConversation && (
+                            <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                              Đã có chat
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                <button
+                  onClick={() => setShowNewChatModal(false)}
+                  className="w-full px-4 py-2 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Custom Scrollbar Styles */}
       <style>{`
