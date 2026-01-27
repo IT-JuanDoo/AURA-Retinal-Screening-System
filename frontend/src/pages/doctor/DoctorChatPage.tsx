@@ -48,7 +48,6 @@ const DoctorChatPage = () => {
   useEffect(() => {
     const initSignalR = async () => {
       if (!user) {
-        console.log("DoctorChat: No user, skipping SignalR connection");
         setConnectionStatus('disconnected');
         return;
       }
@@ -56,21 +55,17 @@ const DoctorChatPage = () => {
       // Check if token exists
       const token = localStorage.getItem("token");
       if (!token) {
-        console.warn("DoctorChat: No token found in localStorage");
         setConnectionStatus('error');
         return;
       }
 
       try {
         setConnectionStatus('connecting');
-        console.log("DoctorChat: Connecting to SignalR...");
         await signalRService.connect(token);
-        console.log("DoctorChat: SignalR connected successfully");
         setConnectionStatus('connected');
         
         // Set up message listeners
         signalRService.onReceiveMessage((message: Message) => {
-          console.log("DoctorChat: Received message", message);
           if (selectedConversation?.conversationId === message.conversationId) {
             setMessages((prev) => [...prev, message]);
             setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
@@ -93,11 +88,9 @@ const DoctorChatPage = () => {
         });
 
         signalRService.onError((error) => {
-          console.error("DoctorChat: SignalR error:", error);
           toast.error(`Lỗi chat: ${error}`);
         });
       } catch (error: any) {
-        console.error("DoctorChat: Failed to connect to SignalR:", error);
         setConnectionStatus('error');
         const errorMessage = error?.message || "Không thể kết nối chat. Vui lòng thử lại.";
         toast.error(errorMessage);
@@ -132,7 +125,7 @@ const DoctorChatPage = () => {
       const convs = await messageService.getConversations();
       setConversations(convs);
     } catch (error: any) {
-      console.error("Failed to load conversations:", error);
+      // Failed to load conversations
       if (error?.response?.status !== 404) {
         toast.error("Không thể tải danh sách cuộc trò chuyện");
       }
@@ -154,7 +147,7 @@ const DoctorChatPage = () => {
       
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (error) {
-      console.error("Failed to load messages:", error);
+      // Failed to load messages
       toast.error("Không thể tải tin nhắn");
     }
   };
@@ -182,7 +175,7 @@ const DoctorChatPage = () => {
         }, 100);
       }
     } catch (error) {
-      console.error("Failed to search messages:", error);
+      // Failed to search messages
       toast.error("Không thể tìm kiếm tin nhắn");
     } finally {
       setIsSearching(false);
@@ -253,7 +246,7 @@ const DoctorChatPage = () => {
       // Reload conversations to update last message
       loadConversations();
     } catch (error: any) {
-      console.error("Failed to send message:", error);
+      // Failed to send message
       toast.error(error?.response?.data?.message || "Gửi tin nhắn thất bại");
     }
   };
@@ -325,7 +318,7 @@ const DoctorChatPage = () => {
       
       setPatients(data);
     } catch (error) {
-      console.error('Failed to load patients:', error);
+      // Failed to load patients
       toast.error('Không thể tải danh sách bệnh nhân');
     } finally {
       setLoadingPatients(false);
@@ -357,7 +350,7 @@ const DoctorChatPage = () => {
       // Reload conversations - the new one will appear in the list
       await loadConversations();
     } catch (error) {
-      console.error('Failed to start new chat:', error);
+      // Failed to start new chat
       toast.error('Không thể tạo cuộc trò chuyện mới', { id: 'new-chat' });
     }
   };

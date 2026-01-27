@@ -30,7 +30,7 @@ const PatientReportsPage = () => {
       const data = await analysisService.getUserAnalysisResults();
       setReports(data);
     } catch (error: any) {
-      console.error("Error loading reports:", error);
+      // Error loading reports
       toast.error("Lỗi khi tải lịch sử báo cáo");
     } finally {
       setLoading(false);

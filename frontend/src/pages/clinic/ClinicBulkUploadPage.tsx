@@ -190,7 +190,7 @@ const ClinicBulkUploadPage = () => {
           }
         }
       } catch (error) {
-        console.error("Error polling analysis status:", error);
+        // Error polling analysis status
       }
     };
 
@@ -224,7 +224,7 @@ const ClinicBulkUploadPage = () => {
           }
         }
       } catch (error) {
-        console.error("Error polling batch status:", error);
+        // Error polling batch status
       }
     };
 
@@ -244,7 +244,7 @@ const ClinicBulkUploadPage = () => {
       });
       setBatchList(batches);
     } catch (error) {
-      console.error("Error loading batch list:", error);
+      // Error loading batch list
     }
   };
 

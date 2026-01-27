@@ -219,7 +219,7 @@ export const refreshPackageInfo = async (): Promise<UserPackage | null> => {
     await new Promise(resolve => setTimeout(resolve, 500));
     return await userPackageService.getActivePackage();
   } catch (error) {
-    console.error("Error refreshing package info:", error);
+    // Error refreshing package info
     return null;
   }
 };

@@ -42,7 +42,7 @@ const PatientSearchPage = () => {
       const results = await patientSearchService.searchPatients(params);
       setSearchResults(results);
     } catch (error: any) {
-      console.error('Error searching patients:', error);
+      // Error searching patients
       toast.error(error?.response?.data?.message || 'Lỗi khi tìm kiếm bệnh nhân');
     } finally {
       setLoading(false);

@@ -19,7 +19,7 @@ const ExportHistoryPage = () => {
       const data = await exportService.getExportHistory(50, 0);
       setExports(data);
     } catch (error: any) {
-      console.error('Error loading exports:', error);
+      // Error loading exports
       toast.error('Không thể tải lịch sử xuất báo cáo');
     } finally {
       setLoading(false);
@@ -55,7 +55,7 @@ const ExportHistoryPage = () => {
       // Refresh to update download count
       await loadExports();
     } catch (error: any) {
-      console.error('Error downloading export:', error);
+      // Error downloading export
       toast.error('Không thể tải xuống file');
     } finally {
       setDownloading(null);

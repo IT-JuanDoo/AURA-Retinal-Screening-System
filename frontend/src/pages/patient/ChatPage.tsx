@@ -33,7 +33,6 @@ const ChatPage = () => {
   useEffect(() => {
     const initSignalR = async () => {
       if (!user) {
-        console.log("Chat: No user, skipping SignalR connection");
         return;
       }
 
@@ -42,15 +41,12 @@ const ChatPage = () => {
       
       const token = localStorage.getItem("token");
       if (!token) {
-        console.warn("Chat: No token found in localStorage");
         // Don't show error immediately, might be loading
         return;
       }
 
       try {
-        console.log("Chat: Connecting to SignalR...");
         await signalRService.connect(token);
-        console.log("Chat: SignalR connected successfully");
         
         // Set up message listeners
         signalRService.onReceiveMessage((message: Message) => {
@@ -77,11 +73,9 @@ const ChatPage = () => {
         });
 
         signalRService.onError((error) => {
-          console.error("Chat: SignalR error:", error);
           toast.error(`Chat error: ${error}`);
         });
       } catch (error: any) {
-        console.error("Chat: Failed to connect to SignalR:", error);
         const errorMessage = error?.message || "Không thể kết nối chat. Vui lòng thử lại.";
         
         // Only show error if it's not a token issue (might be temporary)
@@ -127,7 +121,7 @@ const ChatPage = () => {
       const convs = await messageService.getConversations();
       setConversations(convs);
     } catch (error: any) {
-      console.error("Failed to load conversations:", error);
+      // Failed to load conversations
       // Only show error if it's not a 404 (might be backend not ready)
       if (error?.response?.status !== 404) {
         toast.error("Không thể tải danh sách cuộc trò chuyện");
@@ -140,7 +134,7 @@ const ChatPage = () => {
       const count = await messageService.getUnreadCount();
       setUnreadCount(count);
     } catch (error: any) {
-      console.error("Failed to load unread count:", error);
+      // Failed to load unread count
       // Only show error if it's not a 404 (might be backend not ready)
       if (error?.response?.status !== 404) {
         // Silently fail for unread count
@@ -161,7 +155,7 @@ const ChatPage = () => {
       
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (error) {
-      console.error("Failed to load messages:", error);
+      // Failed to load messages
       toast.error("Không thể tải tin nhắn");
     }
   };
@@ -191,7 +185,7 @@ const ChatPage = () => {
         }, 100);
       }
     } catch (error) {
-      console.error("Failed to search messages:", error);
+      // Failed to search messages
       toast.error("Không thể tìm kiếm tin nhắn");
     } finally {
       setIsSearching(false);
@@ -292,7 +286,7 @@ const ChatPage = () => {
       const response = await api.get<Array<{id: string; firstName?: string; lastName?: string; email: string; profileImageUrl?: string; specialization?: string}>>('/users/me/doctors');
       setDoctors(response.data);
     } catch (error) {
-      console.error('Failed to load doctors:', error);
+      // Failed to load doctors
       // If no assigned doctors, the list will be empty - this is OK
       setDoctors([]);
     } finally {
@@ -325,7 +319,7 @@ const ChatPage = () => {
       // Reload conversations - the new one will appear in the list
       await loadConversations();
     } catch (error) {
-      console.error('Failed to start new chat:', error);
+      // Failed to start new chat
       toast.error('Không thể tạo cuộc trò chuyện mới', { id: 'new-chat' });
     }
   };

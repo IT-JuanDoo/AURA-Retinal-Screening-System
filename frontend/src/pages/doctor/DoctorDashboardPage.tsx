@@ -68,7 +68,7 @@ const DoctorDashboardPage = () => {
           : undefined,
       };
 
-      console.log('Computed statistics:', {
+      const computedStats = {
         patients: totalPatients,
         patientsFromAssignments: patientsData.length,
         uniquePatientsFromAnalyses: analysesData.length > 0 && patientsData.length === 0 
@@ -82,13 +82,12 @@ const DoctorDashboardPage = () => {
           analysisCount: p.analysisCount,
           medicalNotesCount: p.medicalNotesCount,
         })),
-      });
+      };
 
       setDoctor(doctorData);
       setPatients(patientsData);
       setStatistics(computedStats);
     } catch (error: any) {
-      console.error('Error loading doctor data:', error);
       toast.error(error?.response?.data?.message || 'Lỗi khi tải dữ liệu');
 
       // Nếu có lỗi, vẫn để UI an toàn với giá trị 0
@@ -121,7 +120,7 @@ const DoctorDashboardPage = () => {
       });
       setPatients(results.patients);
     } catch (error: any) {
-      console.error('Error searching patients:', error);
+      // Error searching patients
       toast.error('Lỗi khi tìm kiếm bệnh nhân');
     } finally {
       setLoading(false);

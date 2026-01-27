@@ -92,7 +92,7 @@ const alertService = {
       });
       return response.data;
     } catch (error) {
-      console.error('Error fetching clinic alerts:', error);
+      // Error fetching clinic alerts
       throw error;
     }
   },
@@ -105,7 +105,7 @@ const alertService = {
       const response = await api.get<ClinicAlertSummary>('/api/alerts/clinic/summary');
       return response.data;
     } catch (error) {
-      console.error('Error fetching clinic alert summary:', error);
+      // Error fetching clinic alert summary
       throw error;
     }
   },
@@ -123,7 +123,6 @@ const alertService = {
       });
       return response.data;
     } catch (error) {
-      console.error('Error fetching doctor alerts:', error);
       throw error;
     }
   },
@@ -142,7 +141,6 @@ const alertService = {
       );
       return response.data;
     } catch (error) {
-      console.error('Error fetching patient risk trend:', error);
       throw error;
     }
   },
@@ -157,7 +155,7 @@ const alertService = {
       });
       return response.data;
     } catch (error) {
-      console.error('Error detecting abnormal trends:', error);
+      // Error detecting abnormal trends
       throw error;
     }
   },
@@ -169,7 +167,6 @@ const alertService = {
     try {
       await api.post(`/api/alerts/${alertId}/acknowledge`);
     } catch (error) {
-      console.error('Error acknowledging alert:', error);
       throw error;
     }
   },
@@ -184,7 +181,7 @@ const alertService = {
       });
       return response.data;
     } catch (error) {
-      console.error('Error fetching high-risk patients:', error);
+      // Error fetching high-risk patients
       throw error;
     }
   },

@@ -95,7 +95,7 @@ const PatientProfilePage = () => {
       toast.success('Đã lưu thay đổi thành công!');
       setHasChanges(false);
     } catch (error: any) {
-      console.error('Save profile error:', error);
+      // Save profile error
       toast.error(error.response?.data?.message || 'Lưu thay đổi thất bại. Vui lòng thử lại.');
     } finally {
       setIsSaving(false);
@@ -144,7 +144,7 @@ const PatientProfilePage = () => {
       
       toast.success('Tải ảnh đại diện thành công!');
     } catch (error: any) {
-      console.error('Image upload error:', error);
+      // Image upload error
       toast.error(error.response?.data?.message || error.message || 'Tải ảnh thất bại. Vui lòng thử lại.');
     } finally {
       setIsSaving(false);

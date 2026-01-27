@@ -59,7 +59,6 @@ export default function PurchaseModal({
       const paymentId = payment.id || paymentResponse.id;
       
       if (!paymentId) {
-        console.error("Payment response:", paymentResponse);
         toast.error("Không thể lấy ID thanh toán. Vui lòng thử lại.");
         return;
       }
@@ -98,7 +97,6 @@ export default function PurchaseModal({
           return;
         }
       } catch (error: any) {
-        console.error("Confirm payment error:", error);
         
         // In demo mode, if confirm fails, try to check if package exists anyway
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -120,7 +118,6 @@ export default function PurchaseModal({
       onSuccess();
       onClose();
     } catch (error: any) {
-      console.error("Purchase error:", error);
       toast.error(
         error?.response?.data?.message ||
           error?.message ||

@@ -34,9 +34,6 @@ const userService = {
       const response = await api.put<UserProfileResponse>('/users/me', payload);
       return response.data;
     } catch (error: any) {
-      console.error('Update profile error:', error);
-      console.error('Request URL:', '/users/me');
-      console.error('Payload:', payload);
       throw error;
     }
   },

@@ -43,7 +43,7 @@ const LoginPage = () => {
       }
     } catch (error: any) {
       // On any error, redirect to patient dashboard (safer default)
-      console.warn('Error checking doctor status:', error);
+      // Error checking doctor status
       navigate('/dashboard', { replace: true });
     }
   };
@@ -64,7 +64,7 @@ const LoginPage = () => {
         toast.error(error || 'Đăng nhập thất bại');
       }
     } catch (err: any) {
-      console.error('Login error:', err);
+      // Login error
       const errorMessage = err?.response?.data?.message || err?.message || 'Đăng nhập thất bại';
       toast.error(errorMessage);
     }
@@ -86,13 +86,12 @@ const LoginPage = () => {
           toast.error(error || 'Đăng nhập Google thất bại');
         }
       } catch (err: any) {
-        console.error('Google login error:', err);
+        // Google login error
         const errorMessage = err?.response?.data?.message || 'Đăng nhập Google thất bại';
         toast.error(errorMessage);
       }
     },
     onError: (errorResponse) => {
-      console.error('Google OAuth error:', errorResponse);
       toast.error('Đăng nhập Google thất bại. Vui lòng thử lại.');
     },
     scope: 'openid email profile', // Thêm scope để lấy thông tin user
@@ -116,13 +115,13 @@ const LoginPage = () => {
         toast.error(error || 'Đăng nhập Facebook thất bại');
       }
     } catch (err) {
-      console.error('Facebook login error:', err);
+      // Facebook login error
       toast.error('Đăng nhập Facebook thất bại');
     }
   };
 
   const handleFacebookLoginError = (error: { status: string }) => {
-    console.error('Facebook OAuth error:', error);
+    // Facebook OAuth error
     toast.error('Đăng nhập Facebook thất bại');
   };
 

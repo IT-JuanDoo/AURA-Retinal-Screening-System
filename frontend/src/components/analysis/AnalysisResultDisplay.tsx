@@ -47,30 +47,21 @@ const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
       try {
         // Backend trả về exportId, không phải id
         const exportId = (exportResult as any).exportId ?? (exportResult as any).id;
-        console.log('Export result:', exportResult);
-        console.log('Extracted exportId:', exportId);
         
         if (!exportId) {
-          console.error('ExportId is missing from response:', exportResult);
           throw new Error('Không tìm thấy mã báo cáo (exportId) trong phản hồi từ server');
         }
-
-        console.log(`Attempting to download export with ID: ${exportId}`);
         // Luôn download từ backend endpoint để đảm bảo file đúng format
         const blob = await exportService.downloadExport(exportId);
         
         // Kiểm tra blob có hợp lệ không
         if (!blob || blob.size === 0) {
-          console.error('Blob is empty or invalid:', { blob, size: blob?.size });
           throw new Error('File download trống hoặc không hợp lệ');
         }
-
-        console.log('Blob downloaded successfully:', { size: blob.size, type: blob.type });
         const fileName = exportResult.fileName || `aura_report_${result.id.substring(0, 8)}_${new Date().toISOString().split('T')[0]}.${format}`;
         exportService.downloadFile(blob, fileName);
         toast.success(`✅ Xuất ${format.toUpperCase()} thành công!`, { id: `export-${format}` });
       } catch (downloadError: any) {
-        console.error('Download error details:', downloadError);
         // Lấy error message từ nhiều nguồn khác nhau
         let errorMsg = 'Không thể tải file';
         if (downloadError?.message) {
@@ -92,7 +83,6 @@ const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
         toast.error(`❌ Không thể tải ${format.toUpperCase()}: ${errorMsg}. Vui lòng thử lại hoặc kiểm tra lịch sử xuất báo cáo`, { id: `export-${format}`, duration: 5000 });
       }
     } catch (error: any) {
-      console.error('Export error:', error);
       const errorMessage = error?.response?.data?.message || error?.message || 'Không thể kết nối đến server';
       toast.error(`❌ Không thể xuất ${format.toUpperCase()}: ${errorMessage}`, { id: `export-${format}`, duration: 5000 });
     } finally {

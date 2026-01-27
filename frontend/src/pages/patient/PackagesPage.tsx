@@ -25,7 +25,7 @@ const PackagesPage = () => {
       const data = await userPackageApi.getAvailablePackages(packageType);
       setPackages(data);
     } catch (error: any) {
-      console.error("Error loading packages:", error);
+      // Error loading packages
       toast.error("Không thể tải danh sách gói dịch vụ");
     } finally {
       setLoading(false);

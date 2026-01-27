@@ -90,7 +90,7 @@ export default function AdminAccountsPage() {
       const roles = await rolesApi.getAll();
       setAllRoles(roles);
     } catch (e: any) {
-      console.error("Failed to load roles:", e);
+      // Failed to load roles
     }
   };
 
@@ -105,7 +105,7 @@ export default function AdminAccountsPage() {
         // Don't show error toast as this is expected when user is moved to another table
         return;
       }
-      console.error("Failed to load user roles:", e);
+      // Failed to load user roles
       setUserRoles([]);
     }
   };

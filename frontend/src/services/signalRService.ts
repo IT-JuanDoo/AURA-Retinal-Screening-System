@@ -57,25 +57,21 @@ class SignalRService {
 
     // Connection event handlers
     this.connection.onclose((error?: Error) => {
-      console.log("SignalR connection closed", error);
       this.reconnectAttempts++;
     });
 
     this.connection.onreconnecting((error?: Error) => {
-      console.log("SignalR reconnecting...", error);
+      // Reconnecting...
     });
 
     this.connection.onreconnected((connectionId?: string) => {
-      console.log("SignalR reconnected", connectionId);
       this.reconnectAttempts = 0;
     });
 
     try {
       await this.connection.start();
-      console.log("SignalR connected successfully");
       this.reconnectAttempts = 0;
     } catch (error: any) {
-      console.error("SignalR connection error:", error);
       
       // Provide more detailed error message
       let errorMessage = "Không thể kết nối chat";

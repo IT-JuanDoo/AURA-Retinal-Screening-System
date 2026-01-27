@@ -112,7 +112,6 @@ const PatientDashboard = () => {
         }
       }
     } catch (error: any) {
-      console.error('Error loading dashboard data:', error);
       toast.error('Không thể tải dữ liệu dashboard');
       
       // Set empty state

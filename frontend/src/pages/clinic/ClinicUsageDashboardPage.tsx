@@ -33,7 +33,7 @@ const ClinicUsageDashboardPage = () => {
       setStatistics(statsData);
       setPackageUsage(packagesData);
     } catch (error: any) {
-      console.error("Error loading usage data:", error);
+      // Error loading usage data
       toast.error(error?.response?.data?.message || "Lỗi khi tải dữ liệu sử dụng");
     } finally {
       setLoading(false);

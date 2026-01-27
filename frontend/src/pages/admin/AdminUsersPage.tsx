@@ -127,7 +127,7 @@ export default function AdminUsersPage() {
       const roles = await rolesApi.getAll();
       setAllRoles(roles);
     } catch (e: any) {
-      console.error("Failed to load roles:", e);
+      // Failed to load roles
     }
   };
 
@@ -140,7 +140,7 @@ export default function AdminUsersPage() {
         setUserRoles([]);
         return;
       }
-      console.error("Failed to load user roles:", e);
+      // Failed to load user roles
       setUserRoles([]);
     }
   };

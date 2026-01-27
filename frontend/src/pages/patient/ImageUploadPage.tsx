@@ -89,31 +89,8 @@ const ImageUploadPage = () => {
       
       setCanUpload(isValidPackage);
       
-      if (showLogs) {
-        console.log('=== Package Info Reload ===');
-        console.log('All packages:', packages);
-        console.log('Active package found:', pkg);
-        if (!pkg) {
-          console.log('No active package found');
-        } else if (!pkg.isActive) {
-          console.log('Package is not active');
-        } else if (pkg.remainingAnalyses === 0) {
-          console.log('Package has no remaining analyses');
-        } else if (pkg.expiresAt && new Date(pkg.expiresAt) <= now) {
-          console.log('Package has expired');
-        } else {
-          console.log('✅ Package is valid, can upload:', {
-            id: pkg.id,
-            packageName: pkg.packageName,
-            remainingAnalyses: pkg.remainingAnalyses,
-            isActive: pkg.isActive,
-            expiresAt: pkg.expiresAt
-          });
-        }
-        console.log('========================');
-      }
+      // Package validation completed
     } catch (error: any) {
-      console.error('Error loading user package:', error);
       setCanUpload(false);
       if (showLogs) {
         toast.error('Không thể tải thông tin gói dịch vụ. Vui lòng thử lại.');
@@ -412,7 +389,7 @@ const ImageUploadPage = () => {
       for (let i = 0; i < 3; i++) {
         await new Promise(resolve => setTimeout(resolve, 1000 + i * 500));
         await loadUserPackage(true); // Show logs for debugging
-        console.log(`Reload attempt ${i + 1}/3`);
+        // Reload attempt ${i + 1}/3
       }
 
       // Navigate to results page or show results
