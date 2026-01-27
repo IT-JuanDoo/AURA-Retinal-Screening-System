@@ -399,6 +399,12 @@ services:
       - HOST=0.0.0.0
       - MODEL_VERSION=${AI_MODEL_VERSION:-v1.0.0}
       - PYTHONUNBUFFERED=1
+      # Đường dẫn trọng số mô hình đã được tải sẵn (chạy offline)
+      # Nếu bạn lưu file ở vị trí khác, hãy sửa lại MODEL_PATH và volume phía dưới cho khớp.
+      - MODEL_PATH=/app/models/oct-retinal-classifier.bin
+    volumes:
+      # Map file trọng số từ host vào container AI Core (read-only)
+      - ./ai-core/models/oct-retinal-classifier.bin:/app/models/oct-retinal-classifier.bin:ro
     ports:
       - "${AI_CORE_PORT:-8000}:8000"
     networks:

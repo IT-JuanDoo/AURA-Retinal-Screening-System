@@ -73,10 +73,11 @@ class ImageProcessor:
             
         except httpx.HTTPError as e:
             logger.error(f"HTTP error downloading image: {str(e)}")
-            raise ValueError(f"Failed to download image: {str(e)}")
+            # Thông báo tiếng Việt rõ ràng cho người dùng
+            raise ValueError(f"Không thể tải ảnh từ URL: {str(e)}")
         except Exception as e:
             logger.error(f"Error downloading image: {str(e)}")
-            raise ValueError(f"Failed to process image: {str(e)}")
+            raise ValueError(f"Không thể xử lý ảnh đầu vào: {str(e)}")
     
     def assess_image_quality(self, image: np.ndarray) -> float:
         """
@@ -323,7 +324,7 @@ class ImageProcessor:
         Analyze image features for risk assessment
         
         Returns:
-            Dict with extracted features
+            Dict with extracted features, including vascular-related metrics
         """
         # Ensure image is uint8 for OpenCV operations
         if image_array.dtype != np.uint8:
@@ -338,9 +339,9 @@ class ImageProcessor:
         if gray.dtype != np.uint8:
             gray = gray.astype(np.uint8)
         
-        features = {}
+        features: Dict[str, Any] = {}
         
-        # Vessel detection (simplified - using edge detection)
+        # Vessel detection (simplified - using edge detection as proxy)
         try:
             edges = cv2.Canny(gray, 50, 150)
             vessel_density = np.sum(edges > 0) / (gray.shape[0] * gray.shape[1])
@@ -361,21 +362,63 @@ class ImageProcessor:
             
             detector = cv2.SimpleBlobDetector_create(params)
             keypoints = detector.detect(gray)
-            features['potential_abnormalities_count'] = len(keypoints)
+            potential_abnormalities_count = len(keypoints)
+            features['potential_abnormalities_count'] = potential_abnormalities_count
         except Exception as e:
             logger.warning(f"Blob detection failed: {str(e)}")
             features['potential_abnormalities_count'] = 0
         
         # Texture analysis (using GLCM-like features)
-        # Simplified: calculate local variance
+        # Simplified: calculate local variance as proxy for structural complexity
         try:
             kernel = np.ones((5, 5), np.float32) / 25
             local_mean = cv2.filter2D(gray.astype(np.float32), -1, kernel)
             local_variance = np.var(gray.astype(np.float32) - local_mean)
-            features['texture_variance'] = float(local_variance)
+            texture_variance = float(local_variance)
+            features['texture_variance'] = texture_variance
         except Exception as e:
             logger.warning(f"Texture analysis failed: {str(e)}")
             features['texture_variance'] = 0.0
+            texture_variance = 0.0
+        
+        # ---------------------------------------------------------------------
+        # Derive vascular-focused metrics in normalized [0,1] range
+        # Các chỉ số này phục vụ trực tiếp cho màn "Bất thường Mạch máu" ở frontend
+        # ---------------------------------------------------------------------
+        try:
+            # Chuẩn hóa vessel_density và texture_variance về [0,1] với ngưỡng kinh nghiệm
+            vd_norm = float(max(0.0, min(1.0, vessel_density * 5.0)))  # ~0–0.2 → 0–1
+            tv_norm = float(max(0.0, min(1.0, texture_variance / 500.0)))
+            
+            # Độ xoắn mạch (tortuosity) ~ mức độ phức tạp + mật độ bờ mạch
+            tortuosity_index = max(0.0, min(1.0, 0.6 * tv_norm + 0.4 * vd_norm))
+            
+            # Biến thiên bề rộng mạch (caliber variation) ~ chênh lệch cục bộ
+            width_variation = max(0.0, min(1.0, 0.7 * tv_norm + 0.3 * (1.0 - vd_norm)))
+            
+            # Số lượng vi phình mạch ~ số blob nhỏ phát hiện được
+            microaneurysm_count = int(potential_abnormalities_count)
+            
+            # Điểm xuất huyết (hemorrhage score) – xấp xỉ bằng số blob + mật độ bờ mạch
+            hemorrhage_score = max(
+                0.0,
+                min(1.0, 0.5 * (microaneurysm_count / 50.0) + 0.5 * vd_norm)
+            )
+            
+            features['vascular_metrics'] = {
+                'tortuosity_index': float(tortuosity_index),
+                'width_variation_index': float(width_variation),
+                'microaneurysm_count': microaneurysm_count,
+                'hemorrhage_score': float(hemorrhage_score)
+            }
+        except Exception as e:
+            logger.warning(f"Vascular metrics derivation failed: {str(e)}")
+            features.setdefault('vascular_metrics', {
+                'tortuosity_index': 0.0,
+                'width_variation_index': 0.0,
+                'microaneurysm_count': 0,
+                'hemorrhage_score': 0.0
+            })
         
         return features
     

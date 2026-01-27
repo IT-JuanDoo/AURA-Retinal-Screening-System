@@ -597,15 +597,43 @@ public class AnalysisService : IAnalysisService
         }
         
         // Map các field từ AI Core response format
-        if (response.TryGetValue("risk_level", out var riskLevel))
-            converted["overall_risk_level"] = riskLevel;
-        else if (response.TryGetValue("overallRiskLevel", out var riskLevel2))
-            converted["overall_risk_level"] = riskLevel2;
+        // 1) Ưu tiên đọc từ risk_assessment (trong AnalysisResult của AI Core)
+        if (response.TryGetValue("risk_assessment", out var riskAssessmentRaw))
+        {
+            var ra = AsDict(riskAssessmentRaw);
+            if (ra != null)
+            {
+                var raLevel = MapRiskLevel(AsString(ra.GetValueOrDefault("risk_level")));
+                var combinedScore = ToPercent0To100(AsDecimal(ra.GetValueOrDefault("combined_risk_score")));
+                var baseScore = ToPercent0To100(AsDecimal(ra.GetValueOrDefault("risk_score")));
+
+                if (raLevel != null)
+                    converted["overall_risk_level"] = raLevel;
+
+                // Ưu tiên combined_risk_score nếu có, nếu không dùng risk_score
+                if (combinedScore.HasValue)
+                    converted["risk_score"] = combinedScore.Value;
+                else if (baseScore.HasValue)
+                    converted["risk_score"] = baseScore.Value;
+            }
+        }
+
+        // 2) Nếu AI Core có flatten sẵn risk_level/risk_score ở root thì dùng làm fallback
+        if (!converted.ContainsKey("overall_risk_level"))
+        {
+            if (response.TryGetValue("risk_level", out var riskLevel))
+                converted["overall_risk_level"] = MapRiskLevel(AsString(riskLevel));
+            else if (response.TryGetValue("overallRiskLevel", out var riskLevel2))
+                converted["overall_risk_level"] = MapRiskLevel(AsString(riskLevel2));
+        }
         
-        if (response.TryGetValue("risk_score", out var riskScore))
-            converted["risk_score"] = riskScore;
-        else if (response.TryGetValue("riskScore", out var riskScore2))
-            converted["risk_score"] = riskScore2;
+        if (!converted.ContainsKey("risk_score"))
+        {
+            if (response.TryGetValue("risk_score", out var riskScore))
+                converted["risk_score"] = ToPercent0To100(AsDecimal(riskScore)) ?? riskScore;
+            else if (response.TryGetValue("riskScore", out var riskScore2))
+                converted["risk_score"] = ToPercent0To100(AsDecimal(riskScore2)) ?? riskScore2;
+        }
         
         if (response.TryGetValue("confidence", out var confidence))
             converted["ai_confidence_score"] = ToPercent0To100(AsDecimal(confidence)) ?? confidence;
@@ -688,6 +716,12 @@ public class AnalysisService : IAnalysisService
             converted["heatmap_url"] = heatmap;
         else if (response.TryGetValue("heatmapUrl", out var heatmap2))
             converted["heatmap_url"] = heatmap2;
+
+        // Map annotated image (ảnh gốc có vẽ vùng bất thường)
+        if (response.TryGetValue("annotated_image_url", out var annotated))
+            converted["annotated_image_url"] = annotated;
+        else if (response.TryGetValue("annotatedImageUrl", out var annotated2))
+            converted["annotated_image_url"] = annotated2;
         
         // Nếu không có field nào được map, trả về response gốc
         return converted.Count > 0 ? converted : response;

@@ -125,6 +125,16 @@ docker-compose logs -f backend
   - URL nội bộ: `http://aicore:8000` (trong Docker network)  
   - Từ máy ngoài (nếu expose port): `http://localhost:8000` (tuỳ cấu hình).  
   - Backend gọi AI Core qua biến môi trường `AICore__BaseUrl=http://aicore:8000`.
+  - Các endpoint chính:
+    - `GET /health`, `GET /api/health`: kiểm tra tình trạng AI Core, thông tin model.  
+    - `POST /api/analyze`: phân tích **1 ảnh** võng mạc, trả về:
+      - `predicted_class`, `confidence`, `conditions`, `risk_assessment`.  
+      - `systemic_health_risks`: nguy cơ tim mạch, đái tháo đường, tăng huyết áp, đột quỵ.  
+      - `vascular_metrics`: các chỉ số mạch máu (độ xoắn, biến thiên đường kính, vi phình, điểm xuất huyết).  
+      - `annotations` + `heatmap_url`: vùng nghi ngờ và heatmap sinh trực tiếp từ mô hình.  
+    - `POST /api/analyze-batch`: phân tích **nhiều ảnh** trong một lần gọi (hỗ trợ NFR-2 ≥ 100 ảnh/batch):
+      - Nhận `items` là danh sách các `AnalyzeRequest`.  
+      - Trả về `summary` (tổng, thành công, lỗi, thời gian xử lý) + danh sách `results`/`errors`.  
 
 - **Kong API Gateway** (tuỳ chọn)  
   - Kong proxy: `http://localhost:8000`  
@@ -387,7 +397,7 @@ docker-compose down -v
 - [x] Authentication & Authorization (JWT, OAuth)
 - [x] User Management
 - [x] Image Upload & Processing
-- [x] AI Analysis Integration
+- [x] AI Analysis Integration (AI Core Python FastAPI, Batch API, giải thích kết quả tiếng Việt + heatmap từ mô hình)
 - [x] Export Reports (PDF/CSV/JSON)
 - [x] Doctor Management
 - [x] Payment & Packages
