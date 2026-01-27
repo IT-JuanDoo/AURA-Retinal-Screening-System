@@ -27,20 +27,27 @@ const ExportHistoryPage = () => {
   };
 
   const handleDownload = async (exportItem: ExportHistoryItem) => {
-    if (exportItem.isExpired) {
+    const isExpired =
+      exportItem.status?.toLowerCase() === 'expired' ||
+      (!!exportItem.expiresAt && new Date(exportItem.expiresAt) < new Date());
+
+    if (isExpired) {
       toast.error('File đã hết hạn');
       return;
     }
 
     try {
-      setDownloading(exportItem.id);
+      setDownloading(exportItem.exportId);
       
       // Track download
-      await exportService.trackDownload(exportItem.id);
+      await exportService.trackDownload(exportItem.exportId);
       
       // Download file
-      const blob = await exportService.downloadExport(exportItem.id);
-      const fileName = exportItem.fileName || `export_${exportItem.id}${exportService.getFileExtension(exportItem.exportFormat)}`;
+      const blob = await exportService.downloadExport(exportItem.exportId);
+      const fileExtension = exportService.getFileExtension(exportItem.reportType.toLowerCase());
+      const fileName =
+        exportItem.fileName ||
+        `export_${exportItem.exportId}${fileExtension}`;
       exportService.downloadFile(blob, fileName);
       
       toast.success('Tải xuống thành công');
@@ -130,15 +137,21 @@ const ExportHistoryPage = () => {
           </div>
           <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-4">
             <p className="text-sm text-slate-600 dark:text-slate-400">PDF</p>
-            <p className="text-2xl font-bold text-red-600">{exports.filter(e => e.exportFormat === 'pdf').length}</p>
+            <p className="text-2xl font-bold text-red-600">
+              {exports.filter(e => e.reportType.toLowerCase() === 'pdf').length}
+            </p>
           </div>
           <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-4">
             <p className="text-sm text-slate-600 dark:text-slate-400">CSV</p>
-            <p className="text-2xl font-bold text-green-600">{exports.filter(e => e.exportFormat === 'csv').length}</p>
+            <p className="text-2xl font-bold text-green-600">
+              {exports.filter(e => e.reportType.toLowerCase() === 'csv').length}
+            </p>
           </div>
           <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-4">
             <p className="text-sm text-slate-600 dark:text-slate-400">JSON</p>
-            <p className="text-2xl font-bold text-blue-600">{exports.filter(e => e.exportFormat === 'json').length}</p>
+            <p className="text-2xl font-bold text-blue-600">
+              {exports.filter(e => e.reportType.toLowerCase() === 'json').length}
+            </p>
           </div>
         </div>
 
@@ -174,29 +187,29 @@ const ExportHistoryPage = () => {
             <div className="divide-y divide-slate-200 dark:divide-slate-800">
               {exports.map((exportItem) => (
                 <div
-                  key={exportItem.id}
+                  key={exportItem.exportId}
                   className={`p-6 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${
-                    exportItem.isExpired ? 'opacity-60' : ''
+                    (exportItem.status?.toLowerCase() === 'expired' ? 'opacity-60' : '')
                   }`}
                 >
                   <div className="flex items-center gap-4">
-                    {getFormatIcon(exportItem.exportFormat)}
+                    {getFormatIcon(exportItem.reportType)}
                     
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-slate-900 dark:text-white truncate">
-                          {exportItem.fileName || `Báo cáo ${exportItem.exportFormat.toUpperCase()}`}
+                          {exportItem.fileName || `Báo cáo ${exportItem.reportType.toUpperCase()}`}
                         </h3>
-                        {exportItem.isExpired && (
+                        {exportItem.status?.toLowerCase() === 'expired' && (
                           <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs rounded-full">
                             Đã hết hạn
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-4 mt-1 text-sm text-slate-500 dark:text-slate-400">
-                        <span>{formatDate(exportItem.createdAt)}</span>
+                        <span>{formatDate(exportItem.exportedAt)}</span>
                         <span>•</span>
-                        <span>{exportService.formatFileSize(exportItem.fileSizeBytes)}</span>
+                        <span>{exportService.formatFileSize(exportItem.fileSize)}</span>
                         <span>•</span>
                         <span>{exportItem.downloadCount} lượt tải</span>
                       </div>
@@ -204,7 +217,7 @@ const ExportHistoryPage = () => {
 
                     <div className="flex items-center gap-2">
                       <Link
-                        to={`/analysis/${exportItem.analysisId}`}
+                        to={`/analysis/${exportItem.analysisResultId ?? ''}`}
                         className="p-2 text-slate-400 hover:text-blue-500 transition-colors"
                         title="Xem kết quả phân tích"
                       >
@@ -215,15 +228,18 @@ const ExportHistoryPage = () => {
                       </Link>
                       <button
                         onClick={() => handleDownload(exportItem)}
-                        disabled={exportItem.isExpired || downloading === exportItem.id}
+                        disabled={
+                          exportItem.status?.toLowerCase() === 'expired' ||
+                          downloading === exportItem.exportId
+                        }
                         className={`p-2 rounded-lg transition-colors ${
-                          exportItem.isExpired
+                          exportItem.status?.toLowerCase() === 'expired'
                             ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
                             : 'text-slate-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
                         }`}
                         title="Tải xuống"
                       >
-                        {downloading === exportItem.id ? (
+                        {downloading === exportItem.exportId ? (
                           <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                         ) : (
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -7,18 +7,31 @@ export interface ExportRequest {
   includeRecommendations?: boolean;
 }
 
+/**
+ * Hình dạng response thực tế từ backend (ExportResponseDto)
+ * API .NET dùng camelCase nên:
+ *  - ExportId          -> exportId
+ *  - AnalysisResultId  -> analysisResultId
+ *  - ReportType        -> reportType (PDF/CSV/JSON)
+ *  - FileName          -> fileName
+ *  - FileUrl           -> fileUrl
+ *  - FileSize          -> fileSize
+ *  - ExportedAt        -> exportedAt
+ *  - ExpiresAt         -> expiresAt
+ *  - DownloadCount     -> downloadCount
+ *  - Status            -> status (Available/Expired)
+ */
 export interface ExportHistoryItem {
-  id: string;
-  analysisId: string;
-  userId: string;
-  exportFormat: string;
+  exportId: string;
+  analysisResultId?: string | null;
+  reportType: string;
   fileUrl?: string;
   fileName?: string;
-  fileSizeBytes?: number;
+  fileSize?: number;
   downloadCount: number;
-  createdAt: string;
-  expiresAt?: string;
-  isExpired?: boolean;
+  exportedAt: string;
+  expiresAt?: string | null;
+  status?: string;
 }
 
 export interface BatchExportRequest {
@@ -98,10 +111,57 @@ const exportService = {
    * Download export file
    */
   async downloadExport(exportId: string): Promise<Blob> {
-    const response = await api.get(`/analysis/exports/${exportId}/download`, {
-      responseType: 'blob',
-    });
-    return response.data;
+    try {
+      const response = await api.get(`/analysis/exports/${exportId}/download`, {
+        responseType: 'blob',
+      });
+      
+      // Kiểm tra status code
+      if (response.status !== 200) {
+        // Nếu không phải 200, có thể là JSON error được parse thành blob
+        const text = await response.data.text();
+        try {
+          const errorData = JSON.parse(text);
+          throw new Error(errorData.message || 'Không thể tải file');
+        } catch {
+          throw new Error('Không thể tải file');
+        }
+      }
+      
+      // Kiểm tra content-type để đảm bảo không phải JSON error
+      const contentType = response.headers['content-type'] || '';
+      if (contentType.includes('application/json')) {
+        // Nếu là JSON, parse để lấy error message
+        const text = await response.data.text();
+        const errorData = JSON.parse(text);
+        throw new Error(errorData.message || 'Không thể tải file');
+      }
+      
+      // Đảm bảo response.data là Blob hợp lệ và có size > 0
+      if (!(response.data instanceof Blob)) {
+        throw new Error('Response không phải là file hợp lệ');
+      }
+      
+      if (response.data.size === 0) {
+        throw new Error('File download trống');
+      }
+      
+      return response.data;
+    } catch (error: any) {
+      // Nếu error là AxiosError và có response với blob data
+      if (error.response && error.response.data instanceof Blob) {
+        // Có thể là JSON error được parse thành blob
+        try {
+          const text = await error.response.data.text();
+          const errorData = JSON.parse(text);
+          throw new Error(errorData.message || 'Không thể tải file');
+        } catch {
+          // Không parse được JSON, throw error gốc
+          throw error;
+        }
+      }
+      throw error;
+    }
   },
 
   /**

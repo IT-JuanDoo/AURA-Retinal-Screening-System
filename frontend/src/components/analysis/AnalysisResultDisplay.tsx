@@ -8,12 +8,23 @@ interface AnalysisResultDisplayProps {
   result: AnalysisResult;
 }
 
+const AI_CORE_BASE_URL =
+  import.meta.env.VITE_AI_CORE_BASE_URL || 'http://localhost:8000';
+
+const resolveImageUrl = (path?: string | null) => {
+  if (!path) return undefined;
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  return `${AI_CORE_BASE_URL}${path}`;
+};
+
 const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
   const [exporting, setExporting] = useState<string | null>(null);
 
   const handleExport = async (format: 'pdf' | 'csv' | 'json') => {
     try {
       setExporting(format);
+      toast.loading(`Đang tạo báo cáo ${format.toUpperCase()}...`, { id: `export-${format}` });
+      
       let exportResult;
       
       switch (format) {
@@ -28,18 +39,62 @@ const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
           break;
       }
 
-      if (exportResult?.fileUrl) {
-        // Download directly if URL is available
-        const blob = await exportService.downloadExport(exportResult.id);
-        const fileName = exportResult.fileName || `analysis_${result.id}.${format}`;
+      if (!exportResult) {
+        throw new Error('Không nhận được kết quả từ server');
+      }
+
+      // Download file từ backend endpoint (không mở trực tiếp từ Cloudinary URL)
+      try {
+        // Backend trả về exportId, không phải id
+        const exportId = (exportResult as any).exportId ?? (exportResult as any).id;
+        console.log('Export result:', exportResult);
+        console.log('Extracted exportId:', exportId);
+        
+        if (!exportId) {
+          console.error('ExportId is missing from response:', exportResult);
+          throw new Error('Không tìm thấy mã báo cáo (exportId) trong phản hồi từ server');
+        }
+
+        console.log(`Attempting to download export with ID: ${exportId}`);
+        // Luôn download từ backend endpoint để đảm bảo file đúng format
+        const blob = await exportService.downloadExport(exportId);
+        
+        // Kiểm tra blob có hợp lệ không
+        if (!blob || blob.size === 0) {
+          console.error('Blob is empty or invalid:', { blob, size: blob?.size });
+          throw new Error('File download trống hoặc không hợp lệ');
+        }
+
+        console.log('Blob downloaded successfully:', { size: blob.size, type: blob.type });
+        const fileName = exportResult.fileName || `aura_report_${result.id.substring(0, 8)}_${new Date().toISOString().split('T')[0]}.${format}`;
         exportService.downloadFile(blob, fileName);
-        toast.success(`Xuất ${format.toUpperCase()} thành công`);
-      } else {
-        toast.success(`Đã tạo báo cáo ${format.toUpperCase()}. Kiểm tra lịch sử xuất báo cáo.`);
+        toast.success(`✅ Xuất ${format.toUpperCase()} thành công!`, { id: `export-${format}` });
+      } catch (downloadError: any) {
+        console.error('Download error details:', downloadError);
+        // Lấy error message từ nhiều nguồn khác nhau
+        let errorMsg = 'Không thể tải file';
+        if (downloadError?.message) {
+          errorMsg = downloadError.message;
+        } else if (downloadError?.response?.data) {
+          // Nếu response.data là Blob (JSON error được parse thành blob)
+          if (downloadError.response.data instanceof Blob) {
+            try {
+              const text = await downloadError.response.data.text();
+              const errorData = JSON.parse(text);
+              errorMsg = errorData.message || errorMsg;
+            } catch {
+              errorMsg = 'File download không hợp lệ';
+            }
+          } else {
+            errorMsg = downloadError.response.data.message || errorMsg;
+          }
+        }
+        toast.error(`❌ Không thể tải ${format.toUpperCase()}: ${errorMsg}. Vui lòng thử lại hoặc kiểm tra lịch sử xuất báo cáo`, { id: `export-${format}`, duration: 5000 });
       }
     } catch (error: any) {
       console.error('Export error:', error);
-      toast.error(`Không thể xuất ${format.toUpperCase()}`);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Không thể kết nối đến server';
+      toast.error(`❌ Không thể xuất ${format.toUpperCase()}: ${errorMessage}`, { id: `export-${format}`, duration: 5000 });
     } finally {
       setExporting(null);
     }
@@ -252,7 +307,7 @@ const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
                 </h3>
                 <div className="rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 shadow-sm">
                   <img
-                    src={result.annotatedImageUrl}
+                    src={resolveImageUrl(result.annotatedImageUrl)}
                     alt="Annotated retinal image"
                     className="w-full h-auto"
                   />
@@ -266,7 +321,7 @@ const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
                 </h3>
                 <div className="rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 shadow-sm">
                   <img
-                    src={result.heatmapUrl}
+                    src={resolveImageUrl(result.heatmapUrl)}
                     alt="Heatmap visualization"
                     className="w-full h-auto"
                   />
@@ -284,12 +339,12 @@ const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
             <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-2xl">lightbulb</span>
             Khuyến nghị
           </h2>
-          <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+          <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
             {result.recommendations}
           </p>
         </div>
       )}
-
+      
       {/* Health Warnings */}
       {result.healthWarnings && (
         <div className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-800 p-6 md:p-8 mb-6">
@@ -297,7 +352,7 @@ const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
             <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-2xl">warning</span>
             Cảnh báo Sức khỏe
           </h2>
-          <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+          <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
             {result.healthWarnings}
           </p>
         </div>

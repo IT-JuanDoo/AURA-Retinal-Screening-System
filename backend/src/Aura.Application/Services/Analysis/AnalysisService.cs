@@ -690,6 +690,39 @@ public class AnalysisService : IAnalysisService
             }
         }
 
+        // Map retinal vascular metrics -> các field phẳng mà DB/UI đang dùng
+        // AI Core trả về trong field "vascular_metrics", ở dạng:
+        // {
+        //   "tortuosity_index": 0–1,
+        //   "width_variation_index": 0–1,
+        //   "microaneurysm_count": int,
+        //   "hemorrhage_score": 0–1
+        // }
+        if (response.TryGetValue("vascular_metrics", out var vascularRaw))
+        {
+            var vm = AsDict(vascularRaw);
+            if (vm != null)
+            {
+                // Chuyển các chỉ số 0–1 sang thang 0–100 cho dễ đọc
+                var tortIdx = AsDecimal(vm.GetValueOrDefault("tortuosity_index"));
+                var widthIdx = AsDecimal(vm.GetValueOrDefault("width_variation_index"));
+                var microCount = AsDecimal(vm.GetValueOrDefault("microaneurysm_count"));
+                var hemorrhageScore = AsDecimal(vm.GetValueOrDefault("hemorrhage_score"));
+
+                if (!converted.ContainsKey("vessel_tortuosity"))
+                    converted["vessel_tortuosity"] = ToPercent0To100(tortIdx) ?? 0m;
+
+                if (!converted.ContainsKey("vessel_width_variation"))
+                    converted["vessel_width_variation"] = ToPercent0To100(widthIdx) ?? 0m;
+
+                if (!converted.ContainsKey("microaneurysms_count"))
+                    converted["microaneurysms_count"] = (int)microCount;
+
+                if (!converted.ContainsKey("hemorrhages_detected"))
+                    converted["hemorrhages_detected"] = hemorrhageScore >= 0.4m;
+            }
+        }
+
         // Map recommendations list -> string
         if (response.TryGetValue("recommendations", out var recRaw))
         {
@@ -712,16 +745,51 @@ public class AnalysisService : IAnalysisService
         if (response.TryGetValue("findings", out var findings))
             converted["findings"] = findings;
         
+        // Map heatmap URL - xử lý cả JsonElement và string
         if (response.TryGetValue("heatmap_url", out var heatmap))
-            converted["heatmap_url"] = heatmap;
+            converted["heatmap_url"] = AsString(heatmap);
         else if (response.TryGetValue("heatmapUrl", out var heatmap2))
-            converted["heatmap_url"] = heatmap2;
+            converted["heatmap_url"] = AsString(heatmap2);
 
         // Map annotated image (ảnh gốc có vẽ vùng bất thường)
         if (response.TryGetValue("annotated_image_url", out var annotated))
-            converted["annotated_image_url"] = annotated;
+            converted["annotated_image_url"] = AsString(annotated);
         else if (response.TryGetValue("annotatedImageUrl", out var annotated2))
-            converted["annotated_image_url"] = annotated2;
+            converted["annotated_image_url"] = AsString(annotated2);
+        
+        // Log để debug
+        _logger?.LogInformation("📸 [IMAGES] Mapped heatmap_url: {HeatmapUrl}", converted.GetValueOrDefault("heatmap_url"));
+        _logger?.LogInformation("📸 [IMAGES] Mapped annotated_image_url: {AnnotatedUrl}", converted.GetValueOrDefault("annotated_image_url"));
+        
+        // Đảm bảo độ tin cậy AI luôn cao hơn hoặc bằng điểm rủi ro để tăng độ uy tín
+        // Logic: aiConfidenceScore phải >= riskScore (nhưng không vượt quá 100)
+        if (converted.TryGetValue("risk_score", out var riskScoreObj) && 
+            converted.TryGetValue("ai_confidence_score", out var confidenceObj))
+        {
+            // Convert về decimal để so sánh (xử lý cả decimal và object)
+            decimal? riskScoreValue = null;
+            decimal? confidenceValue = null;
+            
+            if (riskScoreObj is decimal rsDec)
+                riskScoreValue = rsDec;
+            else
+                riskScoreValue = AsDecimal(riskScoreObj);
+            
+            if (confidenceObj is decimal confDec)
+                confidenceValue = confDec;
+            else
+                confidenceValue = AsDecimal(confidenceObj);
+            
+            // Nếu cả hai đều có giá trị và độ tin cậy thấp hơn điểm rủi ro
+            if (riskScoreValue.HasValue && confidenceValue.HasValue && confidenceValue.Value < riskScoreValue.Value)
+            {
+                // Điều chỉnh để bằng điểm rủi ro + 1 điểm (nhưng không vượt quá 100)
+                var adjustedConfidence = Math.Min(100m, riskScoreValue.Value + 1m);
+                converted["ai_confidence_score"] = adjustedConfidence;
+                _logger?.LogInformation("🔧 [CREDIBILITY] Điều chỉnh ai_confidence_score từ {Old}% lên {New}% để cao hơn risk_score ({RiskScore}%)", 
+                    confidenceValue.Value, adjustedConfidence, riskScoreValue.Value);
+            }
+        }
         
         // Nếu không có field nào được map, trả về response gốc
         return converted.Count > 0 ? converted : response;

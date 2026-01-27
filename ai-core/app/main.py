@@ -6,6 +6,7 @@ Model: tomalmog/oct-retinal-classifier (EfficientNet-B3, 99.6% accuracy)
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, HttpUrl, Field
 from typing import Optional, Dict, Any, List, Tuple
 import uvicorn
@@ -64,6 +65,29 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# ============================================================================
+# Static files for explainability images (heatmaps & annotated images)
+# ============================================================================
+BASE_DIR = Path(__file__).resolve().parent.parent
+HEATMAPS_DIR = BASE_DIR / "heatmaps"
+ANNOTATED_DIR = BASE_DIR / "annotated-images"
+
+# Đảm bảo thư mục tồn tại để StaticFiles không bị lỗi khi khởi động
+HEATMAPS_DIR.mkdir(parents=True, exist_ok=True)
+ANNOTATED_DIR.mkdir(parents=True, exist_ok=True)
+
+# Serve các file PNG giải thích để frontend truy cập trực tiếp
+app.mount(
+    "/heatmaps",
+    StaticFiles(directory=str(HEATMAPS_DIR)),
+    name="heatmaps",
+)
+app.mount(
+    "/annotated-images",
+    StaticFiles(directory=str(ANNOTATED_DIR)),
+    name="annotated-images",
 )
 
 # ============================================================================
@@ -416,19 +440,40 @@ async def perform_analysis(request: AnalyzeRequest) -> AnalysisResult:
         vascular_metrics = features.get('vascular_metrics', {})
         
         # 7a. Xác định xem có bất thường (bệnh) hay không để quyết định sinh hình ảnh giải thích
+        # Quan trọng: Cần check nhiều điều kiện để đảm bảo không bỏ sót
         has_positive_condition = False
         try:
-            primary_condition = risk_assessment.get('primary_condition')
-            if primary_condition and primary_condition != 'NORMAL':
+            # Điều kiện 1: predicted_class từ model không phải NORMAL
+            if predicted_class and predicted_class != 'NORMAL':
                 has_positive_condition = True
-            else:
-                # Nếu primary_condition không có thông tin, kiểm tra từng condition
-                for c in conditions.values():
-                    if isinstance(c, dict) and c.get('positive'):
+                logger.info(f"[EXPLAINABILITY] Phát hiện bệnh từ predicted_class: {predicted_class}")
+            
+            # Điều kiện 2: primary_condition trong risk_assessment
+            if not has_positive_condition:
+                primary_condition = risk_assessment.get('primary_condition')
+                if primary_condition and primary_condition != 'NORMAL':
+                    has_positive_condition = True
+                    logger.info(f"[EXPLAINABILITY] Phát hiện bệnh từ primary_condition: {primary_condition}")
+            
+            # Điều kiện 3: Bất kỳ condition nào có positive == True
+            if not has_positive_condition:
+                for cond_name, cond_data in conditions.items():
+                    if isinstance(cond_data, dict) and cond_data.get('positive') and cond_name != 'NORMAL':
                         has_positive_condition = True
+                        logger.info(f"[EXPLAINABILITY] Phát hiện bệnh từ condition positive: {cond_name}")
                         break
+            
+            # Điều kiện 4: Confidence cao với class không phải NORMAL
+            if not has_positive_condition and confidence and confidence > 0.5 and predicted_class != 'NORMAL':
+                has_positive_condition = True
+                logger.info(f"[EXPLAINABILITY] Phát hiện bệnh từ confidence > 0.5: {predicted_class} ({confidence:.2%})")
+            
+            logger.info(f"[EXPLAINABILITY] has_positive_condition = {has_positive_condition}")
         except Exception as e_flag:
             logger.warning(f"Không xác định được trạng thái bệnh dương tính: {str(e_flag)}")
+            # Fallback: Nếu có lỗi nhưng predicted_class không phải NORMAL, vẫn sinh ảnh
+            if predicted_class and predicted_class != 'NORMAL':
+                has_positive_condition = True
         
         # 7b. Bổ sung các finding liên quan mạch máu
         vascular_findings = generate_vascular_findings(vascular_metrics)
@@ -450,12 +495,17 @@ async def perform_analysis(request: AnalyzeRequest) -> AnalysisResult:
         
         # 9. Generate heatmap (nếu model hỗ trợ) và lưu file để frontend hiển thị
         heatmap_url: Optional[str] = None
+        logger.info(f"[HEATMAP] Bắt đầu sinh heatmap cho analysis_id={analysis_id}, has_positive_condition={has_positive_condition}")
+        
         try:
+            import cv2  # type: ignore
+            
             heatmap_array = model_results.get("heatmap")
+            logger.info(f"[HEATMAP] Model trả về heatmap: {heatmap_array is not None}")
 
             # Nếu mô hình không trả về heatmap nhưng có bệnh, tạo heatmap đơn giản từ ảnh đã tiền xử lý
             if heatmap_array is None and has_positive_condition:
-                logger.info("Không nhận được heatmap từ mô hình, tạo heatmap fallback từ ảnh gốc.")
+                logger.info("[HEATMAP] Tạo heatmap fallback từ ảnh gốc...")
                 if image_array.ndim == 3:
                     # Dùng kênh luma đơn giản làm heatmap
                     gray = np.mean(image_array.astype("float32"), axis=2)
@@ -467,14 +517,13 @@ async def perform_analysis(request: AnalyzeRequest) -> AnalysisResult:
                     heatmap_array = (gray - gmin) / (gmax - gmin)
                 else:
                     heatmap_array = np.zeros_like(gray, dtype="float32")
+                logger.info(f"[HEATMAP] Đã tạo heatmap fallback, shape={heatmap_array.shape}")
 
             if heatmap_array is not None:
-
                 # Lưu heatmap ra thư mục ./heatmaps dưới dạng PNG
-                import cv2  # type: ignore
-
                 heatmaps_dir = Path(__file__).resolve().parent.parent / "heatmaps"
                 heatmaps_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"[HEATMAP] Thư mục heatmaps: {heatmaps_dir}, exists={heatmaps_dir.exists()}")
 
                 heatmap_path = heatmaps_dir / f"{analysis_id}.png"
 
@@ -488,24 +537,37 @@ async def perform_analysis(request: AnalyzeRequest) -> AnalysisResult:
                 else:
                     heatmap_bgr = heatmap_array
 
-                cv2.imwrite(str(heatmap_path), heatmap_bgr)
+                success = cv2.imwrite(str(heatmap_path), heatmap_bgr)
+                logger.info(f"[HEATMAP] cv2.imwrite success={success}, path={heatmap_path}")
 
-                # URL tương đối để backend/nginx có thể expose (ví dụ mount thư mục này)
-                heatmap_url = f"/heatmaps/{analysis_id}.png"
+                if success:
+                    # URL tương đối để backend/nginx có thể expose (ví dụ mount thư mục này)
+                    heatmap_url = f"/heatmaps/{analysis_id}.png"
+                    logger.info(f"[HEATMAP] ✅ Đã sinh heatmap thành công: {heatmap_url}")
+                else:
+                    logger.error(f"[HEATMAP] ❌ cv2.imwrite thất bại cho {heatmap_path}")
+            else:
+                logger.info("[HEATMAP] Không có heatmap để lưu (heatmap_array is None)")
         except Exception as e:
-            logger.warning(f"Không thể sinh hoặc lưu heatmap cho analysis_id={analysis_id}: {str(e)}")
+            logger.error(f"[HEATMAP] ❌ Exception khi sinh heatmap cho analysis_id={analysis_id}: {str(e)}", exc_info=True)
             heatmap_url = None
 
         # 9b. Generate annotated image (ảnh gốc + vùng bất thường) để phục vụ FR-4
         annotated_image_url: Optional[str] = None
+        logger.info(f"[ANNOTATED] Bắt đầu sinh annotated image cho analysis_id={analysis_id}")
+        
         try:
+            import cv2  # type: ignore
+            
             # Chỉ tạo annotated image nếu có annotations về vùng bất thường
             regions: List[Dict[str, Any]] = []
             if annotations and isinstance(annotations, dict):
                 regions = list(annotations.get("abnormal_regions") or [])
+            logger.info(f"[ANNOTATED] Số regions từ annotations: {len(regions)}")
 
             # Nếu có bệnh nhưng chưa có vùng bất thường, tạo một vùng mặc định ở gần trung tâm ảnh
             if has_positive_condition and not regions:
+                logger.info("[ANNOTATED] Tạo region fallback ở giữa ảnh...")
                 h, w = image_array.shape[:2]
                 box_w = max(40, w // 4)
                 box_h = max(40, h // 4)
@@ -522,12 +584,12 @@ async def perform_analysis(request: AnalyzeRequest) -> AnalysisResult:
                 if not annotations or not isinstance(annotations, dict):
                     annotations = {}
                 annotations["abnormal_regions"] = regions
+                logger.info(f"[ANNOTATED] Đã tạo region fallback: x={x}, y={y}, w={box_w}, h={box_h}")
 
             if regions:
-                import cv2  # type: ignore
-
                 annotated_dir = Path(__file__).resolve().parent.parent / "annotated-images"
                 annotated_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"[ANNOTATED] Thư mục annotated-images: {annotated_dir}, exists={annotated_dir.exists()}")
 
                 annotated_path = annotated_dir / f"{analysis_id}.png"
 
@@ -536,33 +598,50 @@ async def perform_analysis(request: AnalyzeRequest) -> AnalysisResult:
                     annotated_img = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
                 else:
                     annotated_img = cv2.cvtColor(image_array, cv2.COLOR_GRAY2BGR)
+                logger.info(f"[ANNOTATED] Ảnh annotated shape: {annotated_img.shape}")
 
-                for region in regions:
+                for i, region in enumerate(regions):
                     try:
-                        x = int(region.get("x", 0))
-                        y = int(region.get("y", 0))
-                        w = int(region.get("width", 0))
-                        h = int(region.get("height", 0))
+                        rx = int(region.get("x", 0))
+                        ry = int(region.get("y", 0))
+                        rw = int(region.get("width", 0))
+                        rh = int(region.get("height", 0))
                         # Vẽ khung đỏ quanh vùng nghi ngờ
                         cv2.rectangle(
                             annotated_img,
-                            (x, y),
-                            (x + w, y + h),
+                            (rx, ry),
+                            (rx + rw, ry + rh),
                             (0, 0, 255),
                             2,
                         )
+                        logger.info(f"[ANNOTATED] Đã vẽ region {i}: ({rx},{ry})-({rx+rw},{ry+rh})")
                     except Exception as e_region:
-                        logger.warning(f"Lỗi khi vẽ vùng bất thường trên annotated image: {str(e_region)}")
+                        logger.warning(f"[ANNOTATED] Lỗi khi vẽ region {i}: {str(e_region)}")
 
-                cv2.imwrite(str(annotated_path), annotated_img)
+                success = cv2.imwrite(str(annotated_path), annotated_img)
+                logger.info(f"[ANNOTATED] cv2.imwrite success={success}, path={annotated_path}")
 
-                # URL tương đối để backend/nginx có thể expose
-                annotated_image_url = f"/annotated-images/{analysis_id}.png"
+                if success:
+                    # URL tương đối để backend/nginx có thể expose
+                    annotated_image_url = f"/annotated-images/{analysis_id}.png"
+                    logger.info(f"[ANNOTATED] ✅ Đã sinh annotated image thành công: {annotated_image_url}")
+                else:
+                    logger.error(f"[ANNOTATED] ❌ cv2.imwrite thất bại cho {annotated_path}")
+            else:
+                logger.info("[ANNOTATED] Không có regions để vẽ")
         except Exception as e:
-            logger.warning(f"Không thể sinh hoặc lưu annotated image cho analysis_id={analysis_id}: {str(e)}")
+            logger.error(f"[ANNOTATED] ❌ Exception khi sinh annotated image cho analysis_id={analysis_id}: {str(e)}", exc_info=True)
             annotated_image_url = None
 
         # 10. Build response
+        logger.info(f"[RESPONSE] Chuẩn bị trả về AnalysisResult:")
+        logger.info(f"[RESPONSE]   - analysis_id: {analysis_id}")
+        logger.info(f"[RESPONSE]   - predicted_class: {predicted_class}")
+        logger.info(f"[RESPONSE]   - confidence: {confidence:.4f}")
+        logger.info(f"[RESPONSE]   - heatmap_url: {heatmap_url}")
+        logger.info(f"[RESPONSE]   - annotated_image_url: {annotated_image_url}")
+        logger.info(f"[RESPONSE]   - has_positive_condition: {has_positive_condition}")
+        
         return AnalysisResult(
             analysis_id=analysis_id,
             image_url=str(request.image_url),

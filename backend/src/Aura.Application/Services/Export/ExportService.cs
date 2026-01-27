@@ -95,8 +95,58 @@ public class ExportService : IExportService
             // Get user info if needed
             var userInfo = includePatientInfo ? await GetUserInfoAsync(userId) : null;
 
+            // Download images if needed (before PDF generation)
+            byte[]? annotatedImageBytes = null;
+            byte[]? heatmapImageBytes = null;
+            
+            if (includeImages)
+            {
+                // Get AI Core base URL from configuration
+                var aiCoreBaseUrl = _configuration["AICore:BaseUrl"] ?? "http://aicore:8000";
+                
+                if (!string.IsNullOrEmpty(analysisResult.AnnotatedImageUrl))
+                {
+                    try
+                    {
+                        // Resolve relative URLs to full URLs
+                        var imageUrl = ResolveImageUrl(analysisResult.AnnotatedImageUrl, aiCoreBaseUrl);
+                        
+                        using var httpClient = new HttpClient();
+                        httpClient.Timeout = TimeSpan.FromSeconds(20);
+                        annotatedImageBytes = await httpClient.GetByteArrayAsync(imageUrl);
+                        _logger?.LogInformation("Downloaded annotated image for PDF export: {Size} bytes from {Url}", 
+                            annotatedImageBytes.Length, imageUrl);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Could not download annotated image for PDF: {Url}", 
+                            analysisResult.AnnotatedImageUrl);
+                    }
+                }
+                
+                if (!string.IsNullOrEmpty(analysisResult.HeatmapUrl))
+                {
+                    try
+                    {
+                        // Resolve relative URLs to full URLs
+                        var imageUrl = ResolveImageUrl(analysisResult.HeatmapUrl, aiCoreBaseUrl);
+                        
+                        using var httpClient = new HttpClient();
+                        httpClient.Timeout = TimeSpan.FromSeconds(20);
+                        heatmapImageBytes = await httpClient.GetByteArrayAsync(imageUrl);
+                        _logger?.LogInformation("Downloaded heatmap image for PDF export: {Size} bytes from {Url}", 
+                            heatmapImageBytes.Length, imageUrl);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Could not download heatmap image for PDF: {Url}", 
+                            analysisResult.HeatmapUrl);
+                    }
+                }
+            }
+
             // Generate PDF
-            var pdfBytes = GeneratePdf(analysisResult, userInfo, includeImages, language);
+            var pdfBytes = GeneratePdf(analysisResult, userInfo, includeImages, language, annotatedImageBytes, heatmapImageBytes);
             var fileName = GenerateFileName(analysisResultId, "pdf");
 
             // Upload to cloud storage
@@ -348,6 +398,8 @@ public class ExportService : IExportService
 
         try
         {
+            _logger?.LogInformation("Querying export: ExportId={ExportId}, UserId={UserId}", exportId, userId);
+            
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
@@ -364,7 +416,31 @@ public class ExportService : IExportService
             using var reader = await command.ExecuteReaderAsync();
             
             if (!await reader.ReadAsync())
+            {
+                _logger?.LogWarning("Export not found in database: ExportId={ExportId}, UserId={UserId}. Checking if export exists without user filter...", exportId, userId);
+                
+                // Check if export exists at all (for debugging)
+                await reader.CloseAsync();
+                var checkSql = @"SELECT Id, RequestedBy, IsDeleted FROM exported_reports WHERE Id = @ExportId";
+                using var checkCommand = new NpgsqlCommand(checkSql, connection);
+                checkCommand.Parameters.AddWithValue("ExportId", exportId);
+                using var checkReader = await checkCommand.ExecuteReaderAsync();
+                if (await checkReader.ReadAsync())
+                {
+                    var foundRequestedBy = checkReader.IsDBNull(1) ? "NULL" : checkReader.GetString(1);
+                    var foundIsDeleted = checkReader.GetBoolean(2);
+                    _logger?.LogWarning("Export exists but: RequestedBy={RequestedBy} (expected {UserId}), IsDeleted={IsDeleted}", 
+                        foundRequestedBy, userId, foundIsDeleted);
+                }
+                else
+                {
+                    _logger?.LogWarning("Export does not exist in database: ExportId={ExportId}", exportId);
+                }
+                
                 return null;
+            }
+            
+            _logger?.LogInformation("Export found successfully: ExportId={ExportId}", exportId);
 
             return new ExportResponseDto
             {
@@ -493,24 +569,127 @@ public class ExportService : IExportService
                 return null;
             }
 
-            // Download file from Cloudinary URL
-            using var httpClient = new HttpClient();
-            httpClient.Timeout = TimeSpan.FromMinutes(5); // Allow time for large files
-
-            var response = await httpClient.GetAsync(export.FileUrl);
-            
-            if (!response.IsSuccessStatusCode)
+            // Try using Cloudinary Admin API first if available
+            if (_cloudinary != null)
             {
-                _logger?.LogError("Failed to download file from Cloudinary: {StatusCode}, {Url}", 
-                    response.StatusCode, export.FileUrl);
+                try
+                {
+                    // Extract public_id from Cloudinary URL
+                    // Format: https://res.cloudinary.com/{cloud_name}/image/upload/{version}/{folder}/{public_id}.{ext}
+                    // Example: https://res.cloudinary.com/dylia0tle/image/upload/v1769536594/aura/exported-reports/aura_report_222fb7e4_20260127_175634.pdf
+                    var uri = new Uri(export.FileUrl);
+                    var pathParts = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                    
+                    // Find the "upload" index
+                    // Path format: /image/upload/v{version}/{folder}/{public_id}.{ext}
+                    var uploadIndex = Array.IndexOf(pathParts, "upload");
+                    if (uploadIndex >= 0 && uploadIndex + 3 < pathParts.Length)
+                    {
+                        // Skip version (v{number}), then get folder path and filename
+                        // pathParts[uploadIndex + 1] = "v1769536594" (version)
+                        // pathParts[uploadIndex + 2] = "aura" (first folder)
+                        // pathParts[uploadIndex + 3] = "exported-reports" (second folder)
+                        // pathParts[uploadIndex + 4] = "aura_report_222fb7e4_20260127_175634.pdf" (filename)
+                        
+                        // Build public_id: "aura/exported-reports/aura_report_222fb7e4_20260127_175634" (without extension)
+                        var publicIdParts = new List<string>();
+                        for (int i = uploadIndex + 2; i < pathParts.Length; i++)
+                        {
+                            if (i == pathParts.Length - 1)
+                            {
+                                // Last part is filename, remove extension
+                                publicIdParts.Add(Path.GetFileNameWithoutExtension(pathParts[i]));
+                            }
+                            else
+                            {
+                                publicIdParts.Add(pathParts[i]);
+                            }
+                        }
+                        
+                        var publicId = string.Join("/", publicIdParts);
+                        
+                        _logger?.LogInformation("Extracted public_id from URL: {PublicId}", publicId);
+                        
+                        // Use Admin API to download file
+                        var getResourceParams = new GetResourceParams(publicId)
+                        {
+                            ResourceType = ResourceType.Raw // PDF/CSV/JSON are raw files
+                        };
+                        
+                        var getResourceResult = await _cloudinary.GetResourceAsync(getResourceParams);
+                        
+                        if (getResourceResult.StatusCode == System.Net.HttpStatusCode.OK && 
+                            !string.IsNullOrEmpty(getResourceResult.SecureUrl))
+                        {
+                            // Download from secure URL using HttpClient
+                            using var httpClient = new HttpClient();
+                            httpClient.Timeout = TimeSpan.FromMinutes(5);
+                            httpClient.DefaultRequestHeaders.Add("User-Agent", "AURA-Backend/1.0");
+                            
+                            var response = await httpClient.GetAsync(getResourceResult.SecureUrl);
+                            if (response.IsSuccessStatusCode)
+                            {
+                                var fileBytes = await response.Content.ReadAsByteArrayAsync();
+                                _logger?.LogInformation("Successfully downloaded export file via Admin API: {ExportId}, Size: {Size} bytes", 
+                                    exportId, fileBytes.Length);
+                                return fileBytes;
+                            }
+                            else
+                            {
+                                _logger?.LogWarning("Failed to download from SecureUrl: {StatusCode}, {Url}", 
+                                    response.StatusCode, getResourceResult.SecureUrl);
+                            }
+                        }
+                        else
+                        {
+                            _logger?.LogWarning("GetResourceAsync failed: {StatusCode}, Error: {Error}", 
+                                getResourceResult.StatusCode, getResourceResult.Error?.Message);
+                        }
+                    }
+                    else
+                    {
+                        _logger?.LogWarning("Could not parse Cloudinary URL to extract public_id: {Url}", export.FileUrl);
+                    }
+                }
+                catch (Exception cloudinaryEx)
+                {
+                    _logger?.LogWarning(cloudinaryEx, "Failed to download via Cloudinary Admin API, falling back to direct URL: {Url}", export.FileUrl);
+                }
+            }
+
+            // Fallback: Try direct download from URL (may work if file is public)
+            using var fallbackHttpClient = new HttpClient();
+            fallbackHttpClient.Timeout = TimeSpan.FromMinutes(5);
+            
+            // Add User-Agent header to avoid blocking
+            fallbackHttpClient.DefaultRequestHeaders.Add("User-Agent", "AURA-Backend/1.0");
+            
+            var fallbackResponse = await fallbackHttpClient.GetAsync(export.FileUrl);
+            
+            if (!fallbackResponse.IsSuccessStatusCode)
+            {
+                _logger?.LogWarning("Failed to download file from Cloudinary URL: {StatusCode}, {Url}. " +
+                                    "Will attempt to regenerate export on-the-fly to avoid Cloudinary auth issues.",
+                    fallbackResponse.StatusCode, export.FileUrl);
+
+                // FINAL FALLBACK (MOST RELIABLE): regenerate file bytes instead of proxying Cloudinary
+                var regenerated = await RegenerateExportBytesAsync(export, userId);
+                if (regenerated != null && regenerated.Length > 0)
+                {
+                    _logger?.LogInformation("Regenerated export bytes successfully: ExportId={ExportId}, Size={Size} bytes",
+                        exportId, regenerated.Length);
+                    return regenerated;
+                }
+
+                _logger?.LogError("Could not download from Cloudinary AND could not regenerate export. ExportId={ExportId}", exportId);
                 return null;
             }
 
-            var fileBytes = await response.Content.ReadAsByteArrayAsync();
+            var fallbackFileBytes = await fallbackResponse.Content.ReadAsByteArrayAsync();
             _logger?.LogInformation("Successfully downloaded export file: {ExportId}, Size: {Size} bytes", 
-                exportId, fileBytes.Length);
+                exportId, fallbackFileBytes.Length);
             
-            return fileBytes;
+            return fallbackFileBytes;
         }
         catch (Exception ex)
         {
@@ -551,7 +730,7 @@ public class ExportService : IExportService
 
     #region Private Methods - PDF Generation
 
-    private byte[] GeneratePdf(AnalysisResultDto result, UserInfoForExport? userInfo, bool includeImages, string language)
+    private byte[] GeneratePdf(AnalysisResultDto result, UserInfoForExport? userInfo, bool includeImages, string language, byte[]? annotatedImageBytes = null, byte[]? heatmapImageBytes = null)
     {
         var labels = GetLabels(language);
         
@@ -568,7 +747,7 @@ public class ExportService : IExportService
                 page.Header().Element(c => ComposeHeader(c, labels));
 
                 // Main content
-                page.Content().Element(c => ComposeContent(c, result, userInfo, labels, includeImages));
+                page.Content().Element(c => ComposeContent(c, result, userInfo, labels, includeImages, annotatedImageBytes, heatmapImageBytes));
 
                 // Footer
                 page.Footer().Element(c => ComposeFooter(c, labels));
@@ -587,37 +766,48 @@ public class ExportService : IExportService
                 row.RelativeItem().Column(col2 =>
                 {
                     col2.Item()
-                        .Text("AURA")
-                        .FontSize(28)
+                        .Text("AURA AI")
+                        .FontSize(32)
                         .Bold()
-                        .FontColor(Colors.Blue.Darken2);
+                        .FontColor(Colors.Blue.Darken3);
                         
-                    col2.Item()
+                    col2.Item().PaddingTop(2)
                         .Text(labels.SystemName)
-                        .FontSize(10)
-                        .FontColor(Colors.Grey.Darken1);
+                        .FontSize(11)
+                        .FontColor(Colors.Grey.Darken2);
+                        
+                    col2.Item().PaddingTop(3)
+                        .Text("Clinical Decision Support System")
+                        .FontSize(9)
+                        .Italic()
+                        .FontColor(Colors.Grey.Medium);
                 });
                 
-                row.ConstantItem(150).AlignRight().Column(col2 =>
+                row.ConstantItem(180).AlignRight().Column(col2 =>
                 {
                     col2.Item()
                         .Text(labels.ReportTitle)
-                        .FontSize(14)
+                        .FontSize(16)
                         .Bold()
-                        .FontColor(Colors.Grey.Darken3);
+                        .FontColor(Colors.Blue.Darken2);
                         
-                    col2.Item()
-                        .Text($"{labels.ExportDate}: {DateTime.UtcNow:dd/MM/yyyy HH:mm}")
+                    col2.Item().PaddingTop(3)
+                        .Text($"{labels.ExportDate}: {DateTime.UtcNow:dd/MM/yyyy HH:mm} UTC")
                         .FontSize(9)
+                        .FontColor(Colors.Grey.Darken1);
+                        
+                    col2.Item().PaddingTop(2)
+                        .Text($"Version: 2.0.0")
+                        .FontSize(8)
                         .FontColor(Colors.Grey.Medium);
                 });
             });
             
-            col.Item().PaddingTop(10).LineHorizontal(1).LineColor(Colors.Blue.Darken2);
+            col.Item().PaddingTop(12).LineHorizontal(1.5f).LineColor(Colors.Blue.Darken2);
         });
     }
 
-    private void ComposeContent(IContainer container, AnalysisResultDto result, UserInfoForExport? userInfo, ExportLabels labels, bool includeImages)
+    private void ComposeContent(IContainer container, AnalysisResultDto result, UserInfoForExport? userInfo, ExportLabels labels, bool includeImages, byte[]? annotatedImageBytes = null, byte[]? heatmapImageBytes = null)
     {
         container.PaddingVertical(15).Column(column =>
         {
@@ -641,6 +831,24 @@ public class ExportService : IExportService
             // Vascular Abnormalities Section
             column.Item().Element(c => ComposeVascularFindings(c, result, labels));
 
+            // Images Section (Heatmap & Annotated Image) - FR-4
+            if (includeImages)
+            {
+                var hasAnnotated = annotatedImageBytes != null && annotatedImageBytes.Length > 0;
+                var hasHeatmap = heatmapImageBytes != null && heatmapImageBytes.Length > 0;
+                
+                if (hasAnnotated || hasHeatmap)
+                {
+                    column.Item().Element(c => ComposeImagesSection(c, result, labels, annotatedImageBytes, heatmapImageBytes));
+                }
+                else
+                {
+                    // Log warning nếu không có images nhưng includeImages = true
+                    _logger?.LogWarning("PDF export: includeImages=true nhưng không có images nào được download. AnnotatedImageUrl: {AnnotatedUrl}, HeatmapUrl: {HeatmapUrl}", 
+                        result.AnnotatedImageUrl ?? "null", result.HeatmapUrl ?? "null");
+                }
+            }
+
             // Recommendations Section
             if (!string.IsNullOrEmpty(result.Recommendations) || !string.IsNullOrEmpty(result.HealthWarnings))
             {
@@ -651,13 +859,24 @@ public class ExportService : IExportService
 
     private void ComposeAnalysisInfo(IContainer container, AnalysisResultDto result, ExportLabels labels)
     {
-        container.Background(Colors.Grey.Lighten4).Padding(10).Column(col =>
+        container.Background(Colors.Grey.Lighten4).Padding(10).Row(row =>
         {
-            col.Item().Text($"{labels.AnalysisId}: {result.Id}").FontSize(10);
-            col.Item().Text($"{labels.ImageId}: {result.ImageId}").FontSize(10);
-            col.Item().Text($"{labels.AnalysisDate}: {result.AnalysisCompletedAt?.ToString("dd/MM/yyyy HH:mm:ss") ?? "N/A"}").FontSize(10);
-            col.Item().Text($"{labels.ProcessingTime}: {result.ProcessingTimeSeconds ?? 0}s").FontSize(10);
-            col.Item().Text($"{labels.Status}: {result.AnalysisStatus}").FontSize(10);
+            row.RelativeItem().Column(col =>
+            {
+                col.Item().Text($"{labels.AnalysisId}: {result.Id}").FontSize(10);
+                col.Item().Text($"{labels.ImageId}: {result.ImageId}").FontSize(10);
+                col.Item().Text($"{labels.AnalysisDate}: {result.AnalysisCompletedAt?.ToString("dd/MM/yyyy HH:mm:ss") ?? "N/A"}").FontSize(10);
+            });
+            
+            row.RelativeItem().Column(col =>
+            {
+                col.Item().Text($"{labels.ProcessingTime}: {result.ProcessingTimeSeconds ?? 0}s").FontSize(10);
+                col.Item().Text($"{labels.Status}: {result.AnalysisStatus}").FontSize(10);
+                if (result.AiConfidenceScore.HasValue)
+                {
+                    col.Item().Text($"{labels.AiConfidence}: {result.AiConfidenceScore.Value:F1}%").FontSize(10).Bold();
+                }
+            });
         });
     }
 
@@ -737,12 +956,12 @@ public class ExportService : IExportService
                 // Header
                 table.Header(header =>
                 {
-                    header.Cell().Background(Colors.Blue.Darken2).Padding(5)
-                        .Text(labels.Condition).FontColor(Colors.White).Bold();
-                    header.Cell().Background(Colors.Blue.Darken2).Padding(5)
-                        .Text(labels.RiskLevel).FontColor(Colors.White).Bold();
-                    header.Cell().Background(Colors.Blue.Darken2).Padding(5)
-                        .Text(labels.Score).FontColor(Colors.White).Bold();
+                    header.Cell().Background(Colors.Blue.Darken2).Padding(8)
+                        .Text(labels.Condition).FontColor(Colors.White).Bold().FontSize(11);
+                    header.Cell().Background(Colors.Blue.Darken2).Padding(8)
+                        .Text(labels.RiskLevel).FontColor(Colors.White).Bold().FontSize(11);
+                    header.Cell().Background(Colors.Blue.Darken2).Padding(8)
+                        .Text(labels.Score).FontColor(Colors.White).Bold().FontSize(11);
                 });
                 
                 // Hypertension
@@ -767,13 +986,26 @@ public class ExportService : IExportService
     private void AddTableRow(TableDescriptor table, string condition, string? risk, decimal? score)
     {
         var bgColor = Colors.White;
+        var riskColor = GetRiskColorForText(risk);
         
-        table.Cell().Background(bgColor).BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(5)
-            .Text(condition);
-        table.Cell().Background(bgColor).BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(5)
-            .Text(risk ?? "N/A");
-        table.Cell().Background(bgColor).BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(5)
-            .Text(score?.ToString("F1") ?? "N/A");
+        table.Cell().Background(bgColor).BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(8)
+            .Text(condition).FontSize(10);
+        table.Cell().Background(bgColor).BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(8)
+            .Text(risk ?? "N/A").FontSize(10).FontColor(riskColor);
+        table.Cell().Background(bgColor).BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(8)
+            .Text(score?.ToString("F1") ?? "N/A").FontSize(10);
+    }
+    
+    private static string GetRiskColorForText(string? riskLevel)
+    {
+        return riskLevel?.ToLower() switch
+        {
+            "low" => Colors.Green.Darken2,
+            "medium" => Colors.Orange.Darken2,
+            "high" => Colors.Red.Medium,
+            "critical" => Colors.Red.Darken3,
+            _ => Colors.Grey.Darken2
+        };
     }
 
     private void ComposeVascularFindings(IContainer container, AnalysisResultDto result, ExportLabels labels)
@@ -799,6 +1031,88 @@ public class ExportService : IExportService
         });
     }
 
+    private void ComposeImagesSection(IContainer container, AnalysisResultDto result, ExportLabels labels, byte[]? annotatedImageBytes, byte[]? heatmapImageBytes)
+    {
+        container.Column(col =>
+        {
+            col.Item().Text("HÌNH ẢNH PHÂN TÍCH").FontSize(14).Bold().FontColor(Colors.Blue.Darken2);
+            
+            col.Item().PaddingTop(10).Column(imageCol =>
+            {
+                // Annotated Image - Full width, much larger size
+                if (annotatedImageBytes != null && annotatedImageBytes.Length > 0)
+                {
+                    try
+                    {
+                        imageCol.Item().Column(c =>
+                        {
+                            c.Item().PaddingBottom(10).Text("Ảnh đã chú thích").FontSize(13).Bold().FontColor(Colors.Blue.Darken2);
+                            // Container với full width và chiều cao lớn hơn đáng kể
+                            c.Item().Border(2f).BorderColor(Colors.Grey.Darken1)
+                                .Padding(8)
+                                .Background(Colors.White)
+                                .Height(550) // Chiều cao cố định lớn hơn nhiều
+                                .AlignCenter()
+                                .Image(annotatedImageBytes)
+                                .FitArea(); // Fit image vào container với tỷ lệ phù hợp
+                        });
+                        _logger?.LogInformation("PDF: Đã embed annotated image ({Size} bytes)", annotatedImageBytes.Length);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "PDF: Lỗi khi embed annotated image vào PDF");
+                        // Hiển thị placeholder text nếu không thể embed image
+                        imageCol.Item().Column(c =>
+                        {
+                            c.Item().PaddingBottom(10).Text("Ảnh đã chú thích").FontSize(13).Bold();
+                            c.Item().Background(Colors.Grey.Lighten3).Padding(30)
+                                .Text("Không thể tải hình ảnh").FontSize(11).FontColor(Colors.Grey.Darken2);
+                        });
+                    }
+                }
+                
+                // Spacing between images
+                if (annotatedImageBytes != null && annotatedImageBytes.Length > 0 && 
+                    heatmapImageBytes != null && heatmapImageBytes.Length > 0)
+                {
+                    imageCol.Item().Height(20); // Khoảng cách lớn hơn giữa 2 hình
+                }
+                
+                // Heatmap Image - Full width, much larger size
+                if (heatmapImageBytes != null && heatmapImageBytes.Length > 0)
+                {
+                    try
+                    {
+                        imageCol.Item().Column(c =>
+                        {
+                            c.Item().PaddingBottom(10).Text("Heatmap").FontSize(13).Bold().FontColor(Colors.Blue.Darken2);
+                            // Container với full width và chiều cao lớn hơn đáng kể
+                            c.Item().Border(2f).BorderColor(Colors.Grey.Darken1)
+                                .Padding(8)
+                                .Background(Colors.White)
+                                .Height(550) // Chiều cao cố định lớn hơn nhiều
+                                .AlignCenter()
+                                .Image(heatmapImageBytes)
+                                .FitArea(); // Fit image vào container với tỷ lệ phù hợp
+                        });
+                        _logger?.LogInformation("PDF: Đã embed heatmap image ({Size} bytes)", heatmapImageBytes.Length);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "PDF: Lỗi khi embed heatmap image vào PDF");
+                        // Hiển thị placeholder text nếu không thể embed image
+                        imageCol.Item().Column(c =>
+                        {
+                            c.Item().PaddingBottom(10).Text("Heatmap").FontSize(13).Bold();
+                            c.Item().Background(Colors.Grey.Lighten3).Padding(30)
+                                .Text("Không thể tải hình ảnh").FontSize(11).FontColor(Colors.Grey.Darken2);
+                        });
+                    }
+                }
+            });
+        });
+    }
+
     private void ComposeRecommendations(IContainer container, AnalysisResultDto result, ExportLabels labels)
     {
         container.Column(col =>
@@ -806,15 +1120,57 @@ public class ExportService : IExportService
             if (!string.IsNullOrEmpty(result.Recommendations))
             {
                 col.Item().Text(labels.Recommendations).FontSize(14).Bold().FontColor(Colors.Blue.Darken2);
-                col.Item().PaddingTop(5).Background(Colors.Green.Lighten5).Padding(10)
-                    .Text(result.Recommendations).FontSize(10);
+                
+                // Split recommendations by newlines and format nicely
+                var recommendations = result.Recommendations.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                col.Item().PaddingTop(5).Background(Colors.Blue.Lighten5).Padding(12).Column(recCol =>
+                {
+                    foreach (var rec in recommendations)
+                    {
+                        var trimmedRec = rec.Trim();
+                        if (!string.IsNullOrEmpty(trimmedRec))
+                        {
+                            // Loại bỏ ký tự bullet và các ký tự đặc biệt có thể gây lỗi hiển thị "?"
+                            // Giữ nguyên emoji và các ký tự Unicode khác
+                            var displayText = trimmedRec;
+                            
+                            // Loại bỏ các ký tự bullet đơn giản ở đầu chuỗi
+                            var charsToRemove = new[] { '•', '?', '-', '*', '·', '\u2022', '\u25CF', '\u25E6' };
+                            displayText = displayText.TrimStart(charsToRemove);
+                            
+                            // Loại bỏ khoảng trắng thừa sau khi trim
+                            displayText = displayText.TrimStart();
+                            
+                            // Thêm padding và hiển thị với font rõ ràng
+                            recCol.Item().PaddingBottom(4).PaddingLeft(2)
+                                .Text(displayText).FontSize(10).FontColor(Colors.Grey.Darken3);
+                        }
+                    }
+                });
             }
             
             if (!string.IsNullOrEmpty(result.HealthWarnings))
             {
                 col.Item().PaddingTop(10).Text(labels.HealthWarnings).FontSize(14).Bold().FontColor(Colors.Red.Darken2);
-                col.Item().PaddingTop(5).Background(Colors.Red.Lighten5).Padding(10)
-                    .Text(result.HealthWarnings).FontSize(10).FontColor(Colors.Red.Darken3);
+                
+                var warnings = result.HealthWarnings.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                col.Item().PaddingTop(5).Background(Colors.Red.Lighten5).Padding(12).Column(warnCol =>
+                {
+                    foreach (var warning in warnings)
+                    {
+                        var trimmedWarning = warning.Trim();
+                        if (!string.IsNullOrEmpty(trimmedWarning))
+                        {
+                            // Loại bỏ ký tự bullet và các ký tự đặc biệt có thể gây lỗi hiển thị "?"
+                            var charsToRemove = new[] { '•', '?', '-', '*', '·', '\u2022', '\u25CF', '\u25E6' };
+                            var displayWarning = trimmedWarning.TrimStart(charsToRemove).TrimStart();
+                            
+                            // Thêm emoji warning (trong string literal thì emoji hoạt động tốt)
+                            warnCol.Item().PaddingBottom(4).PaddingLeft(2)
+                                .Text($"⚠ {displayWarning}").FontSize(10).FontColor(Colors.Red.Darken3);
+                        }
+                    }
+                });
             }
         });
     }
@@ -873,6 +1229,7 @@ public class ExportService : IExportService
             labels.DiabeticRetinopathy, "DR Severity", labels.Stroke, "Stroke Score",
             labels.VesselTortuosity, labels.VesselWidthVariation, labels.MicroaneurysmsCount,
             labels.HemorrhagesDetected, labels.ExudatesDetected, labels.AiConfidence,
+            "Annotated Image URL", "Heatmap URL",
             labels.AnalysisDate, labels.ProcessingTime, labels.Recommendations, labels.HealthWarnings
         };
 
@@ -904,10 +1261,13 @@ public class ExportService : IExportService
             csv.WriteField(result.HemorrhagesDetected ? labels.Yes : labels.No);
             csv.WriteField(result.ExudatesDetected ? labels.Yes : labels.No);
             csv.WriteField(result.AiConfidenceScore?.ToString("F2") ?? "N/A");
+            csv.WriteField(result.AnnotatedImageUrl ?? "");
+            csv.WriteField(result.HeatmapUrl ?? "");
             csv.WriteField(result.AnalysisCompletedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "N/A");
             csv.WriteField(result.ProcessingTimeSeconds?.ToString() ?? "N/A");
-            csv.WriteField(result.Recommendations ?? "");
-            csv.WriteField(result.HealthWarnings ?? "");
+            // Escape newlines in recommendations and warnings for CSV
+            csv.WriteField((result.Recommendations ?? "").Replace("\n", " | "));
+            csv.WriteField((result.HealthWarnings ?? "").Replace("\n", " | "));
             csv.NextRecord();
         }
 
@@ -931,6 +1291,8 @@ public class ExportService : IExportService
         {
             using var stream = new MemoryStream(fileBytes);
 
+            // RawUploadParams tự động dùng ResourceType.Raw cho các file không phải image
+            // Không cần set ResourceType vì nó là read-only và được tự động detect từ file extension
             var uploadParams = new RawUploadParams
             {
                 File = new FileDescription(fileName, stream),
@@ -1020,7 +1382,7 @@ public class ExportService : IExportService
             await connection.OpenAsync();
 
             var sql = @"
-                SELECT FullName, Email, PhoneNumber, Dob 
+                SELECT FirstName, LastName, Email, Phone, Dob 
                 FROM users 
                 WHERE Id = @UserId AND IsActive = true";
 
@@ -1032,17 +1394,105 @@ public class ExportService : IExportService
             if (!await reader.ReadAsync())
                 return null;
 
+            var firstName = reader.IsDBNull(0) ? string.Empty : reader.GetString(0);
+            var lastName = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+            var fullName = $"{firstName} {lastName}".Trim();
+            if (string.IsNullOrWhiteSpace(fullName))
+                fullName = "N/A";
+
             return new UserInfoForExport
             {
-                FullName = reader.IsDBNull(0) ? "N/A" : reader.GetString(0),
-                Email = reader.IsDBNull(1) ? "N/A" : reader.GetString(1),
-                Phone = reader.IsDBNull(2) ? null : reader.GetString(2),
-                DateOfBirth = reader.IsDBNull(3) ? null : reader.GetDateTime(3)
+                FullName = fullName,
+                Email = reader.IsDBNull(2) ? "N/A" : reader.GetString(2),
+                Phone = reader.IsDBNull(3) ? null : reader.GetString(3),
+                DateOfBirth = reader.IsDBNull(4) ? null : reader.GetDateTime(4)
             };
         }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "Could not retrieve user info for export");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Fallback “chắc ăn”: tái tạo nội dung export trực tiếp từ DB (không phụ thuộc Cloudinary).
+    /// Dùng khi Cloudinary bật chế độ private/authenticated khiến backend không thể GET file qua URL.
+    /// </summary>
+    private async Task<byte[]?> RegenerateExportBytesAsync(ExportResponseDto export, string userId)
+    {
+        try
+        {
+            if (export.AnalysisResultId == null)
+            {
+                // Batch export hoặc export không gắn với 1 analysis -> không thể regenerate chắc chắn
+                _logger?.LogWarning("Cannot regenerate export without AnalysisResultId. ExportId={ExportId}", export.ExportId);
+                return null;
+            }
+
+            // Default language: Vietnamese (phù hợp yêu cầu dự án)
+            var language = "vi";
+
+            // Lấy lại kết quả phân tích
+            var analysisResult = await GetAnalysisResultOrThrowAsync(export.AnalysisResultId, userId);
+
+            // Có thể lấy thông tin bệnh nhân (không bắt buộc)
+            var userInfo = await GetUserInfoAsync(userId);
+
+            var reportType = (export.ReportType ?? string.Empty).Trim().ToUpperInvariant();
+            switch (reportType)
+            {
+                case "PDF":
+                {
+                    // Khi regenerate PDF, cố gắng nhúng ảnh nếu có
+                    var includeImages = true;
+                    byte[]? annotatedImageBytes = null;
+                    byte[]? heatmapImageBytes = null;
+
+                    try
+                    {
+                        var aiCoreBaseUrl = _configuration["AICore:BaseUrl"] ?? "http://aicore:8000";
+
+                        if (!string.IsNullOrEmpty(analysisResult.AnnotatedImageUrl))
+                        {
+                            var imageUrl = ResolveImageUrl(analysisResult.AnnotatedImageUrl, aiCoreBaseUrl);
+                            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+                            annotatedImageBytes = await http.GetByteArrayAsync(imageUrl);
+                        }
+
+                        if (!string.IsNullOrEmpty(analysisResult.HeatmapUrl))
+                        {
+                            var imageUrl = ResolveImageUrl(analysisResult.HeatmapUrl, aiCoreBaseUrl);
+                            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+                            heatmapImageBytes = await http.GetByteArrayAsync(imageUrl);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Regenerate PDF: could not download embedded images. ExportId={ExportId}", export.ExportId);
+                    }
+
+                    return GeneratePdf(analysisResult, userInfo, includeImages, language, annotatedImageBytes, heatmapImageBytes);
+                }
+                case "CSV":
+                    return GenerateCsv(new[] { analysisResult }, language);
+                case "JSON":
+                {
+                    var jsonOptions = new JsonSerializerOptions
+                    {
+                        WriteIndented = true,
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    };
+                    return Encoding.UTF8.GetBytes(JsonSerializer.Serialize(analysisResult, jsonOptions));
+                }
+                default:
+                    _logger?.LogWarning("Unsupported report type for regeneration: {ReportType}, ExportId={ExportId}", export.ReportType, export.ExportId);
+                    return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to regenerate export bytes. ExportId={ExportId}", export.ExportId);
             return null;
         }
     }
@@ -1079,6 +1529,33 @@ public class ExportService : IExportService
     private static ExportLabels GetLabels(string language)
     {
         return language.ToLower() == "en" ? ExportLabels.English : ExportLabels.Vietnamese;
+    }
+
+    /// <summary>
+    /// Resolve image URL từ relative path sang full URL
+    /// </summary>
+    private static string ResolveImageUrl(string imageUrl, string aiCoreBaseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl))
+            return imageUrl;
+
+        // Nếu đã là full URL (http/https), trả về nguyên
+        if (imageUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
+            imageUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return imageUrl;
+        }
+
+        // Nếu là relative path (bắt đầu bằng /), thêm base URL
+        if (imageUrl.StartsWith("/"))
+        {
+            // Loại bỏ trailing slash từ baseUrl nếu có
+            var baseUrl = aiCoreBaseUrl.TrimEnd('/');
+            return $"{baseUrl}{imageUrl}";
+        }
+
+        // Nếu không có / ở đầu, thêm /
+        return $"{aiCoreBaseUrl.TrimEnd('/')}/{imageUrl}";
     }
 
     #endregion

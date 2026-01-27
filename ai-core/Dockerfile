@@ -49,8 +49,11 @@ RUN pip install --upgrade pip && \
 FROM base AS production
 
 # Create non-root user for security
+# Tạo sẵn các thư mục cần thiết cho explainability images
 RUN useradd --create-home --shell /bin/bash appuser && \
     mkdir -p /app/.cache/huggingface && \
+    mkdir -p /app/heatmaps && \
+    mkdir -p /app/annotated-images && \
     chown -R appuser:appuser /app
 
 # Copy installed dependencies from dependencies stage

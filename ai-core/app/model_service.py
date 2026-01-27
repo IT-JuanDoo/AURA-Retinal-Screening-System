@@ -376,10 +376,13 @@ class RetinalModelService:
 
             # Sinh heatmap dựa trên gradient (saliency map) để highlight vùng nghi ngờ
             try:
+                logger.info(f"[MODEL_HEATMAP] Đang sinh saliency heatmap cho class index {predicted_idx}...")
                 heatmap = self._generate_saliency_heatmap(image_array, int(predicted_idx))
                 results["heatmap"] = heatmap
+                logger.info(f"[MODEL_HEATMAP] ✅ Đã sinh heatmap thành công, shape={heatmap.shape}")
             except Exception as e_hm:
-                logger.warning(f"Không thể sinh heatmap cho ảnh hiện tại: {str(e_hm)}")
+                logger.warning(f"[MODEL_HEATMAP] ⚠️ Không thể sinh heatmap: {str(e_hm)}", exc_info=True)
+                # Không có heatmap từ model, main.py sẽ dùng fallback nếu có bệnh
             
             return results
             

@@ -416,12 +416,18 @@ public class AnalysisController : ControllerBase
 
         try
         {
+            _logger.LogInformation("Download request received: ExportId={ExportId}, UserId={UserId}", exportId, userId);
+            
             // Get export details
             var export = await _exportService.GetExportByIdAsync(exportId, userId);
             if (export == null)
             {
-                return NotFound(new { message = "Không tìm thấy báo cáo" });
+                _logger.LogWarning("Export not found: ExportId={ExportId}, UserId={UserId}. Possible reasons: export doesn't exist, user mismatch, or export deleted.", exportId, userId);
+                return NotFound(new { message = $"Không tìm thấy báo cáo với mã {exportId}. Có thể báo cáo không tồn tại hoặc bạn không có quyền truy cập." });
             }
+            
+            _logger.LogInformation("Export found: ExportId={ExportId}, ReportType={ReportType}, FileUrl={FileUrl}", 
+                export.ExportId, export.ReportType, export.FileUrl);
 
             // Download file from Cloudinary
             var fileBytes = await _exportService.DownloadExportFileAsync(exportId, userId);
