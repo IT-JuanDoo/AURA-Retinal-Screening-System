@@ -275,6 +275,73 @@ public class AnalysisService : IAnalysisService
         };
     }
 
+    /// <summary>
+    /// Get analysis result by ID without user ownership check (for doctor/admin export)
+    /// </summary>
+    public async Task<AnalysisResultDto?> GetAnalysisResultByIdAsync(string analysisId)
+    {
+        using var connection = new Npgsql.NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var sql = @"
+            SELECT 
+                ar.Id, ar.ImageId, ar.AnalysisStatus, ar.OverallRiskLevel, ar.RiskScore,
+                ar.HypertensionRisk, ar.HypertensionScore,
+                ar.DiabetesRisk, ar.DiabetesScore, ar.DiabeticRetinopathyDetected, ar.DiabeticRetinopathySeverity,
+                ar.StrokeRisk, ar.StrokeScore,
+                ar.VesselTortuosity, ar.VesselWidthVariation, ar.MicroaneurysmsCount,
+                ar.HemorrhagesDetected, ar.ExudatesDetected,
+                ar.AnnotatedImageUrl, ar.HeatmapUrl,
+                ar.AiConfidenceScore, ar.Recommendations, ar.HealthWarnings,
+                ar.ProcessingTimeSeconds, ar.AnalysisStartedAt, ar.AnalysisCompletedAt,
+                ar.DetailedFindings, ar.UserId
+            FROM analysis_results ar
+            INNER JOIN retinal_images ri ON ar.ImageId = ri.Id
+            WHERE ar.Id = @AnalysisId AND ar.IsDeleted = false";
+
+        using var command = new Npgsql.NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("AnalysisId", analysisId);
+
+        using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return null;
+        }
+
+        return new AnalysisResultDto
+        {
+            Id = reader.GetString(0),
+            ImageId = reader.GetString(1),
+            AnalysisStatus = reader.GetString(2),
+            OverallRiskLevel = reader.IsDBNull(3) ? null : reader.GetString(3),
+            RiskScore = reader.IsDBNull(4) ? null : reader.GetDecimal(4),
+            HypertensionRisk = reader.IsDBNull(5) ? null : reader.GetString(5),
+            HypertensionScore = reader.IsDBNull(6) ? null : reader.GetDecimal(6),
+            DiabetesRisk = reader.IsDBNull(7) ? null : reader.GetString(7),
+            DiabetesScore = reader.IsDBNull(8) ? null : reader.GetDecimal(8),
+            DiabeticRetinopathyDetected = reader.IsDBNull(9) ? false : reader.GetBoolean(9),
+            DiabeticRetinopathySeverity = reader.IsDBNull(10) ? null : reader.GetString(10),
+            StrokeRisk = reader.IsDBNull(11) ? null : reader.GetString(11),
+            StrokeScore = reader.IsDBNull(12) ? null : reader.GetDecimal(12),
+            VesselTortuosity = reader.IsDBNull(13) ? null : reader.GetDecimal(13),
+            VesselWidthVariation = reader.IsDBNull(14) ? null : reader.GetDecimal(14),
+            MicroaneurysmsCount = reader.IsDBNull(15) ? 0 : reader.GetInt32(15),
+            HemorrhagesDetected = reader.IsDBNull(16) ? false : reader.GetBoolean(16),
+            ExudatesDetected = reader.IsDBNull(17) ? false : reader.GetBoolean(17),
+            AnnotatedImageUrl = reader.IsDBNull(18) ? null : reader.GetString(18),
+            HeatmapUrl = reader.IsDBNull(19) ? null : reader.GetString(19),
+            AiConfidenceScore = reader.IsDBNull(20) ? null : reader.GetDecimal(20),
+            Recommendations = reader.IsDBNull(21) ? null : reader.GetString(21),
+            HealthWarnings = reader.IsDBNull(22) ? null : reader.GetString(22),
+            ProcessingTimeSeconds = reader.IsDBNull(23) ? null : reader.GetInt32(23),
+            AnalysisStartedAt = reader.IsDBNull(24) ? null : reader.GetDateTime(24),
+            AnalysisCompletedAt = reader.IsDBNull(25) ? null : reader.GetDateTime(25),
+            DetailedFindings = reader.IsDBNull(26) 
+                ? null 
+                : JsonSerializer.Deserialize<Dictionary<string, object>>(reader.GetString(26))
+        };
+    }
+
     private async Task<AnalysisResponseDto?> GetExistingAnalysisAsync(string imageId, string userId)
     {
         using var connection = new Npgsql.NpgsqlConnection(_connectionString);

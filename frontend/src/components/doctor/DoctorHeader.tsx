@@ -145,6 +145,19 @@ const DoctorHeader = () => {
               Thống kê
             </Link>
             <Link 
+              to="/doctor/exports"
+              className={`text-sm leading-normal flex items-center gap-2 transition-colors ${
+                isActive('/doctor/exports')
+                  ? 'text-blue-500 font-semibold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-500 font-medium'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Báo cáo
+            </Link>
+            <Link 
               to="/doctor/chat"
               className={`text-sm leading-normal flex items-center gap-2 transition-colors ${
                 isActive('/doctor/chat')

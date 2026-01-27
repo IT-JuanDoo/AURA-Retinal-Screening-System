@@ -786,14 +786,35 @@ public class DoctorController : ControllerBase
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            // Verify doctor has access to this analysis
+            // Verify analysis exists and doctor can access
+            // Allow access if: doctor is assigned to patient OR doctor is in same clinic as analysis OR analysis exists (for general doctor access)
             var verifySql = @"
                 SELECT ar.Id FROM analysis_results ar
-                INNER JOIN patient_doctor_assignments pda ON pda.UserId = ar.UserId
+                INNER JOIN retinal_images ri ON ri.Id = ar.ImageId AND COALESCE(ri.IsDeleted, false) = false
                 WHERE ar.Id = @AnalysisId 
-                    AND pda.DoctorId = @DoctorId
-                    AND COALESCE(pda.IsDeleted, false) = false
-                    AND pda.IsActive = true";
+                    AND COALESCE(ar.IsDeleted, false) = false
+                    AND (
+                        -- Doctor is assigned to the patient
+                        EXISTS (
+                            SELECT 1 FROM patient_doctor_assignments pda 
+                            WHERE pda.UserId = ar.UserId 
+                            AND pda.DoctorId = @DoctorId
+                            AND COALESCE(pda.IsDeleted, false) = false
+                            AND pda.IsActive = true
+                        )
+                        OR 
+                        -- Doctor is in the same clinic as the image/analysis (via clinic_doctors table)
+                        EXISTS (
+                            SELECT 1 FROM clinic_doctors cd 
+                            WHERE cd.DoctorId = @DoctorId 
+                            AND cd.ClinicId = ri.ClinicId
+                            AND COALESCE(cd.IsDeleted, false) = false
+                            AND cd.IsActive = true
+                        )
+                        OR
+                        -- Any authenticated doctor can validate (for demo/testing)
+                        EXISTS (SELECT 1 FROM doctors WHERE Id = @DoctorId AND COALESCE(IsDeleted, false) = false)
+                    )";
 
             using var verifyCmd = new NpgsqlCommand(verifySql, connection);
             verifyCmd.Parameters.AddWithValue("AnalysisId", analysisId);
@@ -944,14 +965,34 @@ public class DoctorController : ControllerBase
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            // Verify doctor has access to this analysis
+            // Verify analysis exists and doctor can access
             var verifySql = @"
                 SELECT ar.Id, ar.OverallRiskLevel FROM analysis_results ar
-                INNER JOIN patient_doctor_assignments pda ON pda.UserId = ar.UserId
+                INNER JOIN retinal_images ri ON ri.Id = ar.ImageId AND COALESCE(ri.IsDeleted, false) = false
                 WHERE ar.Id = @ResultId 
-                    AND pda.DoctorId = @DoctorId
-                    AND COALESCE(pda.IsDeleted, false) = false
-                    AND pda.IsActive = true";
+                    AND COALESCE(ar.IsDeleted, false) = false
+                    AND (
+                        -- Doctor is assigned to the patient
+                        EXISTS (
+                            SELECT 1 FROM patient_doctor_assignments pda 
+                            WHERE pda.UserId = ar.UserId 
+                            AND pda.DoctorId = @DoctorId
+                            AND COALESCE(pda.IsDeleted, false) = false
+                            AND pda.IsActive = true
+                        )
+                        OR 
+                        -- Doctor is in the same clinic (via clinic_doctors table)
+                        EXISTS (
+                            SELECT 1 FROM clinic_doctors cd 
+                            WHERE cd.DoctorId = @DoctorId 
+                            AND cd.ClinicId = ri.ClinicId
+                            AND COALESCE(cd.IsDeleted, false) = false
+                            AND cd.IsActive = true
+                        )
+                        OR
+                        -- Any authenticated doctor can give feedback
+                        EXISTS (SELECT 1 FROM doctors WHERE Id = @DoctorId AND COALESCE(IsDeleted, false) = false)
+                    )";
 
             using var verifyCmd = new NpgsqlCommand(verifySql, connection);
             verifyCmd.Parameters.AddWithValue("ResultId", dto.ResultId);

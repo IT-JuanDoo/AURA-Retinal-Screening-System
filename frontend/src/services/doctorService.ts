@@ -47,10 +47,20 @@ export interface DoctorAnalysisItem {
 }
 
 export interface ValidateAnalysisRequest {
-  isAccurate: boolean;
-  doctorNotes?: string;
+  analysisId: string;
+  validationStatus: 'Validated' | 'Corrected' | 'NeedsReview';
   correctedRiskLevel?: string;
-  correctedFindings?: string;
+  correctedRiskScore?: number;
+  validationNotes?: string;
+}
+
+export interface AIFeedbackRequest {
+  resultId: string;
+  feedbackType: 'Correct' | 'Incorrect' | 'PartiallyCorrect' | 'NeedsReview';
+  originalRiskLevel?: string;
+  correctedRiskLevel?: string;
+  feedbackNotes?: string;
+  useForTraining?: boolean;
 }
 
 const doctorService = {
@@ -121,15 +131,25 @@ const doctorService = {
   },
 
   /**
-   * Validate analysis result
+   * Validate analysis result (FR-15)
    */
-  async validateAnalysis(analysisId: string, request: ValidateAnalysisRequest): Promise<any> {
+  async validateAnalysis(analysisId: string, data: {
+    isAccurate: boolean;
+    doctorNotes?: string;
+    correctedRiskLevel?: string;
+  }): Promise<any> {
+    const request: ValidateAnalysisRequest = {
+      analysisId,
+      validationStatus: data.isAccurate ? 'Validated' : 'Corrected',
+      correctedRiskLevel: data.correctedRiskLevel,
+      validationNotes: data.doctorNotes,
+    };
     const response = await api.post<any>(`/doctors/analyses/${analysisId}/validate`, request);
     return response.data;
   },
 
   /**
-   * Submit AI feedback
+   * Submit AI feedback (FR-19)
    */
   async submitAiFeedback(feedback: {
     analysisId: string;
@@ -137,7 +157,13 @@ const doctorService = {
     feedbackContent: string;
     rating?: number;
   }): Promise<void> {
-    await api.post('/doctors/ai-feedback', feedback);
+    const request: AIFeedbackRequest = {
+      resultId: feedback.analysisId,
+      feedbackType: feedback.feedbackType as AIFeedbackRequest['feedbackType'],
+      feedbackNotes: feedback.feedbackContent,
+      useForTraining: true,
+    };
+    await api.post('/doctors/ai-feedback', request);
   },
 };
 

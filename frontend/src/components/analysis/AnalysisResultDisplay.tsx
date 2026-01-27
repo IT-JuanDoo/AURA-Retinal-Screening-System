@@ -2,10 +2,13 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnalysisResult } from '../../services/analysisService';
 import exportService from '../../services/exportService';
+import doctorService from '../../services/doctorService';
+import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
 
 interface AnalysisResultDisplayProps {
   result: AnalysisResult;
+  onValidated?: () => void;
 }
 
 const AI_CORE_BASE_URL =
@@ -17,8 +20,65 @@ const resolveImageUrl = (path?: string | null) => {
   return `${AI_CORE_BASE_URL}${path}`;
 };
 
-const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
+const AnalysisResultDisplay = ({ result, onValidated }: AnalysisResultDisplayProps) => {
+  const { user } = useAuthStore();
+  const isDoctor = user?.userType === 'Doctor';
   const [exporting, setExporting] = useState<string | null>(null);
+  
+  // FR-15: Validate/Correct findings
+  const [showValidateModal, setShowValidateModal] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [validationStatus, setValidationStatus] = useState<'Validated' | 'Corrected'>('Validated');
+  const [validationNotes, setValidationNotes] = useState('');
+  const [correctedRiskLevel, setCorrectedRiskLevel] = useState<string>(result.overallRiskLevel || 'Low');
+  
+  // FR-19: AI Feedback
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [feedbackType, setFeedbackType] = useState<'Correct' | 'Incorrect' | 'PartiallyCorrect' | 'NeedsReview'>('Correct');
+  const [feedbackNotes, setFeedbackNotes] = useState('');
+  const [feedbackRating, setFeedbackRating] = useState(5);
+
+  // FR-15: Handle validate findings
+  const handleValidateFindings = async () => {
+    try {
+      setValidating(true);
+      await doctorService.validateAnalysis(result.id, {
+        isAccurate: validationStatus === 'Validated',
+        doctorNotes: validationNotes,
+        correctedRiskLevel: validationStatus === 'Corrected' ? correctedRiskLevel : undefined,
+      });
+      toast.success(validationStatus === 'Validated' ? 'Đã xác nhận kết quả phân tích' : 'Đã sửa và lưu kết quả');
+      setShowValidateModal(false);
+      onValidated?.();
+    } catch (error: any) {
+      console.error('Error validating:', error);
+      toast.error(error?.response?.data?.message || 'Không thể xác nhận kết quả');
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  // FR-19: Handle submit AI feedback
+  const handleSubmitFeedback = async () => {
+    try {
+      setSubmittingFeedback(true);
+      await doctorService.submitAiFeedback({
+        analysisId: result.id,
+        feedbackType,
+        feedbackContent: feedbackNotes,
+        rating: feedbackRating,
+      });
+      toast.success('Đã gửi phản hồi AI thành công');
+      setShowFeedbackModal(false);
+      setFeedbackNotes('');
+    } catch (error: any) {
+      console.error('Error submitting feedback:', error);
+      toast.error(error?.response?.data?.message || 'Không thể gửi phản hồi');
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
 
   const handleExport = async (format: 'pdf' | 'csv' | 'json') => {
     try {
@@ -358,6 +418,39 @@ const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
         </div>
       )}
 
+      {/* Doctor Actions - FR-15 & FR-19 */}
+      {isDoctor && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl border border-blue-200 dark:border-blue-800 p-6 md:p-8 mb-6">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-3">
+            <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-2xl">verified_user</span>
+            Hành động Bác sĩ
+          </h2>
+          <p className="text-slate-600 dark:text-slate-400 mb-6">
+            Xác nhận hoặc sửa đổi kết quả phân tích AI, và gửi phản hồi để cải thiện độ chính xác
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => setShowValidateModal(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Xác nhận / Sửa kết quả
+            </button>
+            <button
+              onClick={() => setShowFeedbackModal(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+              Gửi Phản hồi AI
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Export Actions */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 md:p-8 mb-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
@@ -412,7 +505,7 @@ const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
         </div>
         <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
           <Link
-            to="/exports"
+            to={isDoctor ? "/doctor/exports" : "/exports"}
             className="text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
           >
             Xem lịch sử xuất báo cáo
@@ -423,6 +516,190 @@ const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
         </div>
       </div>
 
+      {/* FR-15: Validate/Correct Modal */}
+      {showValidateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl max-w-lg w-full">
+            <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Xác nhận / Sửa kết quả AI
+                </h2>
+                <button onClick={() => setShowValidateModal(false)} className="text-slate-400 hover:text-slate-600">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Trạng thái xác nhận</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={validationStatus === 'Validated'}
+                      onChange={() => setValidationStatus('Validated')}
+                      className="w-4 h-4 text-blue-600"
+                    />
+                    <span className="text-slate-700 dark:text-slate-300">Kết quả chính xác</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={validationStatus === 'Corrected'}
+                      onChange={() => setValidationStatus('Corrected')}
+                      className="w-4 h-4 text-orange-600"
+                    />
+                    <span className="text-slate-700 dark:text-slate-300">Cần sửa đổi</span>
+                  </label>
+                </div>
+              </div>
+
+              {validationStatus === 'Corrected' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Mức rủi ro chính xác</label>
+                  <select
+                    value={correctedRiskLevel}
+                    onChange={(e) => setCorrectedRiskLevel(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  >
+                    <option value="Low">Thấp</option>
+                    <option value="Medium">Trung bình</option>
+                    <option value="High">Cao</option>
+                    <option value="Critical">Nghiêm trọng</option>
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Ghi chú của bác sĩ</label>
+                <textarea
+                  value={validationNotes}
+                  onChange={(e) => setValidationNotes(e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-none"
+                  placeholder="Nhập ghi chú về kết quả phân tích..."
+                />
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
+              <button
+                onClick={() => setShowValidateModal(false)}
+                className="px-4 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleValidateFindings}
+                disabled={validating}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {validating && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+                {validationStatus === 'Validated' ? 'Xác nhận' : 'Lưu sửa đổi'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FR-19: AI Feedback Modal */}
+      {showFeedbackModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl max-w-lg w-full">
+            <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <svg className="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                  </svg>
+                  Phản hồi để cải thiện AI
+                </h2>
+                <button onClick={() => setShowFeedbackModal(false)} className="text-slate-400 hover:text-slate-600">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Loại phản hồi</label>
+                <select
+                  value={feedbackType}
+                  onChange={(e) => setFeedbackType(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                >
+                  <option value="Correct">Chính xác</option>
+                  <option value="PartiallyCorrect">Đúng một phần</option>
+                  <option value="Incorrect">Không chính xác</option>
+                  <option value="NeedsReview">Cần xem xét thêm</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Đánh giá chất lượng (1-5)
+                </label>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      onClick={() => setFeedbackRating(star)}
+                      className={`w-10 h-10 rounded-lg border-2 transition-all ${
+                        feedbackRating >= star
+                          ? 'bg-yellow-400 border-yellow-400 text-white'
+                          : 'border-slate-300 dark:border-slate-600 text-slate-400'
+                      }`}
+                    >
+                      <svg className="w-5 h-5 mx-auto" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Chi tiết phản hồi <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={feedbackNotes}
+                  onChange={(e) => setFeedbackNotes(e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-none"
+                  placeholder="Mô tả chi tiết về kết quả AI (ví dụ: AI phát hiện đúng nhưng mức độ rủi ro cần điều chỉnh)..."
+                />
+              </div>
+
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm text-slate-600 dark:text-slate-400">
+                <strong>Lưu ý:</strong> Phản hồi của bạn sẽ giúp cải thiện độ chính xác của mô hình AI trong các phân tích tiếp theo.
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
+              <button
+                onClick={() => setShowFeedbackModal(false)}
+                className="px-4 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleSubmitFeedback}
+                disabled={submittingFeedback || !feedbackNotes.trim()}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {submittingFeedback && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+                Gửi phản hồi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 };

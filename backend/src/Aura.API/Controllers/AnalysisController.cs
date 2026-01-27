@@ -199,11 +199,12 @@ public class AnalysisController : ControllerBase
 
         try
         {
+            var userType = GetCurrentUserType();
             var result = await _exportService.ExportToPdfAsync(
-                analysisId, userId, RequesterTypes.User, includeImages, includePatientInfo, language);
+                analysisId, userId, userType, includeImages, includePatientInfo, language);
             
-            _logger.LogInformation("PDF exported successfully: {ExportId} for analysis {AnalysisId}", 
-                result.ExportId, analysisId);
+            _logger.LogInformation("PDF exported successfully: {ExportId} for analysis {AnalysisId} by {UserType}", 
+                result.ExportId, analysisId, userType);
             
             return Ok(result);
         }
@@ -242,10 +243,11 @@ public class AnalysisController : ControllerBase
 
         try
         {
-            var result = await _exportService.ExportToCsvAsync(analysisId, userId, RequesterTypes.User, language);
+            var userType = GetCurrentUserType();
+            var result = await _exportService.ExportToCsvAsync(analysisId, userId, userType, language);
             
-            _logger.LogInformation("CSV exported successfully: {ExportId} for analysis {AnalysisId}", 
-                result.ExportId, analysisId);
+            _logger.LogInformation("CSV exported successfully: {ExportId} for analysis {AnalysisId} by {UserType}", 
+                result.ExportId, analysisId, userType);
             
             return Ok(result);
         }
@@ -278,10 +280,11 @@ public class AnalysisController : ControllerBase
 
         try
         {
-            var result = await _exportService.ExportToJsonAsync(analysisId, userId, RequesterTypes.User);
+            var userType = GetCurrentUserType();
+            var result = await _exportService.ExportToJsonAsync(analysisId, userId, userType);
             
-            _logger.LogInformation("JSON exported successfully: {ExportId} for analysis {AnalysisId}", 
-                result.ExportId, analysisId);
+            _logger.LogInformation("JSON exported successfully: {ExportId} for analysis {AnalysisId} by {UserType}", 
+                result.ExportId, analysisId, userType);
             
             return Ok(result);
         }
@@ -323,11 +326,12 @@ public class AnalysisController : ControllerBase
 
         try
         {
+            var userType = GetCurrentUserType();
             var result = await _exportService.ExportBatchToCsvAsync(
-                request.AnalysisResultIds, userId, RequesterTypes.User, request.Language);
+                request.AnalysisResultIds, userId, userType, request.Language);
             
-            _logger.LogInformation("Batch export completed: {SuccessCount}/{TotalRequested} for user {UserId}", 
-                result.SuccessCount, result.TotalRequested, userId);
+            _logger.LogInformation("Batch export completed: {SuccessCount}/{TotalRequested} for user {UserId} ({UserType})", 
+                result.SuccessCount, result.TotalRequested, userId, userType);
             
             return Ok(result);
         }
@@ -534,6 +538,30 @@ public class AnalysisController : ControllerBase
     private string? GetCurrentUserId()
     {
         return User.FindFirstValue(ClaimTypes.NameIdentifier);
+    }
+
+    /// <summary>
+    /// Lấy loại người dùng từ JWT token (User/Doctor/Admin)
+    /// </summary>
+    private string GetCurrentUserType()
+    {
+        var userType = User.FindFirstValue("userType") 
+            ?? User.FindFirstValue("user_type")
+            ?? User.FindFirstValue(ClaimTypes.Role);
+        
+        // Log for debugging
+        _logger.LogInformation("GetCurrentUserType: Raw claim value = {RawUserType}", userType ?? "NULL");
+        
+        // Map to RequesterTypes
+        var mappedType = userType?.ToLower() switch
+        {
+            "doctor" => RequesterTypes.Doctor,
+            "admin" => RequesterTypes.Admin,
+            _ => RequesterTypes.User
+        };
+        
+        _logger.LogInformation("GetCurrentUserType: Mapped to {MappedType}", mappedType);
+        return mappedType;
     }
 
     /// <summary>

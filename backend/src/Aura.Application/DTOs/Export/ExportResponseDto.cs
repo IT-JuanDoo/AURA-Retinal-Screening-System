@@ -56,6 +56,11 @@ public class ExportResponseDto
     public int DownloadCount { get; set; }
     
     /// <summary>
+    /// Loại người yêu cầu (User, Doctor, Admin)
+    /// </summary>
+    public string RequestedByType { get; set; } = "User";
+    
+    /// <summary>
     /// Trạng thái: Available, Expired, Deleted
     /// </summary>
     public string Status => GetStatus();

@@ -86,14 +86,31 @@ public class ExportService : IExportService
 
         try
         {
-            _logger?.LogInformation("Starting PDF export for analysis {AnalysisId} by user {UserId}", 
-                analysisResultId, userId);
+            _logger?.LogInformation("Starting PDF export for analysis {AnalysisId} by user {UserId}, Type: {Type}", 
+                analysisResultId, userId, requestedByType);
 
-            // Get analysis result
-            var analysisResult = await GetAnalysisResultOrThrowAsync(analysisResultId, userId);
+            // Get analysis result (doctors can access any analysis)
+            var analysisResult = await GetAnalysisResultOrThrowAsync(analysisResultId, userId, requestedByType);
             
-            // Get user info if needed
-            var userInfo = includePatientInfo ? await GetUserInfoAsync(userId) : null;
+            // Get user info - for doctors, get the patient's info from the analysis
+            UserInfoForExport? userInfo = null;
+            if (includePatientInfo)
+            {
+                // If doctor, get patient info from analysis result's user
+                if (requestedByType == RequesterTypes.Doctor || requestedByType == RequesterTypes.Admin)
+                {
+                    // Get patient's userId from analysis
+                    var patientUserId = await GetAnalysisOwnerUserIdAsync(analysisResultId);
+                    if (!string.IsNullOrEmpty(patientUserId))
+                    {
+                        userInfo = await GetUserInfoAsync(patientUserId);
+                    }
+                }
+                else
+                {
+                    userInfo = await GetUserInfoAsync(userId);
+                }
+            }
 
             // Download images if needed (before PDF generation)
             byte[]? annotatedImageBytes = null;
@@ -182,10 +199,10 @@ public class ExportService : IExportService
 
         try
         {
-            _logger?.LogInformation("Starting CSV export for analysis {AnalysisId} by user {UserId}", 
-                analysisResultId, userId);
+            _logger?.LogInformation("Starting CSV export for analysis {AnalysisId} by user {UserId}, Type: {Type}", 
+                analysisResultId, userId, requestedByType);
 
-            var analysisResult = await GetAnalysisResultOrThrowAsync(analysisResultId, userId);
+            var analysisResult = await GetAnalysisResultOrThrowAsync(analysisResultId, userId, requestedByType);
             
             var csvBytes = GenerateCsv(new[] { analysisResult }, language);
             var fileName = GenerateFileName(analysisResultId, "csv");
@@ -219,10 +236,10 @@ public class ExportService : IExportService
 
         try
         {
-            _logger?.LogInformation("Starting JSON export for analysis {AnalysisId} by user {UserId}", 
-                analysisResultId, userId);
+            _logger?.LogInformation("Starting JSON export for analysis {AnalysisId} by user {UserId}, Type: {Type}", 
+                analysisResultId, userId, requestedByType);
 
-            var analysisResult = await GetAnalysisResultOrThrowAsync(analysisResultId, userId);
+            var analysisResult = await GetAnalysisResultOrThrowAsync(analysisResultId, userId, requestedByType);
             
             var jsonOptions = new JsonSerializerOptions 
             { 
@@ -352,7 +369,7 @@ public class ExportService : IExportService
 
             var sql = @"
                 SELECT Id, ResultId, ReportType, FilePath, FileUrl, FileSize, 
-                       ExportedAt, ExpiresAt, DownloadCount
+                       ExportedAt, ExpiresAt, DownloadCount, RequestedByType
                 FROM exported_reports
                 WHERE RequestedBy = @UserId AND IsDeleted = false
                 ORDER BY ExportedAt DESC
@@ -378,7 +395,8 @@ public class ExportService : IExportService
                     FileSize = reader.IsDBNull(5) ? 0 : reader.GetInt64(5),
                     ExportedAt = reader.GetDateTime(6),
                     ExpiresAt = reader.IsDBNull(7) ? null : reader.GetDateTime(7),
-                    DownloadCount = reader.IsDBNull(8) ? 0 : reader.GetInt32(8)
+                    DownloadCount = reader.IsDBNull(8) ? 0 : reader.GetInt32(8),
+                    RequestedByType = reader.IsDBNull(9) ? "User" : reader.GetString(9)
                 });
             }
 
@@ -405,7 +423,7 @@ public class ExportService : IExportService
 
             var sql = @"
                 SELECT Id, ResultId, ReportType, FilePath, FileUrl, FileSize, 
-                       ExportedAt, ExpiresAt, DownloadCount
+                       ExportedAt, ExpiresAt, DownloadCount, RequestedByType
                 FROM exported_reports
                 WHERE Id = @ExportId AND RequestedBy = @UserId AND IsDeleted = false";
 
@@ -452,7 +470,8 @@ public class ExportService : IExportService
                 FileSize = reader.IsDBNull(5) ? 0 : reader.GetInt64(5),
                 ExportedAt = reader.GetDateTime(6),
                 ExpiresAt = reader.IsDBNull(7) ? null : reader.GetDateTime(7),
-                DownloadCount = reader.IsDBNull(8) ? 0 : reader.GetInt32(8)
+                DownloadCount = reader.IsDBNull(8) ? 0 : reader.GetInt32(8),
+                RequestedByType = reader.IsDBNull(9) ? "User" : reader.GetString(9)
             };
         }
         catch (Exception ex)
@@ -714,9 +733,20 @@ public class ExportService : IExportService
             throw new ArgumentException($"Invalid requester type: {requestedByType}", nameof(requestedByType));
     }
 
-    private async Task<AnalysisResultDto> GetAnalysisResultOrThrowAsync(string analysisResultId, string userId)
+    private async Task<AnalysisResultDto> GetAnalysisResultOrThrowAsync(string analysisResultId, string userId, string? requestedByType = null)
     {
-        var result = await _analysisService.GetAnalysisResultAsync(analysisResultId, userId);
+        AnalysisResultDto? result = null;
+        
+        // For doctors/admins, allow access without strict user ownership check
+        if (requestedByType == RequesterTypes.Doctor || requestedByType == RequesterTypes.Admin)
+        {
+            result = await _analysisService.GetAnalysisResultByIdAsync(analysisResultId);
+        }
+        else
+        {
+            // For regular users, check ownership
+            result = await _analysisService.GetAnalysisResultAsync(analysisResultId, userId);
+        }
         
         if (result == null)
         {
@@ -1433,11 +1463,21 @@ public class ExportService : IExportService
             // Default language: Vietnamese (phù hợp yêu cầu dự án)
             var language = "vi";
 
-            // Lấy lại kết quả phân tích
-            var analysisResult = await GetAnalysisResultOrThrowAsync(export.AnalysisResultId, userId);
+            // Lấy lại kết quả phân tích - sử dụng RequestedByType từ export record
+            var requestedByType = export.RequestedByType ?? RequesterTypes.User;
+            var analysisResult = await GetAnalysisResultOrThrowAsync(export.AnalysisResultId, userId, requestedByType);
 
-            // Có thể lấy thông tin bệnh nhân (không bắt buộc)
-            var userInfo = await GetUserInfoAsync(userId);
+            // Lấy thông tin bệnh nhân (nếu doctor/admin thì lấy thông tin owner của analysis)
+            string userIdForInfo = userId;
+            if (requestedByType == RequesterTypes.Doctor || requestedByType == RequesterTypes.Admin)
+            {
+                var ownerUserId = await GetAnalysisOwnerUserIdAsync(export.AnalysisResultId);
+                if (!string.IsNullOrEmpty(ownerUserId))
+                {
+                    userIdForInfo = ownerUserId;
+                }
+            }
+            var userInfo = await GetUserInfoAsync(userIdForInfo);
 
             var reportType = (export.ReportType ?? string.Empty).Trim().ToUpperInvariant();
             switch (reportType)
@@ -1723,6 +1763,38 @@ public class ExportService : IExportService
             Yes = "Yes",
             No = "No"
         };
+    }
+
+    #endregion
+
+    #region Additional Helper Methods
+
+    /// <summary>
+    /// Get the owner userId of an analysis result (for doctor exports to get patient info)
+    /// </summary>
+    private async Task<string?> GetAnalysisOwnerUserIdAsync(string analysisResultId)
+    {
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var sql = @"
+                SELECT ar.UserId 
+                FROM analysis_results ar
+                WHERE ar.Id = @AnalysisId AND ar.IsDeleted = false";
+
+            using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("AnalysisId", analysisResultId);
+
+            var result = await command.ExecuteScalarAsync();
+            return result as string;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Could not retrieve analysis owner for {AnalysisId}", analysisResultId);
+            return null;
+        }
     }
 
     #endregion

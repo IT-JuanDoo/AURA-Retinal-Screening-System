@@ -214,7 +214,32 @@ public class MedicalNotesController : ControllerBase
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            var sql = @"
+            // Build dynamic SQL based on provided filters
+            var whereClauses = new List<string> { "mn.DoctorId = @DoctorId", "COALESCE(mn.IsDeleted, false) = false" };
+            var parameters = new List<NpgsqlParameter>
+            {
+                new NpgsqlParameter("DoctorId", doctorId),
+                new NpgsqlParameter("Limit", limit),
+                new NpgsqlParameter("Offset", offset)
+            };
+
+            if (!string.IsNullOrEmpty(resultId))
+            {
+                whereClauses.Add("mn.ResultId = @ResultId");
+                parameters.Add(new NpgsqlParameter("ResultId", resultId));
+            }
+            if (!string.IsNullOrEmpty(patientUserId))
+            {
+                whereClauses.Add("mn.PatientUserId = @PatientUserId");
+                parameters.Add(new NpgsqlParameter("PatientUserId", patientUserId));
+            }
+            if (!string.IsNullOrEmpty(noteType))
+            {
+                whereClauses.Add("mn.NoteType = @NoteType");
+                parameters.Add(new NpgsqlParameter("NoteType", noteType));
+            }
+
+            var sql = $@"
                 SELECT mn.Id, mn.ResultId, mn.PatientUserId, mn.DoctorId, 
                        COALESCE(d.FirstName || ' ' || d.LastName, d.Email) as DoctorName,
                        COALESCE(u.FirstName || ' ' || u.LastName, u.Email) as PatientName,
@@ -225,21 +250,12 @@ public class MedicalNotesController : ControllerBase
                 FROM medical_notes mn
                 INNER JOIN doctors d ON d.Id = mn.DoctorId
                 LEFT JOIN users u ON u.Id = mn.PatientUserId
-                WHERE mn.DoctorId = @DoctorId
-                    AND COALESCE(mn.IsDeleted, false) = false
-                    AND (@ResultId IS NULL OR mn.ResultId = @ResultId)
-                    AND (@PatientUserId IS NULL OR mn.PatientUserId = @PatientUserId)
-                    AND (@NoteType IS NULL OR mn.NoteType = @NoteType)
+                WHERE {string.Join(" AND ", whereClauses)}
                 ORDER BY mn.CreatedDate DESC, mn.IsImportant DESC
                 LIMIT @Limit OFFSET @Offset";
 
             using var command = new NpgsqlCommand(sql, connection);
-            command.Parameters.AddWithValue("DoctorId", doctorId);
-            command.Parameters.AddWithValue("ResultId", (object?)resultId ?? DBNull.Value);
-            command.Parameters.AddWithValue("PatientUserId", (object?)patientUserId ?? DBNull.Value);
-            command.Parameters.AddWithValue("NoteType", (object?)noteType ?? DBNull.Value);
-            command.Parameters.AddWithValue("Limit", limit);
-            command.Parameters.AddWithValue("Offset", offset);
+            command.Parameters.AddRange(parameters.ToArray());
 
             var notes = new List<MedicalNoteDto>();
             using var reader = await command.ExecuteReaderAsync();

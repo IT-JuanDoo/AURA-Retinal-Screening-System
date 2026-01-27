@@ -34,6 +34,7 @@ import MedicalNotesPage from "../pages/doctor/MedicalNotesPage";
 import DoctorStatisticsPage from "../pages/doctor/DoctorStatisticsPage";
 import DoctorPatientProfilePage from "../pages/doctor/PatientProfilePage";
 import DoctorChatPage from "../pages/doctor/DoctorChatPage";
+import DoctorExportHistoryPage from "../pages/doctor/DoctorExportHistoryPage";
 import { useAuthStore } from "../store/authStore";
 import { useAdminAuthStore } from "../store/adminAuthStore";
 
@@ -387,6 +388,14 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute>
               <DoctorChatPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/doctor/exports"
+          element={
+            <ProtectedRoute>
+              <DoctorExportHistoryPage />
             </ProtectedRoute>
           }
         />
