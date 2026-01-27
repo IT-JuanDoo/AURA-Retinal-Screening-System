@@ -110,14 +110,118 @@ docker-compose logs -f backend
   - URL: `http://localhost:9090`  
   - Đã cấu hình scrape các service: `backend`, `auth-service`, `user-service`, `image-service`, `analysis-service`, `notification-service`, `admin-service`, `aicore`.
 
-- **Grafana** (dashboard)  
-  - URL: `http://localhost:3001`  
+- **Grafana** (dashboard visualization)  
+  - URL: `http://localhost:3000`  
   - Username: `admin`  
-  - Password: `admin123`  
-  - Datasource mặc định: **Prometheus** (`http://prometheus:9090`).  
-  - Test nhanh:
-    1. Vào **Connections → Data sources → Prometheus → Save & test**.
-    2. Vào **Explore**, chọn datasource Prometheus, query `up` → Run query để xem tình trạng các service.
+  - Password: `admin` (hoặc `grafana_password_2024` nếu có cấu hình)  
+  - **Hai cách sử dụng Grafana:**
+
+    **Cách 1: Visualize Prometheus Metrics (Monitoring System Health)**
+    - Datasource: **Prometheus** (`http://prometheus:9090`)
+    - Các ví dụ dashboard:
+      - CPU, Memory, Disk usage của containers
+      - Request rate, Response time của backend services
+      - Database connection pool status
+      - Query: `up` (xem tình trạng các service), `container_memory_usage_bytes`, `http_requests_total`
+    - Setup:
+      1. Vào **Home → Data sources** (hoặc **Settings → Data sources**)
+      2. Click **+ Add data source** → **Prometheus**
+      3. URL: `http://prometheus:9090`
+      4. Click **Save & Test**
+      5. Tạo dashboard mới với các metric từ Prometheus
+
+    **Cách 2: Visualize PostgreSQL Data (Analytics Dashboard) - NỚ CHỦ YẾU**
+    - Datasource: **PostgreSQL** (kết nối trực tiếp database AURA)
+    - Các ví dụ dashboard:
+      - Tổng số analysis, user, doctor
+      - Risk score distribution
+      - Disease statistics (Hypertension, Diabetes, Stroke Risk)
+      - Analysis trends theo thời gian
+    - Setup:
+      1. Vào **Home → Data sources** → **+ Add data source** → **PostgreSQL**
+      2. Cấu hình:
+         - **Name**: `AURA PostgreSQL`
+         - **Host**: `postgres:5432` (nội bộ Docker), hoặc `localhost:5432` (từ máy ngoài)
+         - **Database**: `aura_db`
+         - **User**: `aura_user`
+         - **Password**: `aura_password_2024`
+         - **SSL Mode**: `disable`
+      3. Click **Save & Test** → Kiểm tra "Database connection ok"
+      4. Tạo dashboard với SQL queries
+
+    **Panel Examples cho PostgreSQL:**
+
+    **Panel 1: Tổng số Analysis**
+    ```sql
+    SELECT COUNT(*) as total_analysis FROM analysis_results WHERE isdeleted = false;
+    ```
+    - Visualization: **Stat** hoặc **Gauge**
+
+    **Panel 2: Risk Score Distribution**
+    ```sql
+    SELECT riskscore, COUNT(*) as count 
+    FROM analysis_results 
+    WHERE isdeleted = false 
+    GROUP BY riskscore 
+    ORDER BY riskscore;
+    ```
+    - Visualization: **Bar chart** hoặc **Pie chart**
+
+    **Panel 3: Disease Statistics**
+    ```sql
+    SELECT 
+        'Hypertension' as disease,
+        COUNT(CASE WHEN hypertensionconcern = true THEN 1 END) as count
+    FROM analysis_results
+    WHERE isdeleted = false
+    UNION ALL
+    SELECT 
+        'Diabetes' as disease,
+        COUNT(CASE WHEN diabetes != 'None' THEN 1 END) as count
+    FROM analysis_results
+    WHERE isdeleted = false
+    UNION ALL
+    SELECT 
+        'Stroke Risk' as disease,
+        COUNT(CASE WHEN strokeconcern > 0 THEN 1 END) as count
+    FROM analysis_results
+    WHERE isdeleted = false;
+    ```
+    - Visualization: **Pie chart** hoặc **Table**
+
+    **Panel 4: Analysis Trend (theo ngày)**
+    ```sql
+    SELECT 
+        DATE(createddate) as date,
+        COUNT(*) as analysis_count
+    FROM analysis_results
+    WHERE isdeleted = false AND createddate >= CURRENT_DATE - INTERVAL '30 days'
+    GROUP BY DATE(createddate)
+    ORDER BY date;
+    ```
+    - Visualization: **Time series** hoặc **Line chart**
+
+    **Panel 5: Average Risk Score by User**
+    ```sql
+    SELECT 
+        userid,
+        ROUND(AVG(riskscore), 2) as avg_risk_score,
+        COUNT(*) as analysis_count
+    FROM analysis_results
+    WHERE isdeleted = false
+    GROUP BY userid
+    ORDER BY avg_risk_score DESC
+    LIMIT 10;
+    ```
+    - Visualization: **Table**
+
+    **Hướng dẫn tạo Panel:**
+    1. Vào Dashboard → **+ Add panel**
+    2. Chọn **Data source**: `AURA PostgreSQL`
+    3. Dán SQL query vào **SQL editor**
+    4. Chọn **Visualization type** (Stat, Gauge, Bar chart, Pie chart, Time series, Table, etc.)
+    5. Customize axes, colors, legend
+    6. Bấm **Save**
 
 ### 5. AI Core & Các service khác
 
