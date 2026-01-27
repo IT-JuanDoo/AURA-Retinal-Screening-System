@@ -101,6 +101,34 @@ const PatientReportsPage = () => {
     }
   };
 
+  const getStatusLabel = (status?: string) => {
+    switch (status) {
+      case "Completed":
+        return "Hoàn thành";
+      case "Processing":
+        return "Đang xử lý";
+      case "Failed":
+        return "Thất bại";
+      default:
+        return "Chưa xác định";
+    }
+  };
+
+  const getRiskLevelLabel = (risk?: string) => {
+    switch (risk) {
+      case "Low":
+        return "Thấp";
+      case "Medium":
+        return "Trung bình";
+      case "High":
+        return "Cao";
+      case "Critical":
+        return "Nghiêm trọng";
+      default:
+        return "Chưa xác định";
+    }
+  };
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A";
     const date = new Date(dateString);
@@ -275,7 +303,7 @@ const PatientReportsPage = () => {
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  Timeline
+                  Dòng thời gian
                 </span>
               </button>
               <button
@@ -519,7 +547,7 @@ const PatientReportsPage = () => {
                                     report.analysisStatus
                                   )}`}
                                 >
-                                  {report.analysisStatus}
+                                  {getStatusLabel(report.analysisStatus)}
                                 </span>
                               </div>
                               <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
@@ -533,12 +561,12 @@ const PatientReportsPage = () => {
                                 )}
                                 {report.hypertensionRisk && (
                                   <span className="text-slate-600 dark:text-slate-400">
-                                    Tim mạch: <span className="font-semibold text-slate-900 dark:text-white">{report.hypertensionRisk}</span>
+                                    Tim mạch: <span className="font-semibold text-slate-900 dark:text-white">{getRiskLevelLabel(report.hypertensionRisk)}</span>
                                   </span>
                                 )}
                                 {report.diabetesRisk && (
                                   <span className="text-slate-600 dark:text-slate-400">
-                                    Tiểu đường: <span className="font-semibold text-slate-900 dark:text-white">{report.diabetesRisk}</span>
+                                    Tiểu đường: <span className="font-semibold text-slate-900 dark:text-white">{getRiskLevelLabel(report.diabetesRisk)}</span>
                                   </span>
                                 )}
                               </div>
