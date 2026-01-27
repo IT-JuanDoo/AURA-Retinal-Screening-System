@@ -144,7 +144,7 @@ const PatientHistoryTimeline = ({ patientId }: PatientHistoryTimelineProps) => {
                       )}
                     </div>
                     <Link
-                      to={`/analysis/${analysis.id}`}
+                      to={`/doctor/analyses/${analysis.id}`}
                       className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0"
                     >
                       Xem chi tiết

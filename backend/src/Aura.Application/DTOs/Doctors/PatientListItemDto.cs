@@ -13,7 +13,10 @@ public class PatientListItemDto
     public DateTime? Dob { get; set; }
     public string? Gender { get; set; }
     public string? ProfileImageUrl { get; set; }
-    public DateTime AssignedAt { get; set; }
+    /// <summary>
+    /// Ngày bác sĩ được phân công cho bệnh nhân (có thể null nếu chưa assign)
+    /// </summary>
+    public DateTime? AssignedAt { get; set; }
     public string? ClinicId { get; set; }
     public string? ClinicName { get; set; }
     public int AnalysisCount { get; set; }
