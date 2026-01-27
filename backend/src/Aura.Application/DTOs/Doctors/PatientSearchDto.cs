@@ -85,7 +85,10 @@ public class PatientSearchResultDto
     public DateTime? Dob { get; set; }
     public string? Gender { get; set; }
     public string? ProfileImageUrl { get; set; }
-    public DateTime AssignedAt { get; set; }
+    /// <summary>
+    /// Ngày được gán cho bác sĩ (có thể null nếu chưa được assign)
+    /// </summary>
+    public DateTime? AssignedAt { get; set; }
     public string? ClinicId { get; set; }
     public string? ClinicName { get; set; }
     public int AnalysisCount { get; set; }

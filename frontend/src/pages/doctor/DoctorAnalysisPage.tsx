@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import DoctorHeader from '../../components/doctor/DoctorHeader';
 import doctorService from '../../services/doctorService';
+import AnalysisResultDisplay from '../../components/analysis/AnalysisResultDisplay';
+import { AnalysisResult } from '../../services/analysisService';
+import toast from 'react-hot-toast';
 
 interface AnalysisItem {
   id: string;
@@ -22,14 +25,26 @@ interface AnalysisItem {
 
 const DoctorAnalysisPage = () => {
   const navigate = useNavigate();
+  const { analysisId } = useParams<{ analysisId?: string }>();
   const [analyses, setAnalyses] = useState<AnalysisItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [riskFilter, setRiskFilter] = useState<string>('all');
+  const [analysisDetail, setAnalysisDetail] = useState<AnalysisResult | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
 
   useEffect(() => {
+    // Always load list for sidebar/stats
     loadAnalyses();
   }, []);
+
+  useEffect(() => {
+    if (analysisId) {
+      loadAnalysisDetail(analysisId);
+    } else {
+      setAnalysisDetail(null);
+    }
+  }, [analysisId]);
 
   const loadAnalyses = async () => {
     try {
@@ -42,6 +57,20 @@ const DoctorAnalysisPage = () => {
       setAnalyses([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAnalysisDetail = async (id: string) => {
+    try {
+      setLoadingDetail(true);
+      const result = await doctorService.getAnalysisById(id);
+      setAnalysisDetail(result as AnalysisResult);
+    } catch (error: any) {
+      console.error('Error loading analysis detail:', error);
+      toast.error(error?.response?.data?.message || 'Lỗi khi tải chi tiết phân tích');
+      setAnalysisDetail(null);
+    } finally {
+      setLoadingDetail(false);
     }
   };
 
@@ -152,6 +181,45 @@ const DoctorAnalysisPage = () => {
     highRisk: analyses.filter(a => a.overallRiskLevel?.toLowerCase() === 'high' || a.overallRiskLevel?.toLowerCase() === 'critical').length,
   };
 
+  // Detail view when analysisId is present
+  if (analysisId) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+        <DoctorHeader />
+
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <button
+            onClick={() => navigate('/doctor/analyses')}
+            className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 mb-4 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Quay lại danh sách phân tích
+          </button>
+
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-6">
+            Chi tiết phân tích AI
+          </h1>
+
+          {loadingDetail || !analysisDetail ? (
+            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-12 flex justify-center">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-4 text-slate-600 dark:text-slate-400">
+                  Đang tải chi tiết phân tích...
+                </p>
+              </div>
+            </div>
+          ) : (
+            <AnalysisResultDisplay result={analysisDetail} />
+          )}
+        </main>
+      </div>
+    );
+  }
+
+  // List view (no specific analysis selected)
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <DoctorHeader />

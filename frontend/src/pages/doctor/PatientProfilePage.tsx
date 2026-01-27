@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import doctorService from '../../services/doctorService';
+import patientAssignmentService from '../../services/patientAssignmentService';
 import toast from 'react-hot-toast';
 import DoctorHeader from '../../components/doctor/DoctorHeader';
 import PatientHistoryTimeline from '../../components/doctor/PatientHistoryTimeline';
@@ -10,6 +11,7 @@ const PatientProfilePage = () => {
   const navigate = useNavigate();
   const [patient, setPatient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
     if (patientId) {
@@ -27,6 +29,24 @@ const PatientProfilePage = () => {
       toast.error(error?.response?.data?.message || 'Lỗi khi tải thông tin bệnh nhân');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAssignPatient = async () => {
+    if (!patientId) return;
+    try {
+      setAssigning(true);
+      await patientAssignmentService.createAssignment({
+        userId: patientId,
+        clinicId: patient?.clinicId,
+      });
+      toast.success('Đã gán bệnh nhân cho bác sĩ hiện tại');
+      await loadPatientData();
+    } catch (error: any) {
+      console.error('Error assigning patient:', error);
+      toast.error(error?.response?.data?.message || 'Lỗi khi gán bệnh nhân');
+    } finally {
+      setAssigning(false);
     }
   };
 
@@ -80,19 +100,36 @@ const PatientProfilePage = () => {
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-6">
-          <button
-            onClick={() => navigate('/doctor/dashboard')}
-            className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 mb-4 flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Quay lại
-          </button>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
-            Hồ sơ Bệnh nhân
-          </h1>
+        <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <button
+              onClick={() => navigate('/doctor/dashboard')}
+              className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 mb-2 flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Quay lại
+            </button>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+              Hồ sơ Bệnh nhân
+            </h1>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {patient?.assignedAt ? (
+              <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                Đã được phân công cho bác sĩ hiện tại
+              </span>
+            ) : (
+              <button
+                onClick={handleAssignPatient}
+                disabled={assigning}
+                className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {assigning ? 'Đang gán...' : 'Gán bệnh nhân cho tôi'}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

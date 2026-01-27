@@ -32,10 +32,13 @@ public class PatientSearchService : IPatientSearchService
             await connection.OpenAsync();
 
             // Build WHERE clause
+            // NOTE: We intentionally do NOT filter by DoctorId here so that
+            // doctors có thể tìm tất cả bệnh nhân trong hệ thống.
+            // Quan hệ assign doctor-patient (patient_doctor_assignments)
+            // vẫn được LEFT JOIN để lấy thông tin AssignedAt/Clinic, nhưng
+            // không giới hạn kết quả chỉ những bệnh nhân đã được assign.
             var whereConditions = new List<string>
             {
-                "pda.DoctorId = @DoctorId",
-                "COALESCE(pda.IsDeleted, false) = false",
                 "COALESCE(u.IsDeleted, false) = false"
             };
 
@@ -44,7 +47,7 @@ public class PatientSearchService : IPatientSearchService
                 new NpgsqlParameter("DoctorId", doctorId)
             };
 
-            // Search query filter
+            // Search query filter (ID, name, email, phone)
             if (!string.IsNullOrWhiteSpace(searchDto.SearchQuery))
             {
                 whereConditions.Add(@"
@@ -53,19 +56,20 @@ public class PatientSearchService : IPatientSearchService
                         LOWER(u.FirstName) LIKE @SearchQuery OR
                         LOWER(u.LastName) LIKE @SearchQuery OR
                         LOWER(u.Email) LIKE @SearchQuery OR
+                        LOWER(u.Phone) LIKE @SearchQuery OR
                         LOWER(CONCAT(u.FirstName, ' ', u.LastName)) LIKE @SearchQuery
                     )");
                 parameters.Add(new NpgsqlParameter("SearchQuery", $"%{searchDto.SearchQuery.ToLower()}%"));
             }
 
-            // Risk level filter
+            // Risk level filter (dùng latest_risk CTE)
             if (!string.IsNullOrWhiteSpace(searchDto.RiskLevel))
             {
                 whereConditions.Add("latest_risk.OverallRiskLevel = @RiskLevel");
                 parameters.Add(new NpgsqlParameter("RiskLevel", searchDto.RiskLevel));
             }
 
-            // Clinic filter
+            // Clinic filter (lọc theo clinic trong assignment nếu có)
             if (!string.IsNullOrWhiteSpace(searchDto.ClinicId))
             {
                 whereConditions.Add("pda.ClinicId = @ClinicId");
@@ -110,8 +114,11 @@ public class PatientSearchService : IPatientSearchService
                     latest_risk.OverallRiskLevel as LatestRiskLevel,
                     latest_risk.RiskScore as LatestRiskScore,
                     latest_risk.AnalysisCompletedAt as LatestAnalysisDate
-                FROM patient_doctor_assignments pda
-                INNER JOIN users u ON u.Id = pda.UserId
+                FROM users u
+                LEFT JOIN patient_doctor_assignments pda 
+                    ON pda.UserId = u.Id 
+                    AND pda.DoctorId = @DoctorId 
+                    AND COALESCE(pda.IsDeleted, false) = false
                 LEFT JOIN clinics c ON c.Id = pda.ClinicId
                 LEFT JOIN analysis_results ar ON ar.UserId = u.Id
                 LEFT JOIN medical_notes mn ON mn.DoctorId = @DoctorId AND mn.ResultId = ar.Id
@@ -128,8 +135,6 @@ public class PatientSearchService : IPatientSearchService
             // Get total count - rebuild where clause without latest_risk reference for count
             var countWhereConditions = new List<string>
             {
-                "pda.DoctorId = @DoctorId",
-                "COALESCE(pda.IsDeleted, false) = false",
                 "COALESCE(u.IsDeleted, false) = false"
             };
 
@@ -138,7 +143,7 @@ public class PatientSearchService : IPatientSearchService
                 new NpgsqlParameter("DoctorId", doctorId)
             };
 
-            // Search query filter
+            // Search query filter (ID, name, email, phone)
             if (!string.IsNullOrWhiteSpace(searchDto.SearchQuery))
             {
                 countWhereConditions.Add(@"
@@ -147,6 +152,7 @@ public class PatientSearchService : IPatientSearchService
                         LOWER(u.FirstName) LIKE @SearchQuery OR
                         LOWER(u.LastName) LIKE @SearchQuery OR
                         LOWER(u.Email) LIKE @SearchQuery OR
+                        LOWER(u.Phone) LIKE @SearchQuery OR
                         LOWER(CONCAT(u.FirstName, ' ', u.LastName)) LIKE @SearchQuery
                     )");
                 countParameters.Add(new NpgsqlParameter("SearchQuery", $"%{searchDto.SearchQuery.ToLower()}%"));
@@ -178,8 +184,11 @@ public class PatientSearchService : IPatientSearchService
                     ORDER BY ar.UserId, ar.AnalysisCompletedAt DESC NULLS LAST
                 )
                 SELECT COUNT(DISTINCT u.Id)
-                FROM patient_doctor_assignments pda
-                INNER JOIN users u ON u.Id = pda.UserId
+                FROM users u
+                LEFT JOIN patient_doctor_assignments pda 
+                    ON pda.UserId = u.Id 
+                    AND pda.DoctorId = @DoctorId 
+                    AND COALESCE(pda.IsDeleted, false) = false
                 LEFT JOIN latest_risk ON latest_risk.UserId = u.Id
                 WHERE {countWhereClause}";
 
@@ -218,7 +227,7 @@ public class PatientSearchService : IPatientSearchService
                     Dob = reader.IsDBNull(5) ? null : reader.GetDateTime(5),
                     Gender = reader.IsDBNull(6) ? null : reader.GetString(6),
                     ProfileImageUrl = reader.IsDBNull(7) ? null : reader.GetString(7),
-                    AssignedAt = reader.GetDateTime(8),
+                    AssignedAt = reader.IsDBNull(8) ? null : reader.GetDateTime(8),
                     ClinicId = reader.IsDBNull(9) ? null : reader.GetString(9),
                     ClinicName = reader.IsDBNull(10) ? null : reader.GetString(10),
                     AnalysisCount = reader.GetInt32(11),

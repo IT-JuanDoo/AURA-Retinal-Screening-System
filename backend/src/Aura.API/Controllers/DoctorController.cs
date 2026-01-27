@@ -409,24 +409,26 @@ public class DoctorController : ControllerBase
 
         try
         {
-            // Verify patient is assigned to this doctor
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
+            // Cho phép bác sĩ xem thông tin bất kỳ bệnh nhân nào,
+            // nhưng chỉ hiển thị thông tin assign/ghi chú liên quan tới chính bác sĩ đó (nếu có).
             var sql = @"
                 SELECT 
                     u.Id, u.FirstName, u.LastName, u.Email, u.Phone, u.Dob, u.Gender, u.ProfileImageUrl,
                     pda.AssignedAt, pda.ClinicId, c.ClinicName,
                     COUNT(DISTINCT ar.Id) as AnalysisCount,
                     COUNT(DISTINCT mn.Id) as MedicalNotesCount
-                FROM patient_doctor_assignments pda
-                INNER JOIN users u ON u.Id = pda.UserId
+                FROM users u
+                LEFT JOIN patient_doctor_assignments pda 
+                    ON pda.UserId = u.Id 
+                    AND pda.DoctorId = @DoctorId
+                    AND COALESCE(pda.IsDeleted, false) = false
                 LEFT JOIN clinics c ON c.Id = pda.ClinicId
                 LEFT JOIN analysis_results ar ON ar.UserId = u.Id
                 LEFT JOIN medical_notes mn ON mn.DoctorId = @DoctorId AND mn.ResultId = ar.Id
-                WHERE pda.DoctorId = @DoctorId 
-                    AND pda.UserId = @PatientId
-                    AND COALESCE(pda.IsDeleted, false) = false
+                WHERE u.Id = @PatientId
                     AND COALESCE(u.IsDeleted, false) = false
                 GROUP BY u.Id, u.FirstName, u.LastName, u.Email, u.Phone, u.Dob, u.Gender, 
                          u.ProfileImageUrl, pda.AssignedAt, pda.ClinicId, c.ClinicName";
@@ -438,7 +440,7 @@ public class DoctorController : ControllerBase
             using var reader = await command.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
             {
-                return NotFound(new { message = "Không tìm thấy bệnh nhân hoặc bệnh nhân không được assign cho bác sĩ này" });
+                return NotFound(new { message = "Không tìm thấy bệnh nhân" });
             }
 
             var patient = new PatientListItemDto
@@ -451,7 +453,7 @@ public class DoctorController : ControllerBase
                 Dob = reader.IsDBNull(5) ? null : reader.GetDateTime(5),
                 Gender = reader.IsDBNull(6) ? null : reader.GetString(6),
                 ProfileImageUrl = reader.IsDBNull(7) ? null : reader.GetString(7),
-                AssignedAt = reader.GetDateTime(8),
+                AssignedAt = reader.IsDBNull(8) ? null : reader.GetDateTime(8),
                 ClinicId = reader.IsDBNull(9) ? null : reader.GetString(9),
                 ClinicName = reader.IsDBNull(10) ? null : reader.GetString(10),
                 AnalysisCount = reader.GetInt32(11),
