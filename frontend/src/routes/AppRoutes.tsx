@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "../pages/auth/LoginPage";
 import RegisterPage from "../pages/auth/RegisterPage";
 import AdminLoginPage from "../pages/admin/AdminLoginPage";
@@ -23,8 +23,16 @@ import ClinicUsageDashboardPage from "../pages/clinic/ClinicUsageDashboardPage";
 import PatientReportsPage from "../pages/patient/PatientReportsPage";
 import ClinicReportGenerationPage from "../pages/clinic/ClinicReportGenerationPage";
 import PackagesPage from "../pages/patient/PackagesPage";
+import ExportHistoryPage from "../pages/patient/ExportHistoryPage";
+import PaymentHistoryPage from "../pages/patient/PaymentHistoryPage";
 import PatientSearchPage from "../pages/doctor/PatientSearchPage";
 import DoctorDashboardPage from "../pages/doctor/DoctorDashboardPage";
+import DoctorPatientsPage from "../pages/doctor/DoctorPatientsPage";
+import DoctorAnalysisPage from "../pages/doctor/DoctorAnalysisPage";
+import MedicalNotesPage from "../pages/doctor/MedicalNotesPage";
+import DoctorStatisticsPage from "../pages/doctor/DoctorStatisticsPage";
+import DoctorPatientProfilePage from "../pages/doctor/PatientProfilePage";
+import SettingsPage from "../pages/user/SettingsPage";
 import { useAuthStore } from "../store/authStore";
 import { useAdminAuthStore } from "../store/adminAuthStore";
 
@@ -73,10 +81,8 @@ const AdminPublicRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 const AppRoutes = () => {
-  const location = useLocation();
-  
   return (
-    <Routes location={location} key={location.pathname}>
+    <Routes>
       {/* Public routes */}
       <Route path="/" element={<HomePage />} />
       <Route
@@ -237,6 +243,36 @@ const AppRoutes = () => {
         }
       />
 
+      {/* Export History - View exported reports */}
+      <Route
+        path="/exports"
+        element={
+          <ProtectedRoute>
+            <ExportHistoryPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Payment History - View payment and package history */}
+      <Route
+        path="/payments"
+        element={
+          <ProtectedRoute>
+            <PaymentHistoryPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Settings Page */}
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <SettingsPage />
+          </ProtectedRoute>
+        }
+      />
+
         {/* Clinic routes */}
         <Route
           path="/clinic/bulk-upload"
@@ -300,7 +336,47 @@ const AppRoutes = () => {
           path="/doctor/patients/:patientId"
           element={
             <ProtectedRoute>
-              <PatientProfilePage />
+              <DoctorPatientProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/doctor/patients"
+          element={
+            <ProtectedRoute>
+              <DoctorPatientsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/doctor/analyses"
+          element={
+            <ProtectedRoute>
+              <DoctorAnalysisPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/doctor/analyses/:analysisId"
+          element={
+            <ProtectedRoute>
+              <DoctorAnalysisPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/doctor/medical-notes"
+          element={
+            <ProtectedRoute>
+              <MedicalNotesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/doctor/statistics"
+          element={
+            <ProtectedRoute>
+              <DoctorStatisticsPage />
             </ProtectedRoute>
           }
         />

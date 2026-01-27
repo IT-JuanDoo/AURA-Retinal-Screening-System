@@ -57,7 +57,9 @@ public class RabbitMQService : IRabbitMQService
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to initialize RabbitMQ connection");
-            throw;
+            // Don't throw immediately - allow application to start
+            // Connection will be retried on first use
+            _logger?.LogWarning("RabbitMQ connection failed. Will retry on first use. Error: {Error}", ex.Message);
         }
     }
 
@@ -91,10 +93,22 @@ public class RabbitMQService : IRabbitMQService
     {
         if (_channel == null || _channel.IsClosed)
         {
-            InitializeConnection();
+            try
+            {
+                InitializeConnection();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to reconnect to RabbitMQ for publishing");
+                throw;
+            }
         }
 
-        if (_channel == null) return;
+        if (_channel == null)
+        {
+            _logger?.LogError("RabbitMQ channel is null, cannot publish message");
+            throw new InvalidOperationException("RabbitMQ channel is not available");
+        }
 
         try
         {
@@ -125,10 +139,22 @@ public class RabbitMQService : IRabbitMQService
     {
         if (_channel == null || _channel.IsClosed)
         {
-            InitializeConnection();
+            try
+            {
+                InitializeConnection();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to reconnect to RabbitMQ for consuming");
+                throw;
+            }
         }
 
-        if (_channel == null) return;
+        if (_channel == null)
+        {
+            _logger?.LogError("RabbitMQ channel is null, cannot consume messages");
+            throw new InvalidOperationException("RabbitMQ channel is not available");
+        }
 
         var consumer = new EventingBasicConsumer(_channel);
         consumer.Received += async (model, ea) =>

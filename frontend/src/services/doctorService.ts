@@ -29,6 +29,30 @@ export interface DoctorStatisticsDto {
   lastActivityDate?: string;
 }
 
+export interface DoctorAnalysisItem {
+  id: string;
+  imageId: string;
+  patientUserId: string;
+  patientName?: string;
+  analysisStatus: string;
+  overallRiskLevel?: string;
+  riskScore?: number;
+  diabeticRetinopathyDetected: boolean;
+  aiConfidenceScore?: number;
+  analysisCompletedAt?: string;
+  createdAt: string;
+  isValidated: boolean;
+  validatedBy?: string;
+  validatedAt?: string;
+}
+
+export interface ValidateAnalysisRequest {
+  isAccurate: boolean;
+  doctorNotes?: string;
+  correctedRiskLevel?: string;
+  correctedFindings?: string;
+}
+
 const doctorService = {
   /**
    * Get current doctor profile
@@ -71,6 +95,49 @@ const doctorService = {
   async getPatient(patientId: string): Promise<any> {
     const response = await api.get<any>(`/doctors/patients/${patientId}`);
     return response.data;
+  },
+
+  /**
+   * Get analyses for doctor's patients
+   */
+  async getAnalyses(params?: {
+    patientUserId?: string;
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<DoctorAnalysisItem[]> {
+    const response = await api.get<DoctorAnalysisItem[]>('/doctors/analyses', { params });
+    return response.data;
+  },
+
+  /**
+   * Get single analysis details
+   */
+  async getAnalysisById(analysisId: string): Promise<any> {
+    const response = await api.get<any>(`/doctors/analyses/${analysisId}`);
+    return response.data;
+  },
+
+  /**
+   * Validate analysis result
+   */
+  async validateAnalysis(analysisId: string, request: ValidateAnalysisRequest): Promise<any> {
+    const response = await api.post<any>(`/doctors/analyses/${analysisId}/validate`, request);
+    return response.data;
+  },
+
+  /**
+   * Submit AI feedback
+   */
+  async submitAiFeedback(feedback: {
+    analysisId: string;
+    feedbackType: string;
+    feedbackContent: string;
+    rating?: number;
+  }): Promise<void> {
+    await api.post('/doctors/ai-feedback', feedback);
   },
 };
 

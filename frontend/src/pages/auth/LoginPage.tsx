@@ -32,17 +32,19 @@ const LoginPage = () => {
     try {
       // Try to get doctor profile - if successful, user is a doctor
       const doctor = await doctorService.getCurrentDoctor();
-      if (doctor) {
-        // User is a doctor, redirect to doctor dashboard
-        navigate('/doctor/dashboard');
+      const redirectPath = doctor ? '/doctor/dashboard' : '/dashboard';
+      
+      // Ensure we have a valid path before navigating
+      if (redirectPath && typeof redirectPath === 'string') {
+        navigate(redirectPath, { replace: true });
       } else {
-        // User is not a doctor, redirect to patient dashboard
-        navigate('/dashboard');
+        // Fallback to patient dashboard
+        navigate('/dashboard', { replace: true });
       }
     } catch (error: any) {
       // On any error, redirect to patient dashboard (safer default)
       console.warn('Error checking doctor status:', error);
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true });
     }
   };
 
@@ -50,12 +52,21 @@ const LoginPage = () => {
     e.preventDefault();
     clearError();
     
-    const success = await login({ email, password });
-    if (success) {
-      toast.success('Đăng nhập thành công!');
-      await handlePostLoginRedirect();
-    } else {
-      toast.error(error || 'Đăng nhập thất bại');
+    try {
+      const success = await login({ email, password });
+      if (success) {
+        toast.success('Đăng nhập thành công!');
+        // Small delay to ensure state is updated
+        setTimeout(() => {
+          handlePostLoginRedirect();
+        }, 100);
+      } else {
+        toast.error(error || 'Đăng nhập thất bại');
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      const errorMessage = err?.response?.data?.message || err?.message || 'Đăng nhập thất bại';
+      toast.error(errorMessage);
     }
   };
 
@@ -67,7 +78,10 @@ const LoginPage = () => {
         const success = await googleLogin(tokenResponse.access_token);
         if (success) {
           toast.success('Đăng nhập bằng Google thành công!');
-          await handlePostLoginRedirect();
+          // Small delay to ensure state is updated
+          setTimeout(() => {
+            handlePostLoginRedirect();
+          }, 100);
         } else {
           toast.error(error || 'Đăng nhập Google thất bại');
         }
@@ -94,7 +108,10 @@ const LoginPage = () => {
       const success = await facebookLogin(response.accessToken);
       if (success) {
         toast.success('Đăng nhập bằng Facebook thành công!');
-        await handlePostLoginRedirect();
+        // Small delay to ensure state is updated
+        setTimeout(() => {
+          handlePostLoginRedirect();
+        }, 100);
       } else {
         toast.error(error || 'Đăng nhập Facebook thất bại');
       }

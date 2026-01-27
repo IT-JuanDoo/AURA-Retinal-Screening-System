@@ -1,10 +1,49 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AnalysisResult } from '../../services/analysisService';
+import exportService from '../../services/exportService';
+import toast from 'react-hot-toast';
 
 interface AnalysisResultDisplayProps {
   result: AnalysisResult;
 }
 
 const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const handleExport = async (format: 'pdf' | 'csv' | 'json') => {
+    try {
+      setExporting(format);
+      let exportResult;
+      
+      switch (format) {
+        case 'pdf':
+          exportResult = await exportService.exportToPdf(result.id);
+          break;
+        case 'csv':
+          exportResult = await exportService.exportToCsv(result.id);
+          break;
+        case 'json':
+          exportResult = await exportService.exportToJson(result.id);
+          break;
+      }
+
+      if (exportResult?.fileUrl) {
+        // Download directly if URL is available
+        const blob = await exportService.downloadExport(exportResult.id);
+        const fileName = exportResult.fileName || `analysis_${result.id}.${format}`;
+        exportService.downloadFile(blob, fileName);
+        toast.success(`Xuất ${format.toUpperCase()} thành công`);
+      } else {
+        toast.success(`Đã tạo báo cáo ${format.toUpperCase()}. Kiểm tra lịch sử xuất báo cáo.`);
+      }
+    } catch (error: any) {
+      console.error('Export error:', error);
+      toast.error(`Không thể xuất ${format.toUpperCase()}`);
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const getRiskColor = (risk?: string) => {
     switch (risk) {
@@ -263,6 +302,71 @@ const AnalysisResultDisplay = ({ result }: AnalysisResultDisplayProps) => {
           </p>
         </div>
       )}
+
+      {/* Export Actions */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 md:p-8 mb-6">
+        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
+          Xuất Báo cáo
+        </h2>
+        <p className="text-slate-600 dark:text-slate-400 mb-6">
+          Tải xuống kết quả phân tích dưới các định dạng khác nhau
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => handleExport('pdf')}
+            disabled={exporting !== null}
+            className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting === 'pdf' ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M10.92,12.31C10.68,11.54 10.15,9.08 11.55,9.04C12.95,9 12.03,12.16 12.03,12.16C12.42,13.65 14.05,14.72 14.05,14.72C14.55,14.57 17.4,14.24 17,15.72C16.57,17.2 13.5,15.81 13.5,15.81C11.55,15.95 10.09,16.47 10.09,16.47C8.96,18.58 7.64,19.5 7.1,18.61C6.43,17.5 9.23,16.07 9.23,16.07C10.68,13.72 10.9,12.35 10.92,12.31Z" />
+              </svg>
+            )}
+            Xuất PDF
+          </button>
+          <button
+            onClick={() => handleExport('csv')}
+            disabled={exporting !== null}
+            className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting === 'csv' ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M10,19L12,15H9V10H15V15L13,19H10Z" />
+              </svg>
+            )}
+            Xuất CSV
+          </button>
+          <button
+            onClick={() => handleExport('json')}
+            disabled={exporting !== null}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting === 'json' ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M5,3H7V5H5V10A2,2 0 0,1 3,12A2,2 0 0,1 5,14V19H7V21H5C3.93,20.73 3,20.1 3,19V15A2,2 0 0,0 1,13H0V11H1A2,2 0 0,0 3,9V5A2,2 0 0,1 5,3M19,3A2,2 0 0,1 21,5V9A2,2 0 0,0 23,11H24V13H23A2,2 0 0,0 21,15V19A2,2 0 0,1 19,21H17V19H19V14A2,2 0 0,1 21,12A2,2 0 0,1 19,10V5H17V3H19M12,15A1,1 0 0,1 13,16A1,1 0 0,1 12,17A1,1 0 0,1 11,16A1,1 0 0,1 12,15M8,15A1,1 0 0,1 9,16A1,1 0 0,1 8,17A1,1 0 0,1 7,16A1,1 0 0,1 8,15M16,15A1,1 0 0,1 17,16A1,1 0 0,1 16,17A1,1 0 0,1 15,16A1,1 0 0,1 16,15Z" />
+              </svg>
+            )}
+            Xuất JSON
+          </button>
+        </div>
+        <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+          <Link
+            to="/exports"
+            className="text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+          >
+            Xem lịch sử xuất báo cáo
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+        </div>
+      </div>
 
     </main>
   );
