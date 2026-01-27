@@ -242,7 +242,7 @@ const AnalysisResultDisplay = ({ result, onValidated }: AnalysisResultDisplayPro
         )}
         {result.aiConfidenceScore !== undefined && (
           <div className="text-sm text-slate-600 dark:text-slate-400">
-            Độ tin cậy AI: <span className="font-bold text-slate-900 dark:text-white">{result.aiConfidenceScore}%</span>
+            Độ tin cậy AI: <span className="font-bold text-slate-900 dark:text-white">{Number(result.aiConfidenceScore).toFixed(2)}%</span>
           </div>
         )}
       </div>

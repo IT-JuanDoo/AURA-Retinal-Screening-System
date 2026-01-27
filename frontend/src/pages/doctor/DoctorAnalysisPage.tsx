@@ -333,7 +333,7 @@ const DoctorAnalysisPage = () => {
                         {analysis.aiConfidenceScore && (
                           <>
                             <span>•</span>
-                            <span>Độ tin cậy AI: {(analysis.aiConfidenceScore * 100).toFixed(0)}%</span>
+                            <span>Độ tin cậy AI: {Number(analysis.aiConfidenceScore).toFixed(2)}%</span>
                           </>
                         )}
                       </div>
