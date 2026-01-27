@@ -32,7 +32,6 @@ import DoctorAnalysisPage from "../pages/doctor/DoctorAnalysisPage";
 import MedicalNotesPage from "../pages/doctor/MedicalNotesPage";
 import DoctorStatisticsPage from "../pages/doctor/DoctorStatisticsPage";
 import DoctorPatientProfilePage from "../pages/doctor/PatientProfilePage";
-import SettingsPage from "../pages/user/SettingsPage";
 import { useAuthStore } from "../store/authStore";
 import { useAdminAuthStore } from "../store/adminAuthStore";
 
@@ -264,14 +263,6 @@ const AppRoutes = () => {
       />
 
       {/* Settings Page */}
-      <Route
-        path="/settings"
-        element={
-          <ProtectedRoute>
-            <SettingsPage />
-          </ProtectedRoute>
-        }
-      />
 
         {/* Clinic routes */}
         <Route
