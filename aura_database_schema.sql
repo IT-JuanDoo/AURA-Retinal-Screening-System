@@ -575,17 +575,22 @@ CREATE TABLE audit_logs (
 
 CREATE TABLE medical_notes (
     Id VARCHAR(255) PRIMARY KEY,
-    ResultId VARCHAR(255) NOT NULL REFERENCES analysis_results(Id) ON DELETE CASCADE,
+    ResultId VARCHAR(255) REFERENCES analysis_results(Id) ON DELETE SET NULL,
+    PatientUserId VARCHAR(255) REFERENCES users(Id) ON DELETE CASCADE,
     DoctorId VARCHAR(255) NOT NULL REFERENCES doctors(Id) ON DELETE CASCADE,
-    NoteType VARCHAR(50) NOT NULL CHECK (NoteType IN ('Diagnosis', 'Recommendation', 'FollowUp', 'General', 'Prescription')),
+    NoteType VARCHAR(50) NOT NULL CHECK (NoteType IN ('Diagnosis', 'Recommendation', 'FollowUp', 'General', 'Prescription', 'Treatment', 'Observation', 'Referral', 'Other')),
     NoteContent TEXT NOT NULL,
-    Diagnosis VARCHAR(255),
+    Diagnosis VARCHAR(500),
     Prescription TEXT,
-    FollowUpDate DATE,
+    TreatmentPlan TEXT,
+    ClinicalObservations TEXT,
+    Severity VARCHAR(50) CHECK (Severity IN ('Low', 'Medium', 'High', 'Critical')),
+    FollowUpDate TIMESTAMP,
     IsImportant BOOLEAN DEFAULT FALSE,
-    CreatedDate DATE,
+    IsPrivate BOOLEAN DEFAULT FALSE,
+    CreatedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CreatedBy VARCHAR(255),
-    UpdatedDate DATE,
+    UpdatedDate TIMESTAMP,
     UpdatedBy VARCHAR(255),
     IsDeleted BOOLEAN DEFAULT FALSE
 );
@@ -814,9 +819,11 @@ CREATE INDEX idx_user_roles_is_deleted ON user_roles(IsDeleted);
 
 -- Medical Notes indexes
 CREATE INDEX idx_medical_notes_result_id ON medical_notes(ResultId);
+CREATE INDEX idx_medical_notes_patient_user_id ON medical_notes(PatientUserId);
 CREATE INDEX idx_medical_notes_doctor_id ON medical_notes(DoctorId);
 CREATE INDEX idx_medical_notes_note_type ON medical_notes(NoteType);
 CREATE INDEX idx_medical_notes_is_deleted ON medical_notes(IsDeleted);
+CREATE INDEX idx_medical_notes_is_private ON medical_notes(IsPrivate);
 
 -- Exported Reports indexes
 CREATE INDEX idx_exported_reports_result_id ON exported_reports(ResultId);

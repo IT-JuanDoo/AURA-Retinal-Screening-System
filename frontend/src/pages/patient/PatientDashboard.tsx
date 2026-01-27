@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import messageService from '../../services/messageService';
 import analysisService, { AnalysisResult } from '../../services/analysisService';
 import imageService from '../../services/imageService';
+import medicalNotesService, { MedicalNote } from '../../services/medicalNotesService';
 import PatientHeader from '../../components/patient/PatientHeader';
 import toast from 'react-hot-toast';
 
@@ -42,6 +43,8 @@ const PatientDashboard = () => {
   const [healthData, setHealthData] = useState<DashboardHealthData | null>(null);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
   const [latestImageUrl, setLatestImageUrl] = useState<string | undefined>();
+  const [recentNotes, setRecentNotes] = useState<MedicalNote[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(true);
 
   // Load dashboard data
   useEffect(() => {
@@ -51,6 +54,19 @@ const PatientDashboard = () => {
     messageService.getUnreadCount()
       .then(count => setUnreadCount(count))
       .catch(() => {});
+
+    // Load recent medical notes
+    setLoadingNotes(true);
+    medicalNotesService.getMyNotes()
+      .then(notes => {
+        // Get most recent 3 notes
+        const sorted = notes.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        setRecentNotes(sorted.slice(0, 3));
+      })
+      .catch(() => setRecentNotes([]))
+      .finally(() => setLoadingNotes(false));
     
     // Refresh unread count every 30 seconds
     const interval = setInterval(() => {
@@ -226,8 +242,6 @@ const PatientDashboard = () => {
         : 'Không phát hiện dấu hiệu rủi ro đột quỵ.'
     };
 
-    // Health history will be calculated separately using useMemo
-
     // Get recent reports (last 3)
     const recentReports = completedResults
       .slice(0, 3)
@@ -239,9 +253,6 @@ const PatientDashboard = () => {
           : 'N/A',
         risk: (r.overallRiskLevel || 'Low').toLowerCase()
       }));
-
-    // Get latest image URL - will be loaded separately
-    // Note: Image URL loading is handled separately to avoid blocking
 
     // Format last analysis date
     const lastAnalysisDate = latestResult.analysisCompletedAt
@@ -354,9 +365,6 @@ const PatientDashboard = () => {
     if (analysisResults.length === 0) return [];
     return calculateHealthHistory(analysisResults.filter(r => r.analysisStatus === 'Completed'), selectedPeriod);
   }, [analysisResults, selectedPeriod]);
-  
-  // Note: Health history is calculated separately using useMemo below
-  // No need to recalculate entire healthData when period changes
 
   // Loading state
   if (loading) {
@@ -391,16 +399,24 @@ const PatientDashboard = () => {
       title: 'Chưa có dữ liệu',
       description: 'Chưa có phân tích nào được thực hiện.'
     },
-        stroke: {
-          status: 'good' as const,
-          title: 'Chưa có dữ liệu',
-          description: 'Chưa có phân tích nào được thực hiện.'
-        },
+    stroke: {
+      status: 'good' as const,
+      title: 'Chưa có dữ liệu',
+      description: 'Chưa có phân tích nào được thực hiện.'
+    },
     healthHistory: [],
     recentReports: []
   };
 
   const hasNoData = !healthData || analysisResults.filter(r => r.analysisStatus === 'Completed').length === 0;
+
+  const formatNoteDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('vi-VN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
 
   return (
     <div className="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 font-sans antialiased min-h-screen flex flex-col transition-colors duration-200">
@@ -822,6 +838,83 @@ const PatientDashboard = () => {
               </div>
             </div>
 
+            {/* Medical Notes from Doctor */}
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col max-h-[350px]">
+              <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-gradient-to-r from-green-50 to-transparent dark:from-green-900/20 dark:to-transparent rounded-t-xl">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                    <svg className="w-4 h-4 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </div>
+                  <h3 className="font-bold text-slate-900 dark:text-white">Ghi chú từ bác sĩ</h3>
+                </div>
+                <Link to="/notes" className="text-xs font-semibold text-green-600 hover:underline">Xem tất cả</Link>
+              </div>
+              <div className="overflow-y-auto flex-1 p-2">
+                {loadingNotes ? (
+                  <div className="p-4 text-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600 mx-auto"></div>
+                  </div>
+                ) : recentNotes.length === 0 ? (
+                  <div className="p-6 text-center">
+                    <svg className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Chưa có ghi chú nào</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Bác sĩ sẽ ghi chú sau khi khám</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {recentNotes.map((note) => (
+                      <Link 
+                        key={note.id} 
+                        to="/notes"
+                        className="flex items-start gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition-colors group cursor-pointer"
+                      >
+                        <div className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                          note.severity?.toLowerCase() === 'high' || note.severity?.toLowerCase() === 'critical'
+                            ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                            : note.severity?.toLowerCase() === 'medium'
+                            ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                            : 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                        }`}>
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                              BS. {note.doctorName || 'Bác sĩ'}
+                            </p>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                              note.noteType.toLowerCase() === 'diagnosis' 
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                : note.noteType.toLowerCase() === 'followup'
+                                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                            }`}>
+                              {medicalNotesService.formatNoteType(note.noteType)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 truncate mt-0.5">
+                            {note.noteContent.substring(0, 50)}{note.noteContent.length > 50 ? '...' : ''}
+                          </p>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                            {formatNoteDate(note.createdAt)}
+                          </p>
+                        </div>
+                        <svg className="w-4 h-4 text-slate-300 group-hover:text-green-500 transition-colors flex-shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Doctor Consultation CTA */}
             <div className="bg-blue-600 rounded-xl p-5 text-white shadow-lg shadow-blue-500/20 relative overflow-hidden">
               <div className="absolute -right-6 -bottom-6 text-white/10">
@@ -877,4 +970,3 @@ const PatientDashboard = () => {
 };
 
 export default PatientDashboard;
-

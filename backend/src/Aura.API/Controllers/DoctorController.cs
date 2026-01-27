@@ -540,21 +540,35 @@ public class DoctorController : ControllerBase
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            var patientIds = new List<string>();
-            if (!string.IsNullOrEmpty(patientId))
+            string sql;
+            var hasSpecificPatient = !string.IsNullOrEmpty(patientId);
+
+            if (hasSpecificPatient)
             {
-                var verifySql = @"
-                    SELECT UserId FROM patient_doctor_assignments
-                    WHERE DoctorId = @DoctorId AND UserId = @PatientId 
-                        AND COALESCE(IsDeleted, false) = false AND IsActive = true";
-                using var verifyCmd = new NpgsqlCommand(verifySql, connection);
-                verifyCmd.Parameters.AddWithValue("DoctorId", doctorId);
-                verifyCmd.Parameters.AddWithValue("PatientId", patientId);
-                if (await verifyCmd.ExecuteScalarAsync() != null)
-                    patientIds.Add(patientId);
+                // When specific patientId is provided, always filter by that patient only
+                // This is used for patient profile page to show only that patient's analyses
+                sql = @"
+                    SELECT ar.Id, ar.ImageId, ar.UserId,
+                           COALESCE(u.FirstName || ' ' || u.LastName, u.Email) AS PatientName,
+                           ar.AnalysisStatus, ar.OverallRiskLevel, ar.RiskScore,
+                           COALESCE(ar.DiabeticRetinopathyDetected, false),
+                           ar.AiConfidenceScore, ar.AnalysisCompletedAt,
+                           COALESCE(ar.AnalysisStartedAt, ar.CreatedDate::timestamp) AS CreatedAt,
+                           (af.Id IS NOT NULL) AS IsValidated,
+                           af.CreatedBy AS ValidatedBy,
+                           af.CreatedDate::timestamp AS ValidatedAt
+                    FROM analysis_results ar
+                    INNER JOIN retinal_images ri ON ri.Id = ar.ImageId AND COALESCE(ri.IsDeleted, false) = false
+                    INNER JOIN users u ON u.Id = ar.UserId AND COALESCE(u.IsDeleted, false) = false
+                    LEFT JOIN ai_feedback af ON af.ResultId = ar.Id AND af.DoctorId = @DoctorId AND COALESCE(af.IsDeleted, false) = false
+                    WHERE COALESCE(ar.IsDeleted, false) = false
+                      AND ar.UserId = @PatientId
+                    ORDER BY ar.AnalysisCompletedAt DESC NULLS LAST, ar.AnalysisStartedAt DESC NULLS LAST, ar.CreatedDate DESC NULLS LAST";
             }
             else
             {
+                // When no patientId, get assigned patients first
+                var patientIds = new List<string>();
                 var patientsSql = @"
                     SELECT DISTINCT UserId FROM patient_doctor_assignments
                     WHERE DoctorId = @DoctorId 
@@ -564,59 +578,77 @@ public class DoctorController : ControllerBase
                 using var r = await patientsCmd.ExecuteReaderAsync();
                 while (await r.ReadAsync())
                     patientIds.Add(r.GetString(0));
-            }
+                await r.CloseAsync();
 
-            string sql;
-            if (patientIds.Count > 0)
-            {
-                sql = @"
-                    SELECT ar.Id, ar.ImageId, ar.UserId,
-                           COALESCE(u.FirstName || ' ' || u.LastName, u.Email) AS PatientName,
-                           ar.AnalysisStatus, ar.OverallRiskLevel, ar.RiskScore,
-                           COALESCE(ar.DiabeticRetinopathyDetected, false),
-                           ar.AiConfidenceScore, ar.AnalysisCompletedAt,
-                           COALESCE(ar.AnalysisStartedAt, ar.CreatedDate::timestamp) AS CreatedAt,
-                           (af.Id IS NOT NULL) AS IsValidated,
-                           af.CreatedBy AS ValidatedBy,
-                           af.CreatedDate::timestamp AS ValidatedAt
-                    FROM analysis_results ar
-                    INNER JOIN retinal_images ri ON ri.Id = ar.ImageId AND COALESCE(ri.IsDeleted, false) = false
-                    INNER JOIN patient_doctor_assignments pda ON pda.UserId = ar.UserId AND pda.DoctorId = @DoctorId
-                        AND COALESCE(pda.IsDeleted, false) = false AND pda.IsActive = true
-                    INNER JOIN users u ON u.Id = ar.UserId AND COALESCE(u.IsDeleted, false) = false
-                    LEFT JOIN ai_feedback af ON af.ResultId = ar.Id AND af.DoctorId = @DoctorId AND COALESCE(af.IsDeleted, false) = false
-                    WHERE COALESCE(ar.IsDeleted, false) = false
-                      AND ar.UserId = ANY(@PatientIds)
-                    ORDER BY ar.AnalysisCompletedAt DESC NULLS LAST, ar.AnalysisStartedAt DESC NULLS LAST, ar.CreatedDate DESC NULLS LAST";
-            }
-            else
-            {
-                _logger.LogInformation("Doctor {DoctorId} has no assignments; fallback to all analyses.", doctorId);
-                sql = @"
-                    SELECT ar.Id, ar.ImageId, ar.UserId,
-                           COALESCE(u.FirstName || ' ' || u.LastName, u.Email) AS PatientName,
-                           ar.AnalysisStatus, ar.OverallRiskLevel, ar.RiskScore,
-                           COALESCE(ar.DiabeticRetinopathyDetected, false),
-                           ar.AiConfidenceScore, ar.AnalysisCompletedAt,
-                           COALESCE(ar.AnalysisStartedAt, ar.CreatedDate::timestamp) AS CreatedAt,
-                           (af.Id IS NOT NULL) AS IsValidated,
-                           af.CreatedBy AS ValidatedBy,
-                           af.CreatedDate::timestamp AS ValidatedAt
-                    FROM analysis_results ar
-                    INNER JOIN retinal_images ri ON ri.Id = ar.ImageId AND COALESCE(ri.IsDeleted, false) = false
-                    INNER JOIN users u ON u.Id = ar.UserId AND COALESCE(u.IsDeleted, false) = false
-                    LEFT JOIN ai_feedback af ON af.ResultId = ar.Id AND af.DoctorId = @DoctorId AND COALESCE(af.IsDeleted, false) = false
-                    WHERE COALESCE(ar.IsDeleted, false) = false
-                    ORDER BY ar.AnalysisCompletedAt DESC NULLS LAST, ar.AnalysisStartedAt DESC NULLS LAST, ar.CreatedDate DESC NULLS LAST";
+                if (patientIds.Count > 0)
+                {
+                    sql = @"
+                        SELECT ar.Id, ar.ImageId, ar.UserId,
+                               COALESCE(u.FirstName || ' ' || u.LastName, u.Email) AS PatientName,
+                               ar.AnalysisStatus, ar.OverallRiskLevel, ar.RiskScore,
+                               COALESCE(ar.DiabeticRetinopathyDetected, false),
+                               ar.AiConfidenceScore, ar.AnalysisCompletedAt,
+                               COALESCE(ar.AnalysisStartedAt, ar.CreatedDate::timestamp) AS CreatedAt,
+                               (af.Id IS NOT NULL) AS IsValidated,
+                               af.CreatedBy AS ValidatedBy,
+                               af.CreatedDate::timestamp AS ValidatedAt
+                        FROM analysis_results ar
+                        INNER JOIN retinal_images ri ON ri.Id = ar.ImageId AND COALESCE(ri.IsDeleted, false) = false
+                        INNER JOIN users u ON u.Id = ar.UserId AND COALESCE(u.IsDeleted, false) = false
+                        LEFT JOIN ai_feedback af ON af.ResultId = ar.Id AND af.DoctorId = @DoctorId AND COALESCE(af.IsDeleted, false) = false
+                        WHERE COALESCE(ar.IsDeleted, false) = false
+                          AND ar.UserId = ANY(@PatientIds)
+                        ORDER BY ar.AnalysisCompletedAt DESC NULLS LAST, ar.AnalysisStartedAt DESC NULLS LAST, ar.CreatedDate DESC NULLS LAST";
+                }
+                else
+                {
+                    _logger.LogInformation("Doctor {DoctorId} has no assignments; fallback to all analyses.", doctorId);
+                    sql = @"
+                        SELECT ar.Id, ar.ImageId, ar.UserId,
+                               COALESCE(u.FirstName || ' ' || u.LastName, u.Email) AS PatientName,
+                               ar.AnalysisStatus, ar.OverallRiskLevel, ar.RiskScore,
+                               COALESCE(ar.DiabeticRetinopathyDetected, false),
+                               ar.AiConfidenceScore, ar.AnalysisCompletedAt,
+                               COALESCE(ar.AnalysisStartedAt, ar.CreatedDate::timestamp) AS CreatedAt,
+                               (af.Id IS NOT NULL) AS IsValidated,
+                               af.CreatedBy AS ValidatedBy,
+                               af.CreatedDate::timestamp AS ValidatedAt
+                        FROM analysis_results ar
+                        INNER JOIN retinal_images ri ON ri.Id = ar.ImageId AND COALESCE(ri.IsDeleted, false) = false
+                        INNER JOIN users u ON u.Id = ar.UserId AND COALESCE(u.IsDeleted, false) = false
+                        LEFT JOIN ai_feedback af ON af.ResultId = ar.Id AND af.DoctorId = @DoctorId AND COALESCE(af.IsDeleted, false) = false
+                        WHERE COALESCE(ar.IsDeleted, false) = false
+                        ORDER BY ar.AnalysisCompletedAt DESC NULLS LAST, ar.AnalysisStartedAt DESC NULLS LAST, ar.CreatedDate DESC NULLS LAST";
+                }
             }
 
             using var cmd = new NpgsqlCommand(sql, connection);
             cmd.Parameters.AddWithValue("DoctorId", doctorId);
-            if (patientIds.Count > 0)
+            if (hasSpecificPatient)
             {
-                var patientIdsParam = new NpgsqlParameter("PatientIds", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text);
-                patientIdsParam.Value = patientIds.ToArray();
-                cmd.Parameters.Add(patientIdsParam);
+                cmd.Parameters.AddWithValue("PatientId", patientId!);
+            }
+            else
+            {
+                // Re-query patient IDs for parameter (need to do this again since reader was closed)
+                var patientIds = new List<string>();
+                var patientsSql = @"
+                    SELECT DISTINCT UserId FROM patient_doctor_assignments
+                    WHERE DoctorId = @DoctorId 
+                        AND COALESCE(IsDeleted, false) = false AND IsActive = true";
+                using var patientsCmd = new NpgsqlCommand(patientsSql, connection);
+                patientsCmd.Parameters.AddWithValue("DoctorId", doctorId);
+                using var r = await patientsCmd.ExecuteReaderAsync();
+                while (await r.ReadAsync())
+                    patientIds.Add(r.GetString(0));
+                await r.CloseAsync();
+
+                if (patientIds.Count > 0)
+                {
+                    var patientIdsParam = new NpgsqlParameter("PatientIds", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text);
+                    patientIdsParam.Value = patientIds.ToArray();
+                    cmd.Parameters.Add(patientIdsParam);
+                }
             }
 
             var list = new List<DoctorAnalysisListItemDto>();

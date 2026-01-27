@@ -10,9 +10,16 @@ interface MonthlyStats {
 }
 
 interface PerformanceMetrics {
-  processingRate: number; // Tỷ lệ xử lý (%)
-  avgResponseTime: number; // Thời gian phản hồi TB (giờ)
-  patientSatisfaction: number; // Độ hài lòng (0-5)
+  processingRate: number;
+  avgResponseTime: number;
+  patientSatisfaction: number;
+}
+
+interface RiskDistribution {
+  low: number;
+  medium: number;
+  high: number;
+  critical: number;
 }
 
 const DoctorStatisticsPage = () => {
@@ -22,6 +29,12 @@ const DoctorStatisticsPage = () => {
     processingRate: 0,
     avgResponseTime: 0,
     patientSatisfaction: 0,
+  });
+  const [riskDistribution, setRiskDistribution] = useState<RiskDistribution>({
+    low: 0,
+    medium: 0,
+    high: 0,
+    critical: 0,
   });
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<string>('6months');
@@ -34,7 +47,6 @@ const DoctorStatisticsPage = () => {
     try {
       setLoading(true);
       
-      // Lấy tất cả dữ liệu cần thiết song song
       const [patientsDataRaw, analysesDataRaw] = await Promise.all([
         doctorService.getPatients(true).catch(() => []),
         doctorService.getAnalyses().catch(() => []),
@@ -43,7 +55,6 @@ const DoctorStatisticsPage = () => {
       const patientsData = patientsDataRaw || [];
       const analysesData = analysesDataRaw || [];
 
-      // Tính toán statistics từ dữ liệu thực
       let totalPatients = patientsData.length;
       if (totalPatients === 0 && analysesData.length > 0) {
         const uniquePatientIds = new Set(analysesData.map((a: DoctorAnalysisItem) => a.patientUserId).filter(Boolean));
@@ -72,13 +83,14 @@ const DoctorStatisticsPage = () => {
 
       setStatistics(computedStats);
 
-      // Tính toán monthly stats
       const monthlyData = calculateMonthlyStats(analysesData, patientsData, selectedPeriod);
       setMonthlyStats(monthlyData);
 
-      // Tính toán performance metrics
       const metrics = calculatePerformanceMetrics(analysesData);
       setPerformanceMetrics(metrics);
+
+      const risks = calculateRiskDistribution(analysesData);
+      setRiskDistribution(risks);
     } catch (error: any) {
       console.error('Error loading statistics:', error);
       setStatistics({
@@ -113,7 +125,6 @@ const DoctorStatisticsPage = () => {
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       const monthLabel = `T${date.getMonth() + 1}`;
 
-      // Đếm analyses trong tháng này
       const monthAnalyses = analyses.filter((a: DoctorAnalysisItem) => {
         const analysisDate = a.analysisCompletedAt || a.createdAt;
         if (!analysisDate) return false;
@@ -122,13 +133,11 @@ const DoctorStatisticsPage = () => {
                analysisDateObj.getMonth() === date.getMonth();
       });
 
-      // Đếm bệnh nhân mới trong tháng này (từ analyses hoặc patients)
       const monthPatientIds = new Set<string>();
       monthAnalyses.forEach((a: DoctorAnalysisItem) => {
         if (a.patientUserId) monthPatientIds.add(a.patientUserId);
       });
       
-      // Nếu có patients data, đếm từ assignedAt
       if (patients.length > 0) {
         patients.forEach((p: any) => {
           if (p.assignedAt) {
@@ -155,7 +164,6 @@ const DoctorStatisticsPage = () => {
   const calculatePerformanceMetrics = (
     analyses: DoctorAnalysisItem[]
   ): PerformanceMetrics => {
-    // Tỷ lệ xử lý: (Completed + Validated) / Total * 100
     const completedAnalyses = analyses.filter(
       (a: DoctorAnalysisItem) => a.analysisStatus === 'Completed'
     ).length;
@@ -165,7 +173,6 @@ const DoctorStatisticsPage = () => {
       ? Math.round(((completedAnalyses + validatedAnalyses) / totalAnalyses) * 100)
       : 0;
 
-    // Thời gian phản hồi TB: tính từ thời gian từ khi analysis completed đến khi validated
     let totalResponseTime = 0;
     let responseCount = 0;
     analyses.forEach((a: DoctorAnalysisItem) => {
@@ -173,7 +180,7 @@ const DoctorStatisticsPage = () => {
         const completed = new Date(a.analysisCompletedAt);
         const validated = new Date(a.validatedAt);
         const hours = (validated.getTime() - completed.getTime()) / (1000 * 60 * 60);
-        if (hours > 0 && hours < 168) { // Loại bỏ giá trị bất thường (> 1 tuần)
+        if (hours > 0 && hours < 168) {
           totalResponseTime += hours;
           responseCount++;
         }
@@ -181,8 +188,6 @@ const DoctorStatisticsPage = () => {
     });
     const avgResponseTime = responseCount > 0 ? totalResponseTime / responseCount : 2.5;
 
-    // Độ hài lòng: giả định từ tỷ lệ validated và không có lỗi
-    // Công thức đơn giản: base 4.0 + bonus từ tỷ lệ validated
     const validationRate = totalAnalyses > 0 ? validatedAnalyses / totalAnalyses : 0;
     const patientSatisfaction = Math.min(5.0, 4.0 + validationRate);
 
@@ -193,12 +198,223 @@ const DoctorStatisticsPage = () => {
     };
   };
 
+  const calculateRiskDistribution = (analyses: DoctorAnalysisItem[]): RiskDistribution => {
+    const distribution: RiskDistribution = { low: 0, medium: 0, high: 0, critical: 0 };
+    
+    analyses.forEach((a: DoctorAnalysisItem) => {
+      const risk = a.overallRiskLevel?.toLowerCase();
+      if (risk === 'low' || risk === 'minimal') distribution.low++;
+      else if (risk === 'medium' || risk === 'moderate') distribution.medium++;
+      else if (risk === 'high') distribution.high++;
+      else if (risk === 'critical' || risk === 'severe') distribution.critical++;
+      else distribution.low++; // default
+    });
+    
+    return distribution;
+  };
+
   const maxAnalyses = monthlyStats.length > 0 
     ? Math.max(...monthlyStats.map(s => s.analyses), 1)
     : 1;
   const maxPatients = monthlyStats.length > 0
     ? Math.max(...monthlyStats.map(s => s.patients), 1)
     : 1;
+
+  // SVG Line Chart Component
+  const LineChart = ({ 
+    data, 
+    color, 
+    maxValue,
+    label 
+  }: { 
+    data: number[]; 
+    color: string; 
+    maxValue: number;
+    label: string;
+  }) => {
+    const width = 100;
+    const height = 100;
+    const padding = 10;
+    const chartWidth = width - padding * 2;
+    const chartHeight = height - padding * 2;
+
+    if (data.length === 0 || maxValue === 0) {
+      return (
+        <div className="h-48 flex items-center justify-center text-slate-400 dark:text-slate-500">
+          <div className="text-center">
+            <svg className="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            <p className="text-sm">Chưa có dữ liệu</p>
+          </div>
+        </div>
+      );
+    }
+
+    const points = data.map((value, index) => {
+      const x = padding + (index / (data.length - 1 || 1)) * chartWidth;
+      const y = padding + chartHeight - (value / maxValue) * chartHeight;
+      return `${x},${y}`;
+    }).join(' ');
+
+    const areaPoints = `${padding},${padding + chartHeight} ${points} ${padding + chartWidth},${padding + chartHeight}`;
+
+    return (
+      <div className="relative">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-48" preserveAspectRatio="none">
+          {/* Grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => (
+            <line 
+              key={i}
+              x1={padding} 
+              y1={padding + chartHeight * (1 - ratio)} 
+              x2={padding + chartWidth} 
+              y2={padding + chartHeight * (1 - ratio)}
+              stroke="currentColor"
+              className="text-slate-200 dark:text-slate-700"
+              strokeWidth="0.5"
+              strokeDasharray="2,2"
+            />
+          ))}
+          
+          {/* Area fill */}
+          <polygon 
+            points={areaPoints} 
+            fill={`url(#gradient-${label})`}
+            opacity="0.3"
+          />
+          
+          {/* Line */}
+          <polyline
+            points={points}
+            fill="none"
+            stroke={color}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          
+          {/* Data points */}
+          {data.map((value, index) => {
+            const x = padding + (index / (data.length - 1 || 1)) * chartWidth;
+            const y = padding + chartHeight - (value / maxValue) * chartHeight;
+            return (
+              <g key={index}>
+                <circle
+                  cx={x}
+                  cy={y}
+                  r="3"
+                  fill="white"
+                  stroke={color}
+                  strokeWidth="2"
+                  className="transition-all hover:r-4"
+                />
+              </g>
+            );
+          })}
+
+          {/* Gradient definition */}
+          <defs>
+            <linearGradient id={`gradient-${label}`} x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor={color} stopOpacity="0.4" />
+              <stop offset="100%" stopColor={color} stopOpacity="0.05" />
+            </linearGradient>
+          </defs>
+        </svg>
+
+        {/* X-axis labels */}
+        <div className="flex justify-between px-2 mt-2">
+          {monthlyStats.map((item, index) => (
+            <span 
+              key={item.month} 
+              className={`text-xs font-medium ${
+                index === monthlyStats.length - 1 
+                  ? 'text-blue-600 dark:text-blue-400' 
+                  : 'text-slate-400 dark:text-slate-500'
+              }`}
+            >
+              {item.monthLabel}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Donut Chart Component
+  const DonutChart = ({ data }: { data: RiskDistribution }) => {
+    const total = data.low + data.medium + data.high + data.critical;
+    if (total === 0) {
+      return (
+        <div className="flex items-center justify-center h-48 text-slate-400">
+          <p className="text-sm">Chưa có dữ liệu</p>
+        </div>
+      );
+    }
+
+    const radius = 40;
+    const circumference = 2 * Math.PI * radius;
+    
+    const segments = [
+      { value: data.low, color: '#22c55e', label: 'Thấp' },
+      { value: data.medium, color: '#eab308', label: 'TB' },
+      { value: data.high, color: '#f97316', label: 'Cao' },
+      { value: data.critical, color: '#ef4444', label: 'Nguy hiểm' },
+    ].filter(s => s.value > 0);
+
+    let currentOffset = 0;
+
+    return (
+      <div className="flex items-center justify-center gap-6">
+        <div className="relative">
+          <svg viewBox="0 0 100 100" className="w-40 h-40 transform -rotate-90">
+            {segments.map((segment, index) => {
+              const percentage = segment.value / total;
+              const strokeDasharray = `${percentage * circumference} ${circumference}`;
+              const strokeDashoffset = -currentOffset * circumference;
+              currentOffset += percentage;
+              
+              return (
+                <circle
+                  key={index}
+                  cx="50"
+                  cy="50"
+                  r={radius}
+                  fill="none"
+                  stroke={segment.color}
+                  strokeWidth="12"
+                  strokeDasharray={strokeDasharray}
+                  strokeDashoffset={strokeDashoffset}
+                  className="transition-all duration-500"
+                />
+              );
+            })}
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center">
+              <span className="text-2xl font-bold text-slate-900 dark:text-white">{total}</span>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Phân tích</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="space-y-2">
+          {[
+            { label: 'Thấp', value: data.low, color: 'bg-green-500' },
+            { label: 'Trung bình', value: data.medium, color: 'bg-yellow-500' },
+            { label: 'Cao', value: data.high, color: 'bg-orange-500' },
+            { label: 'Nguy hiểm', value: data.critical, color: 'bg-red-500' },
+          ].map((item) => (
+            <div key={item.label} className="flex items-center gap-2">
+              <div className={`w-3 h-3 rounded-full ${item.color}`}></div>
+              <span className="text-sm text-slate-600 dark:text-slate-400">{item.label}</span>
+              <span className="text-sm font-medium text-slate-900 dark:text-white">{item.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -307,9 +523,9 @@ const DoctorStatisticsPage = () => {
               </div>
             </div>
 
-            {/* Charts */}
+            {/* Charts Row 1 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              {/* Analyses Chart */}
+              {/* Analyses Line Chart */}
               <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
@@ -325,40 +541,15 @@ const DoctorStatisticsPage = () => {
                     <option value="1year">12 tháng qua</option>
                   </select>
                 </div>
-                <div className="h-48 flex items-end justify-between gap-2 px-2">
-                  {monthlyStats.length > 0 ? (
-                    monthlyStats.map((item, index) => {
-                      const heightPercent = maxAnalyses > 0 ? (item.analyses / maxAnalyses) * 100 : 0;
-                      const isLatest = index === monthlyStats.length - 1;
-                      return (
-                        <div key={item.month} className="flex-1 flex flex-col items-center group relative">
-                          <div 
-                            className={`w-full rounded-t transition-all cursor-pointer ${
-                              isLatest 
-                                ? 'bg-blue-500 hover:bg-blue-600' 
-                                : 'bg-blue-200 dark:bg-blue-900/50 hover:bg-blue-300 dark:hover:bg-blue-800'
-                            }`}
-                            style={{ height: `${Math.max(heightPercent, 5)}%`, minHeight: '4px' }}
-                          >
-                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                              {item.analyses}
-                            </div>
-                          </div>
-                          <span className={`mt-2 text-xs font-medium ${isLatest ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`}>
-                            {item.monthLabel}
-                          </span>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="w-full flex items-center justify-center h-full text-slate-400">
-                      <p>Chưa có dữ liệu</p>
-                    </div>
-                  )}
-                </div>
+                <LineChart 
+                  data={monthlyStats.map(s => s.analyses)} 
+                  color="#3b82f6" 
+                  maxValue={maxAnalyses}
+                  label="analyses"
+                />
               </div>
 
-              {/* Patients Chart */}
+              {/* Patients Line Chart */}
               <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
@@ -366,84 +557,68 @@ const DoctorStatisticsPage = () => {
                     <p className="text-sm text-slate-500 dark:text-slate-400">Theo tháng</p>
                   </div>
                 </div>
-                <div className="h-48 flex items-end justify-between gap-2 px-2">
-                  {monthlyStats.length > 0 ? (
-                    monthlyStats.map((item, index) => {
-                      const heightPercent = maxPatients > 0 ? (item.patients / maxPatients) * 100 : 0;
-                      const isLatest = index === monthlyStats.length - 1;
-                      return (
-                        <div key={item.month} className="flex-1 flex flex-col items-center group relative">
-                          <div 
-                            className={`w-full rounded-t transition-all cursor-pointer ${
-                              isLatest 
-                                ? 'bg-green-500 hover:bg-green-600' 
-                                : 'bg-green-200 dark:bg-green-900/50 hover:bg-green-300 dark:hover:bg-green-800'
-                            }`}
-                            style={{ height: `${Math.max(heightPercent, 5)}%`, minHeight: '4px' }}
-                          >
-                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                              {item.patients}
-                            </div>
-                          </div>
-                          <span className={`mt-2 text-xs font-medium ${isLatest ? 'text-green-600 dark:text-green-400' : 'text-slate-400'}`}>
-                            {item.monthLabel}
-                          </span>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="w-full flex items-center justify-center h-full text-slate-400">
-                      <p>Chưa có dữ liệu</p>
-                    </div>
-                  )}
-                </div>
+                <LineChart 
+                  data={monthlyStats.map(s => s.patients)} 
+                  color="#22c55e" 
+                  maxValue={maxPatients}
+                  label="patients"
+                />
               </div>
             </div>
 
-            {/* Performance Metrics */}
-            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Chỉ số hiệu suất</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-slate-600 dark:text-slate-400">Tỷ lệ xử lý</span>
-                    <span className="text-sm font-bold text-slate-900 dark:text-white">
-                      {performanceMetrics.processingRate}%
-                    </span>
+            {/* Charts Row 2 */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              {/* Risk Distribution Donut Chart */}
+              <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Phân bố mức độ rủi ro</h3>
+                <DonutChart data={riskDistribution} />
+              </div>
+
+              {/* Performance Metrics */}
+              <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Chỉ số hiệu suất</h3>
+                <div className="space-y-6">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-slate-600 dark:text-slate-400">Tỷ lệ xử lý</span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white">
+                        {performanceMetrics.processingRate}%
+                      </span>
+                    </div>
+                    <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-green-400 to-green-600 rounded-full transition-all duration-500" 
+                        style={{ width: `${performanceMetrics.processingRate}%` }}
+                      ></div>
+                    </div>
                   </div>
-                  <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-green-500 rounded-full transition-all" 
-                      style={{ width: `${performanceMetrics.processingRate}%` }}
-                    ></div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-slate-600 dark:text-slate-400">Thời gian phản hồi TB</span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white">
+                        {performanceMetrics.avgResponseTime.toFixed(1)} giờ
+                      </span>
+                    </div>
+                    <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full transition-all duration-500" 
+                        style={{ width: `${Math.min(100, (performanceMetrics.avgResponseTime / 24) * 100)}%` }}
+                      ></div>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-slate-600 dark:text-slate-400">Thời gian phản hồi TB</span>
-                    <span className="text-sm font-bold text-slate-900 dark:text-white">
-                      {performanceMetrics.avgResponseTime.toFixed(1)} giờ
-                    </span>
-                  </div>
-                  <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-blue-500 rounded-full transition-all" 
-                      style={{ width: `${Math.min(100, (performanceMetrics.avgResponseTime / 24) * 100)}%` }}
-                    ></div>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-slate-600 dark:text-slate-400">Độ hài lòng bệnh nhân</span>
-                    <span className="text-sm font-bold text-slate-900 dark:text-white">
-                      {performanceMetrics.patientSatisfaction.toFixed(1)}/5
-                    </span>
-                  </div>
-                  <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-yellow-500 rounded-full transition-all" 
-                      style={{ width: `${(performanceMetrics.patientSatisfaction / 5) * 100}%` }}
-                    ></div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-slate-600 dark:text-slate-400">Độ hài lòng bệnh nhân</span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white">
+                        {performanceMetrics.patientSatisfaction.toFixed(1)}/5
+                      </span>
+                    </div>
+                    <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-full transition-all duration-500" 
+                        style={{ width: `${(performanceMetrics.patientSatisfaction / 5) * 100}%` }}
+                      ></div>
+                    </div>
                   </div>
                 </div>
               </div>

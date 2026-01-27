@@ -1,7 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DoctorHeader from '../../components/doctor/DoctorHeader';
-import medicalNotesService, { MedicalNote } from '../../services/medicalNotesService';
+import medicalNotesService, { MedicalNote, CreateMedicalNoteDto } from '../../services/medicalNotesService';
+import doctorService from '../../services/doctorService';
+import toast from 'react-hot-toast';
+
+interface PatientOption {
+  userId: string;
+  firstName?: string;
+  lastName?: string;
+  email: string;
+}
 
 const MedicalNotesPage = () => {
   const navigate = useNavigate();
@@ -10,6 +19,27 @@ const MedicalNotesPage = () => {
   const [selectedNote, setSelectedNote] = useState<MedicalNote | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Modal states
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState<MedicalNote | null>(null);
+  const [editingNote, setEditingNote] = useState<MedicalNote | null>(null);
+  const [patients, setPatients] = useState<PatientOption[]>([]);
+  const [loadingPatients, setLoadingPatients] = useState(false);
+  const [saving, setSaving] = useState(false);
+  
+  // Form data - individual states instead of object to prevent re-render issues
+  const [formPatientUserId, setFormPatientUserId] = useState('');
+  const [formNoteType, setFormNoteType] = useState('Diagnosis');
+  const [formNoteContent, setFormNoteContent] = useState('');
+  const [formClinicalObservations, setFormClinicalObservations] = useState('');
+  const [formDiagnosis, setFormDiagnosis] = useState('');
+  const [formTreatmentPlan, setFormTreatmentPlan] = useState('');
+  const [formFollowUpDate, setFormFollowUpDate] = useState('');
+  const [formSeverity, setFormSeverity] = useState('Medium');
+  const [formIsPrivate, setFormIsPrivate] = useState(false);
 
   useEffect(() => {
     loadNotes();
@@ -25,6 +55,148 @@ const MedicalNotesPage = () => {
       setNotes([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPatients = async () => {
+    try {
+      setLoadingPatients(true);
+      let patientList = await doctorService.getPatients(true);
+      
+      if (!patientList || patientList.length === 0) {
+        const analyses = await doctorService.getAnalyses();
+        const uniquePatients = new Map<string, PatientOption>();
+        analyses.forEach((analysis: any) => {
+          if (analysis.patientUserId && !uniquePatients.has(analysis.patientUserId)) {
+            uniquePatients.set(analysis.patientUserId, {
+              userId: analysis.patientUserId,
+              firstName: analysis.patientName?.split(' ')[0] || '',
+              lastName: analysis.patientName?.split(' ').slice(1).join(' ') || '',
+              email: '',
+            });
+          }
+        });
+        patientList = Array.from(uniquePatients.values());
+      }
+      
+      setPatients(patientList);
+    } catch (error) {
+      console.error('Error loading patients:', error);
+      setPatients([]);
+    } finally {
+      setLoadingPatients(false);
+    }
+  };
+
+  const resetForm = () => {
+    setFormPatientUserId('');
+    setFormNoteType('Diagnosis');
+    setFormNoteContent('');
+    setFormClinicalObservations('');
+    setFormDiagnosis('');
+    setFormTreatmentPlan('');
+    setFormFollowUpDate('');
+    setFormSeverity('Medium');
+    setFormIsPrivate(false);
+  };
+
+  const handleOpenCreateModal = () => {
+    resetForm();
+    loadPatients();
+    setShowCreateModal(true);
+  };
+
+  const handleOpenEditModal = (note: MedicalNote) => {
+    setEditingNote(note);
+    setFormPatientUserId(note.patientUserId);
+    setFormNoteType(note.noteType);
+    setFormNoteContent(note.noteContent);
+    setFormClinicalObservations(note.clinicalObservations || '');
+    setFormDiagnosis(note.diagnosis || '');
+    setFormTreatmentPlan(note.treatmentPlan || '');
+    setFormFollowUpDate(note.followUpDate ? note.followUpDate.split('T')[0] : '');
+    setFormSeverity(note.severity || 'Medium');
+    setFormIsPrivate(note.isPrivate);
+    loadPatients();
+    setShowEditModal(true);
+    setSelectedNote(null);
+  };
+
+  const getFormData = (): CreateMedicalNoteDto => ({
+    patientUserId: formPatientUserId,
+    noteType: formNoteType,
+    noteContent: formNoteContent,
+    clinicalObservations: formClinicalObservations,
+    diagnosis: formDiagnosis,
+    treatmentPlan: formTreatmentPlan,
+    followUpDate: formFollowUpDate,
+    severity: formSeverity,
+    isPrivate: formIsPrivate,
+  });
+
+  const handleCreateNote = async () => {
+    if (!formPatientUserId) {
+      toast.error('Vui lòng chọn bệnh nhân');
+      return;
+    }
+    if (!formNoteContent.trim()) {
+      toast.error('Vui lòng nhập nội dung ghi chú');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await medicalNotesService.createNote(getFormData());
+      toast.success('Tạo ghi chú thành công');
+      setShowCreateModal(false);
+      resetForm();
+      loadNotes();
+    } catch (error: any) {
+      console.error('Error creating note:', error);
+      toast.error(error?.response?.data?.message || 'Tạo ghi chú thất bại');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUpdateNote = async () => {
+    if (!editingNote) return;
+    if (!formNoteContent.trim()) {
+      toast.error('Vui lòng nhập nội dung ghi chú');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await medicalNotesService.updateNote(editingNote.id, getFormData());
+      toast.success('Cập nhật ghi chú thành công');
+      setShowEditModal(false);
+      setEditingNote(null);
+      resetForm();
+      loadNotes();
+    } catch (error: any) {
+      console.error('Error updating note:', error);
+      toast.error(error?.response?.data?.message || 'Cập nhật ghi chú thất bại');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteNote = async () => {
+    if (!noteToDelete) return;
+
+    try {
+      setSaving(true);
+      await medicalNotesService.deleteNote(noteToDelete.id);
+      toast.success('Xóa ghi chú thành công');
+      setShowDeleteConfirm(false);
+      setNoteToDelete(null);
+      loadNotes();
+    } catch (error: any) {
+      console.error('Error deleting note:', error);
+      toast.error(error?.response?.data?.message || 'Xóa ghi chú thất bại');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -87,6 +259,7 @@ const MedicalNotesPage = () => {
   });
 
   const noteTypes = medicalNotesService.getNoteTypeOptions();
+  const severityOptions = medicalNotesService.getSeverityOptions();
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -104,10 +277,7 @@ const MedicalNotesPage = () => {
             </p>
           </div>
           <button
-            onClick={() => {
-              // TODO: Implement create modal
-              alert('Tính năng tạo ghi chú sẽ được triển khai sớm');
-            }}
+            onClick={handleOpenCreateModal}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -190,10 +360,7 @@ const MedicalNotesPage = () => {
               <p className="text-lg font-medium text-slate-900 dark:text-white mb-2">Chưa có ghi chú nào</p>
               <p className="text-slate-600 dark:text-slate-400 mb-4">Tạo ghi chú đầu tiên cho bệnh nhân của bạn</p>
               <button
-                onClick={() => {
-                  // TODO: Implement create modal
-                  alert('Tính năng tạo ghi chú sẽ được triển khai sớm');
-                }}
+                onClick={handleOpenCreateModal}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -254,19 +421,46 @@ const MedicalNotesPage = () => {
                       </div>
                     </div>
 
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (note.patientUserId) {
-                          navigate(`/doctor/patients/${note.patientUserId}`);
-                        }
-                      }}
-                      className="text-slate-400 hover:text-blue-500 transition-colors"
-                    >
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditModal(note);
+                        }}
+                        className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+                        title="Chỉnh sửa"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setNoteToDelete(note);
+                          setShowDeleteConfirm(true);
+                        }}
+                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                        title="Xóa"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (note.patientUserId) {
+                            navigate(`/doctor/patients/${note.patientUserId}`);
+                          }
+                        }}
+                        className="text-slate-400 hover:text-blue-500 transition-colors"
+                      >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -274,6 +468,400 @@ const MedicalNotesPage = () => {
           )}
         </div>
       </main>
+
+      {/* Create Modal - Inline JSX to prevent re-render issues */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                  Tạo ghi chú mới
+                </h2>
+                <button
+                  onClick={() => setShowCreateModal(false)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                >
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              {/* Patient Selection */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Bệnh nhân <span className="text-red-500">*</span>
+                </label>
+                {loadingPatients ? (
+                  <div className="py-2 text-slate-500">Đang tải danh sách bệnh nhân...</div>
+                ) : (
+                  <select
+                    value={formPatientUserId}
+                    onChange={(e) => setFormPatientUserId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  >
+                    <option value="">Chọn bệnh nhân</option>
+                    {patients.map((patient) => (
+                      <option key={patient.userId} value={patient.userId}>
+                        {patient.firstName} {patient.lastName} {patient.email && `(${patient.email})`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Note Type & Severity */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Loại ghi chú <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formNoteType}
+                    onChange={(e) => setFormNoteType(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  >
+                    {noteTypes.map((type) => (
+                      <option key={type.value} value={type.value}>{type.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Mức độ nghiêm trọng
+                  </label>
+                  <select
+                    value={formSeverity}
+                    onChange={(e) => setFormSeverity(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  >
+                    {severityOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Note Content */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Nội dung ghi chú <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={formNoteContent}
+                  onChange={(e) => setFormNoteContent(e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-none"
+                  placeholder="Nhập nội dung ghi chú..."
+                />
+              </div>
+
+              {/* Diagnosis */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Chẩn đoán
+                </label>
+                <input
+                  type="text"
+                  value={formDiagnosis}
+                  onChange={(e) => setFormDiagnosis(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  placeholder="Nhập chẩn đoán..."
+                />
+              </div>
+
+              {/* Clinical Observations */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Quan sát lâm sàng
+                </label>
+                <textarea
+                  value={formClinicalObservations}
+                  onChange={(e) => setFormClinicalObservations(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-none"
+                  placeholder="Nhập quan sát lâm sàng..."
+                />
+              </div>
+
+              {/* Treatment Plan */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Kế hoạch điều trị
+                </label>
+                <textarea
+                  value={formTreatmentPlan}
+                  onChange={(e) => setFormTreatmentPlan(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-none"
+                  placeholder="Nhập kế hoạch điều trị..."
+                />
+              </div>
+
+              {/* Follow-up Date & Privacy */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Ngày tái khám
+                  </label>
+                  <input
+                    type="date"
+                    value={formFollowUpDate}
+                    onChange={(e) => setFormFollowUpDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+                <div className="flex items-end pb-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formIsPrivate}
+                      onChange={(e) => setFormIsPrivate(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-slate-700 dark:text-slate-300">
+                      Ghi chú riêng tư (bệnh nhân không thấy)
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="px-4 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleCreateNote}
+                disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {saving && (
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                )}
+                Tạo ghi chú
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                  Chỉnh sửa ghi chú
+                </h2>
+                <button
+                  onClick={() => setShowEditModal(false)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                >
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              {/* Note Type & Severity */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Loại ghi chú <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formNoteType}
+                    onChange={(e) => setFormNoteType(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  >
+                    {noteTypes.map((type) => (
+                      <option key={type.value} value={type.value}>{type.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Mức độ nghiêm trọng
+                  </label>
+                  <select
+                    value={formSeverity}
+                    onChange={(e) => setFormSeverity(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  >
+                    {severityOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Note Content */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Nội dung ghi chú <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={formNoteContent}
+                  onChange={(e) => setFormNoteContent(e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-none"
+                  placeholder="Nhập nội dung ghi chú..."
+                />
+              </div>
+
+              {/* Diagnosis */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Chẩn đoán
+                </label>
+                <input
+                  type="text"
+                  value={formDiagnosis}
+                  onChange={(e) => setFormDiagnosis(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  placeholder="Nhập chẩn đoán..."
+                />
+              </div>
+
+              {/* Clinical Observations */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Quan sát lâm sàng
+                </label>
+                <textarea
+                  value={formClinicalObservations}
+                  onChange={(e) => setFormClinicalObservations(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-none"
+                  placeholder="Nhập quan sát lâm sàng..."
+                />
+              </div>
+
+              {/* Treatment Plan */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Kế hoạch điều trị
+                </label>
+                <textarea
+                  value={formTreatmentPlan}
+                  onChange={(e) => setFormTreatmentPlan(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-none"
+                  placeholder="Nhập kế hoạch điều trị..."
+                />
+              </div>
+
+              {/* Follow-up Date & Privacy */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Ngày tái khám
+                  </label>
+                  <input
+                    type="date"
+                    value={formFollowUpDate}
+                    onChange={(e) => setFormFollowUpDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+                <div className="flex items-end pb-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formIsPrivate}
+                      onChange={(e) => setFormIsPrivate(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-slate-700 dark:text-slate-300">
+                      Ghi chú riêng tư (bệnh nhân không thấy)
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleUpdateNote}
+                disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {saving && (
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                )}
+                Cập nhật
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && noteToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 bg-red-100 dark:bg-red-900/30 rounded-full">
+                <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white text-center mb-2">
+                Xác nhận xóa
+              </h3>
+              <p className="text-slate-600 dark:text-slate-400 text-center mb-6">
+                Bạn có chắc chắn muốn xóa ghi chú này? Hành động này không thể hoàn tác.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setNoteToDelete(null);
+                  }}
+                  className="flex-1 px-4 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handleDeleteNote}
+                  disabled={saving}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {saving && (
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  )}
+                  Xóa
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Note Detail Modal */}
       {selectedNote && (
@@ -293,11 +881,19 @@ const MedicalNotesPage = () => {
               </div>
             </div>
             <div className="p-6 space-y-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${getNoteTypeColor(selectedNote.noteType)}`}>
                   {medicalNotesService.formatNoteType(selectedNote.noteType)}
                 </span>
                 {getSeverityBadge(selectedNote.severity)}
+                {selectedNote.isPrivate && (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    Riêng tư
+                  </span>
+                )}
               </div>
               
               <div>
@@ -346,12 +942,18 @@ const MedicalNotesPage = () => {
                 Đóng
               </button>
               <button
+                onClick={() => handleOpenEditModal(selectedNote)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Chỉnh sửa
+              </button>
+              <button
                 onClick={() => {
                   if (selectedNote.patientUserId) {
                     navigate(`/doctor/patients/${selectedNote.patientUserId}`);
                   }
                 }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
               >
                 Xem bệnh nhân
               </button>

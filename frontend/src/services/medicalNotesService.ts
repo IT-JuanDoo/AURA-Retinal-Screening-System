@@ -54,6 +54,21 @@ const medicalNotesService = {
   },
 
   /**
+   * Update an existing medical note
+   */
+  async updateNote(noteId: string, note: Partial<CreateMedicalNoteDto>): Promise<MedicalNote> {
+    const response = await api.put<MedicalNote>(`/medical-notes/${noteId}`, note);
+    return response.data;
+  },
+
+  /**
+   * Delete a medical note
+   */
+  async deleteNote(noteId: string): Promise<void> {
+    await api.delete(`/medical-notes/${noteId}`);
+  },
+
+  /**
    * Get medical notes (for doctor)
    */
   async getNotes(params?: MedicalNotesParams): Promise<MedicalNote[]> {
@@ -66,6 +81,14 @@ const medicalNotesService = {
    */
   async getNoteById(noteId: string): Promise<MedicalNote> {
     const response = await api.get<MedicalNote>(`/medical-notes/${noteId}`);
+    return response.data;
+  },
+
+  /**
+   * Get notes for a specific patient (for patient view - only non-private notes)
+   */
+  async getMyNotes(): Promise<MedicalNote[]> {
+    const response = await api.get<MedicalNote[]>('/medical-notes/my-notes');
     return response.data;
   },
 

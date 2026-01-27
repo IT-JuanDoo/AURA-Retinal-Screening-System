@@ -1,24 +1,52 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuthStore } from "../../store/authStore";
 import messageService from "../../services/messageService";
+import medicalNotesService from "../../services/medicalNotesService";
 import { useState, useEffect } from "react";
 
 const PatientHeader = () => {
   const { user, logout } = useAuthStore();
   const location = useLocation();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [notesCount, setNotesCount] = useState(0);
 
   useEffect(() => {
+    // Load message unread count
     messageService
       .getUnreadCount()
       .then((count) => setUnreadCount(count))
       .catch(() => {});
 
-    // Refresh unread count every 30 seconds
+    // Load notes count (new notes in last 7 days)
+    medicalNotesService
+      .getMyNotes()
+      .then((notes) => {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const recentNotes = notes.filter(
+          (note) => new Date(note.createdAt) > sevenDaysAgo
+        );
+        setNotesCount(recentNotes.length);
+      })
+      .catch(() => {});
+
+    // Refresh counts every 30 seconds
     const interval = setInterval(() => {
       messageService
         .getUnreadCount()
         .then((count) => setUnreadCount(count))
+        .catch(() => {});
+      
+      medicalNotesService
+        .getMyNotes()
+        .then((notes) => {
+          const sevenDaysAgo = new Date();
+          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+          const recentNotes = notes.filter(
+            (note) => new Date(note.createdAt) > sevenDaysAgo
+          );
+          setNotesCount(recentNotes.length);
+        })
         .catch(() => {});
     }, 30000);
 
@@ -121,6 +149,34 @@ const PatientHeader = () => {
                 />
               </svg>
               Báo cáo
+            </Link>
+            <Link
+              to="/notes"
+              className={`text-sm leading-normal flex items-center gap-2 transition-colors relative ${
+                isActive("/notes")
+                  ? "text-blue-500 font-semibold"
+                  : "text-slate-600 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-500 font-medium"
+              }`}
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                />
+              </svg>
+              Ghi chú y tế
+              {notesCount > 0 && (
+                <span className="absolute -top-1 -right-2 h-4 w-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+                  {notesCount > 9 ? "9+" : notesCount}
+                </span>
+              )}
             </Link>
             <Link
               to="/packages"

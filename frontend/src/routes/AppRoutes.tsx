@@ -21,6 +21,7 @@ import ClinicAlertsPage from "../pages/clinic/ClinicAlertsPage";
 import PatientTrendPage from "../pages/clinic/PatientTrendPage";
 import ClinicUsageDashboardPage from "../pages/clinic/ClinicUsageDashboardPage";
 import PatientReportsPage from "../pages/patient/PatientReportsPage";
+import PatientNotesPage from "../pages/patient/PatientNotesPage";
 import ClinicReportGenerationPage from "../pages/clinic/ClinicReportGenerationPage";
 import PackagesPage from "../pages/patient/PackagesPage";
 import ExportHistoryPage from "../pages/patient/ExportHistoryPage";
@@ -230,6 +231,15 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <PatientReportsPage />
+          </ProtectedRoute>
+        }
+      />
+      {/* Patient Notes - View medical notes from doctors */}
+      <Route
+        path="/notes"
+        element={
+          <ProtectedRoute>
+            <PatientNotesPage />
           </ProtectedRoute>
         }
       />
