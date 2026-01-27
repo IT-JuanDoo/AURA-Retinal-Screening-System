@@ -2,6 +2,8 @@
 
 Hệ thống sàng lọc và phân tích sức khỏe mạch máu võng mạc sử dụng AI, được xây dựng với kiến trúc Microservices.
 
+---
+
 ## 🚀 Quick Start
 
 ### Yêu cầu hệ thống
@@ -20,46 +22,122 @@ cd AURA-Retinal-Screening-System
 # 2. Chạy tất cả services với Docker Compose
 docker-compose up -d
 
-# 3. Đợi services khởi động (khoảng 2-3 phút)
-# Kiểm tra logs:
+# 3. Đợi services khởi động (khoảng 2–3 phút)
+# Kiểm tra logs backend:
 docker-compose logs -f backend
 
 # Khi thấy "Now listening on: http://[::]:5000" → Backend đã sẵn sàng!
 ```
 
-### Test nhanh
+---
 
-Sau khi services đã khởi động, bạn có thể test qua:
+## 🌐 Danh sách trang và tài khoản đăng nhập
 
-- **Swagger UI**: http://localhost:5000/swagger
-  - Đăng nhập để lấy token
-  - Test các endpoints trực tiếp trong Swagger
+### 1. Ứng dụng chính (Frontend + Backend)
 
-- **Health Check**: http://localhost:5000/health
-  - Kiểm tra backend và database đã sẵn sàng
+- **Frontend Web App**  
+  - URL: `http://localhost:3000`  
+  - Tài khoản mẫu (có thể thay đổi trong DB):
+    - **Patient** (người dùng):  
+      - Email: `test@aura.com`  
+      - Password: `Test123!@#`
+    - **Admin/SuperAdmin**: xem thêm trong seed data hoặc tạo qua API/Admin UI.
 
-- **Hangfire Dashboard**: http://localhost:5000/hangfire
-  - Xem background jobs đang chạy
+- **Backend API (Gateway)**  
+  - URL: `http://localhost:5000`  
+  - Health check: `http://localhost:5000/health`
 
-### Truy cập ứng dụng
+- **Swagger API Docs**  
+  - URL: `http://localhost:5000/swagger`  
+  - Đăng nhập:
+    1. Gọi `POST /api/auth/login` với body:
+       ```json
+       {
+         "email": "test@aura.com",
+         "password": "Test123!@#"
+       }
+       ```
+    2. Copy `accessToken` trong response.
+    3. Bấm nút **Authorize** → nhập: `Bearer <accessToken>`.
 
-Sau khi services đã khởi động, truy cập:
+- **Hangfire Dashboard** (background jobs)  
+  - URL: `http://localhost:5000/hangfire`  
+  - Yêu cầu JWT token với role **Admin/SuperAdmin** (đăng nhập như trên rồi truy cập).
 
-- **Frontend**: http://localhost:3000 (hoặc port trong docker-compose)
-- **Backend API**: http://localhost:5000
-- **Swagger API Docs**: http://localhost:5000/swagger
-- **pgAdmin** (Database): http://localhost:5050
-  - Email: `admin@aura.com`
-  - Password: `admin123`
-- **RabbitMQ Management**: http://localhost:15672
-  - Username: `aura_user`
-  - Password: `aura_rabbitmq_2024`
-- **Grafana** (Monitoring): http://localhost:3001
-  - Username: `admin`
-  - Password: `admin123`
-- **Prometheus**: http://localhost:9090
-- **Hangfire Dashboard**: http://localhost:5000/hangfire
-  - (Yêu cầu đăng nhập với Admin/SuperAdmin role)
+### 2. Cơ sở dữ liệu
+
+- **PostgreSQL**  
+  - Host (trong Docker network): `postgres:5432`  
+  - Host (từ máy ngoài): `localhost:5432`  
+  - Database: `aura_db`  
+  - User: `aura_user`  
+  - Password: `aura_password_2024`
+
+- **pgAdmin (UI quản lý DB)**  
+  - URL: `http://localhost:5050`  
+  - Email: `admin@aura.com`  
+  - Password: `admin123`  
+  - Khi add server trong pgAdmin:
+    - Host: `postgres`
+    - Port: `5432`
+    - Username: `aura_user`
+    - Password: `aura_password_2024`
+
+### 3. Hàng đợi & Cache
+
+- **RabbitMQ Management**  
+  - URL: `http://localhost:15672`  
+  - Username: `aura_user`  
+  - Password: `aura_rabbitmq_2024`  
+  - Các exchange/queue chính (do code khai báo hoặc bạn tạo tay):
+    - `analysis.exchange` (topic) → `analysis.queue` (routing key `analysis.start`)
+    - `notifications.exchange` (fanout) → `notifications.queue`, `email.queue`
+
+- **Redis** (cache)  
+  - Host (trong Docker network): `redis:6379`  
+  - Host (từ máy ngoài): `localhost:6379`  
+  - Không có UI web; dùng `redis-cli` hoặc tool như RedisInsight để xem dữ liệu:
+    ```bash
+    docker exec -it aura-redis sh
+    redis-cli
+    set aura:test "ok"
+    get aura:test
+    ```
+
+### 4. Monitoring & Observability
+
+- **Prometheus** (thu thập metrics)  
+  - URL: `http://localhost:9090`  
+  - Đã cấu hình scrape các service: `backend`, `auth-service`, `user-service`, `image-service`, `analysis-service`, `notification-service`, `admin-service`, `aicore`.
+
+- **Grafana** (dashboard)  
+  - URL: `http://localhost:3001`  
+  - Username: `admin`  
+  - Password: `admin123`  
+  - Datasource mặc định: **Prometheus** (`http://prometheus:9090`).  
+  - Test nhanh:
+    1. Vào **Connections → Data sources → Prometheus → Save & test**.
+    2. Vào **Explore**, chọn datasource Prometheus, query `up` → Run query để xem tình trạng các service.
+
+### 5. AI Core & Các service khác
+
+- **AI Core (Python FastAPI)**  
+  - URL nội bộ: `http://aicore:8000` (trong Docker network)  
+  - Từ máy ngoài (nếu expose port): `http://localhost:8000` (tuỳ cấu hình).  
+  - Backend gọi AI Core qua biến môi trường `AICore__BaseUrl=http://aicore:8000`.
+
+- **Kong API Gateway** (tuỳ chọn)  
+  - Kong proxy: `http://localhost:8000`  
+  - Kong Admin (nếu mở): `http://localhost:8001`  
+  - Trong môi trường dev hiện tại, backend/FE có thể gọi thẳng mà không cần Kong.
+
+### 6. NiFi (nếu bạn bật trong docker-compose)
+
+- **Apache NiFi**  
+  - URL: `https://localhost:8443/nifi`  
+  - Username: `admin`  
+  - Password: `aura_nifi_2024`  
+  - Khi trình duyệt báo lỗi SSL tự ký, chọn **“Advanced” → “Proceed to localhost (unsafe)”**.
 
 ---
 
