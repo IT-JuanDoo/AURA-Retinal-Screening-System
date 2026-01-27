@@ -936,21 +936,14 @@ public class AnalysisService : IAnalysisService
     }
 
     /// <summary>
-    /// Check if user has enough credits and deduct if available
-    /// Returns true if credits were successfully deducted, false otherwise
+    /// Check if user has enough credits and deduct if available.
+    /// Luôn yêu cầu credits (không cho tắt bằng cấu hình) để đảm bảo số lượt còn lại luôn được trừ chính xác.
+    /// Trả về true nếu trừ credits thành công, false nếu không đủ credits.
     /// </summary>
     private async Task<bool> CheckAndDeductCreditsAsync(string userId, int creditsNeeded)
     {
-        // Allow disabling credits check for demo/dev environments
-        // Default behavior: require credits (true)
-        var requireCredits = _configuration.GetValue("Analysis:RequireCredits", true);
-        if (!requireCredits)
-        {
-            _logger?.LogWarning(
-                "Credits check disabled (Analysis:RequireCredits=false). Skipping deduction for user {UserId}, Needed={CreditsNeeded}",
-                userId, creditsNeeded);
-            return true;
-        }
+        // Luôn yêu cầu credits cho môi trường thực tế
+        // (bỏ cơ chế tắt bằng cấu hình Analysis:RequireCredits để tránh nhầm lẫn)
 
         using var connection = new Npgsql.NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
