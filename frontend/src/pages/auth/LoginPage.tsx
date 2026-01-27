@@ -26,9 +26,17 @@ const LoginPage = () => {
     clearError();
   }, [searchParams, clearError]);
 
-  // Helper function to check if user is doctor and redirect accordingly
-  // Always check the actual role, not just the URL parameter
+  // Helper function: xác định loại tài khoản và redirect đúng trang
+  // Ưu tiên param ?type trên URL (patient/doctor/clinic), nhưng vẫn luôn kiểm tra role thực tế khi cần
   const handlePostLoginRedirect = async () => {
+    const loginType = searchParams.get('type'); // 'doctor' | 'clinic' | null
+
+    // Nếu là tài khoản phòng khám → đưa thẳng sang trang dashboard của Clinic
+    if (loginType === 'clinic') {
+      navigate('/clinic/usage-dashboard', { replace: true });
+      return;
+    }
+
     try {
       // Try to get doctor profile - if successful, user is a doctor
       const doctor = await doctorService.getCurrentDoctor();

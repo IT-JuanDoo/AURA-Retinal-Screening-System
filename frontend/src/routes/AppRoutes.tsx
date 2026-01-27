@@ -107,6 +107,12 @@ const AppRoutes = () => {
           <Navigate to="/login?type=doctor" replace />
         }
       />
+      <Route
+        path="/clinic/login"
+        element={
+          <Navigate to="/login?type=clinic" replace />
+        }
+      />
 
       {/* Admin routes */}
       <Route

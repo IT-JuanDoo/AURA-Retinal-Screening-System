@@ -16,13 +16,13 @@ const PackagesPage = () => {
 
   useEffect(() => {
     loadPackages();
-  }, [selectedType, location.pathname]); // Reload when route changes or filter changes
+  }, [location.pathname]); // Reload when route changes
 
   const loadPackages = async () => {
     setLoading(true);
     try {
-      const packageType = selectedType === "all" ? undefined : selectedType;
-      const data = await userPackageApi.getAvailablePackages(packageType);
+      // Luôn load tất cả gói, lọc theo loại ở FE
+      const data = await userPackageApi.getAvailablePackages();
       setPackages(data);
     } catch (error: any) {
       console.error("Error loading packages:", error);
@@ -32,7 +32,14 @@ const PackagesPage = () => {
     }
   };
 
-  const filteredPackages = packages.filter((pkg) => {
+  // Lọc theo loại gói (all / Individual / Clinic / Enterprise)
+  const typeFilteredPackages =
+    selectedType === "all"
+      ? packages
+      : packages.filter((p) => p.packageType === selectedType);
+
+  // Lọc theo từ khóa tìm kiếm trên danh sách đã lọc theo loại
+  const filteredPackages = typeFilteredPackages.filter((pkg) => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       return (

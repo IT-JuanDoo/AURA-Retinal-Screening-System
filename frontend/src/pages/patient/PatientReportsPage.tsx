@@ -4,7 +4,6 @@ import PatientHeader from "../../components/patient/PatientHeader";
 import analysisService, { AnalysisResult } from "../../services/analysisService";
 import toast from "react-hot-toast";
 
-type ViewMode = "timeline" | "list";
 type FilterStatus = "all" | "Completed" | "Processing" | "Failed";
 
 const PatientReportsPage = () => {
@@ -12,7 +11,6 @@ const PatientReportsPage = () => {
   const location = useLocation();
   const [reports, setReports] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>("timeline");
   const [filterRisk, setFilterRisk] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [sortBy, setSortBy] = useState<string>("date-desc");
@@ -250,51 +248,13 @@ const PatientReportsPage = () => {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-                Lịch Sử Phân Tích
-              </h1>
-              <p className="text-slate-600 dark:text-slate-400">
-                Xem lại tất cả các kết quả phân tích AI của bạn
-              </p>
-            </div>
-            
-            {/* View Toggle */}
-            <div className="flex items-center gap-2 bg-white dark:bg-slate-900 rounded-lg p-1 border border-slate-200 dark:border-slate-800">
-              <button
-                onClick={() => setViewMode("timeline")}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  viewMode === "timeline"
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Timeline
-                </span>
-              </button>
-              <button
-                onClick={() => setViewMode("list")}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  viewMode === "list"
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
-                  Danh sách
-                </span>
-              </button>
-            </div>
-          </div>
+        <div className="mb  -8">
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
+            Lịch Sử Phân Tích
+          </h1>
+          <p className="text-slate-600 dark:text-slate-400">
+            Xem lại tất cả các kết quả phân tích AI của bạn
+          </p>
         </div>
 
         {/* Advanced Filters */}
@@ -455,8 +415,8 @@ const PatientReportsPage = () => {
               </Link>
             )}
           </div>
-        ) : viewMode === "timeline" ? (
-          // Timeline View
+        ) : (
+          // Timeline View (mặc định)
           <div className="relative">
             {/* Timeline Line */}
             <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700"></div>
@@ -564,86 +524,6 @@ const PatientReportsPage = () => {
                 </div>
               ))}
             </div>
-          </div>
-        ) : (
-          // List View
-          <div className="space-y-4">
-            {filteredAndSortedReports.map((report) => (
-              <div
-                key={report.id}
-                className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6 hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => navigate(`/analysis/${report.id}`)}
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div className="flex items-start gap-4 flex-1">
-                    {/* Risk Icon */}
-                    <div
-                      className={`h-12 w-12 rounded-lg flex items-center justify-center flex-shrink-0 border-2 ${getRiskColor(
-                        report.overallRiskLevel
-                      )}`}
-                    >
-                      {getRiskIcon(report.overallRiskLevel)}
-                    </div>
-
-                    {/* Report Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2 flex-wrap">
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                          Phân tích võng mạc
-                        </h3>
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-semibold ${getRiskColor(
-                            report.overallRiskLevel
-                          )}`}
-                        >
-                          {getRiskLabel(report.overallRiskLevel)}
-                        </span>
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(
-                            report.analysisStatus
-                          )}`}
-                        >
-                          {report.analysisStatus}
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
-                        {formatDate(report.analysisStartedAt)}
-                      </p>
-                      <div className="flex flex-wrap gap-4 text-sm">
-                        {report.riskScore !== undefined && (
-                          <span className="text-slate-600 dark:text-slate-400">
-                            Điểm tổng: <span className="font-semibold text-slate-900 dark:text-white">{report.riskScore}/100</span>
-                          </span>
-                        )}
-                        {report.hypertensionRisk && (
-                          <span className="text-slate-600 dark:text-slate-400">
-                            Tim mạch: <span className="font-semibold text-slate-900 dark:text-white">{report.hypertensionRisk}</span>
-                          </span>
-                        )}
-                        {report.diabetesRisk && (
-                          <span className="text-slate-600 dark:text-slate-400">
-                            Tiểu đường: <span className="font-semibold text-slate-900 dark:text-white">{report.diabetesRisk}</span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/analysis/${report.id}`);
-                      }}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-                    >
-                      Xem chi tiết
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
           </div>
         )}
 
