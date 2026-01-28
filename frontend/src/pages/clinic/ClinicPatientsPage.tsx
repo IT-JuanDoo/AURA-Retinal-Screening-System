@@ -28,7 +28,7 @@ const ClinicPatientsPage = () => {
 
   useEffect(() => {
     if (!clinicAuthService.isLoggedIn()) {
-      navigate('/clinic/login');
+      navigate('/login');
       return;
     }
     fetchData();
@@ -50,7 +50,7 @@ const ClinicPatientsPage = () => {
     } catch (error: any) {
       console.error('Error fetching data:', error);
       if (error.response?.status === 401) {
-        navigate('/clinic/login');
+        navigate('/login');
       }
     } finally {
       setLoading(false);

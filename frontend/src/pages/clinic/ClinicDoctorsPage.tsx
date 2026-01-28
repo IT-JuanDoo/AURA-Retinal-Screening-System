@@ -24,7 +24,7 @@ const ClinicDoctorsPage = () => {
 
   useEffect(() => {
     if (!clinicAuthService.isLoggedIn()) {
-      navigate('/clinic/login');
+      navigate('/login');
       return;
     }
     fetchDoctors();
@@ -38,7 +38,7 @@ const ClinicDoctorsPage = () => {
     } catch (error: any) {
       console.error('Error fetching doctors:', error);
       if (error.response?.status === 401) {
-        navigate('/clinic/login');
+        navigate('/login');
       }
     } finally {
       setLoading(false);

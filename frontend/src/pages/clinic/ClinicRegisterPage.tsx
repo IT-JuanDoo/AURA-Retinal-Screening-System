@@ -526,7 +526,7 @@ const ClinicRegisterPage = () => {
           <div className="mt-6 text-center border-t border-slate-200 dark:border-slate-700 pt-6">
             <p className="text-slate-600 dark:text-slate-400">
               Đã có tài khoản phòng khám?{' '}
-              <Link to="/clinic/login" className="text-blue-600 hover:text-blue-700 dark:text-blue-400 font-semibold">
+              <Link to="/login" className="text-blue-600 hover:text-blue-700 dark:text-blue-400 font-semibold">
                 Đăng nhập
               </Link>
             </p>

@@ -20,7 +20,6 @@ import ClinicBulkUploadPage from "../pages/clinic/ClinicBulkUploadPage";
 import ClinicAlertsPage from "../pages/clinic/ClinicAlertsPage";
 import PatientTrendPage from "../pages/clinic/PatientTrendPage";
 import ClinicUsageDashboardPage from "../pages/clinic/ClinicUsageDashboardPage";
-import ClinicLoginPage from "../pages/clinic/ClinicLoginPage";
 import ClinicRegisterPage from "../pages/clinic/ClinicRegisterPage";
 import ClinicDashboardPage from "../pages/clinic/ClinicDashboardPage";
 import ClinicDoctorsPage from "../pages/clinic/ClinicDoctorsPage";
@@ -325,8 +324,7 @@ const AppRoutes = () => {
 
       {/* Settings Page */}
 
-        {/* Clinic Auth routes (public) */}
-        <Route path="/clinic/login" element={<ClinicLoginPage />} />
+        {/* Clinic Auth routes (public - login unified at /login) */}
         <Route path="/clinic/register" element={<ClinicRegisterPage />} />
         
         {/* Clinic Dashboard routes (clinic auth handled internally) */}

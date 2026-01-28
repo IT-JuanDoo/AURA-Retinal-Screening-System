@@ -27,7 +27,7 @@ const ClinicHeader = () => {
 
   const handleLogout = async () => {
     await clinicAuthService.logout();
-    navigate('/clinic/login');
+    navigate('/login');
   };
 
   // Check verification status

@@ -17,7 +17,7 @@ const ClinicDashboardPage = () => {
 
   useEffect(() => {
     if (!clinicAuthService.isLoggedIn()) {
-      navigate('/clinic/login');
+      navigate('/login');
       return;
     }
     fetchDashboardData();
@@ -36,7 +36,7 @@ const ClinicDashboardPage = () => {
       console.error('Error fetching dashboard:', error);
       if (error.response?.status === 401) {
         toast.error('Phiên đăng nhập hết hạn');
-        navigate('/clinic/login');
+        navigate('/login');
       }
     } finally {
       setLoading(false);
@@ -75,7 +75,7 @@ const ClinicDashboardPage = () => {
                 Cập nhật thông tin
               </Link>
               <button
-                onClick={() => clinicAuthService.logout().then(() => navigate('/clinic/login'))}
+                onClick={() => clinicAuthService.logout().then(() => navigate('/login'))}
                 className="px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-lg"
               >
                 Đăng xuất

@@ -4,6 +4,7 @@ import { useGoogleLogin } from '@react-oauth/google';
 import FacebookLogin from '@greatsumini/react-facebook-login';
 import { useAuthStore } from '../../store/authStore';
 import doctorService from '../../services/doctorService';
+import clinicAuthService from '../../services/clinicAuthService';
 import toast from 'react-hot-toast';
 
 // Facebook App ID từ environment variables
@@ -53,18 +54,40 @@ const LoginPage = () => {
     clearError();
     
     try {
+      // Thử đăng nhập Bệnh nhân/Bác sĩ trước
       const success = await login({ email, password });
       if (success) {
         toast.success('Đăng nhập thành công!');
-        // Small delay to ensure state is updated
-        setTimeout(() => {
-          handlePostLoginRedirect();
-        }, 100);
-      } else {
-        toast.error(error || 'Đăng nhập thất bại');
+        setTimeout(() => handlePostLoginRedirect(), 100);
+        return;
       }
+      // Nếu không phải bệnh nhân/bác sĩ, thử đăng nhập Phòng khám
+      const clinicResult = await clinicAuthService.login({ email, password });
+      if (clinicResult.success && clinicResult.accessToken) {
+        toast.success('Đăng nhập thành công!');
+        if (clinicResult.clinic?.verificationStatus === 'Pending') {
+          toast('Phòng khám đang chờ xét duyệt', { icon: '⏳' });
+        }
+        navigate('/clinic/dashboard', { replace: true });
+        return;
+      }
+      toast.error(clinicResult.message || error || 'Đăng nhập thất bại');
     } catch (err: any) {
-      console.error('Login error:', err);
+      const status = err?.response?.status;
+      const is401 = status === 401;
+      if (is401) {
+        try {
+          const clinicResult = await clinicAuthService.login({ email, password });
+          if (clinicResult.success && clinicResult.accessToken) {
+            toast.success('Đăng nhập thành công!');
+            if (clinicResult.clinic?.verificationStatus === 'Pending') {
+              toast('Phòng khám đang chờ xét duyệt', { icon: '⏳' });
+            }
+            navigate('/clinic/dashboard', { replace: true });
+            return;
+          }
+        } catch (_) {}
+      }
       const errorMessage = err?.response?.data?.message || err?.message || 'Đăng nhập thất bại';
       toast.error(errorMessage);
     }
@@ -387,20 +410,33 @@ const LoginPage = () => {
                   Điều khoản sử dụng
                 </a>
               </div>
-              {/* Doctor Registration - Prominent Button */}
-              <div className="mt-6 pt-4 border-t border-border-light dark:border-border-dark">
+              {/* Doctor & Clinic Registration - Prominent Buttons */}
+              <div className="mt-6 pt-4 border-t border-border-light dark:border-border-dark flex flex-col sm:flex-row gap-3">
                 <Link
                   to="/register?type=doctor"
-                  className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold text-sm shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/40 transition-all active:scale-[0.98]"
+                  className="flex items-center justify-center gap-2 flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold text-sm shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/40 transition-all active:scale-[0.98]"
                 >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
                     <circle cx="9" cy="7" r="4"></circle>
                     <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
                     <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                   </svg>
                   <span>Đăng kí bác sĩ</span>
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M5 12h14M12 5l7 7-7 7"></path>
+                  </svg>
+                </Link>
+                <Link
+                  to="/clinic/register"
+                  className="flex items-center justify-center gap-2 flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-semibold text-sm shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 transition-all active:scale-[0.98]"
+                >
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                  </svg>
+                  <span>Đăng ký phòng khám</span>
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M5 12h14M12 5l7 7-7 7"></path>
                   </svg>
                 </Link>
