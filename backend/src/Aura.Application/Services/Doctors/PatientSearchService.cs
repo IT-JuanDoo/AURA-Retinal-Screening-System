@@ -37,9 +37,11 @@ public class PatientSearchService : IPatientSearchService
             // Quan hệ assign doctor-patient (patient_doctor_assignments)
             // vẫn được LEFT JOIN để lấy thông tin AssignedAt/Clinic, nhưng
             // không giới hạn kết quả chỉ những bệnh nhân đã được assign.
+            // IMPORTANT: Exclude doctors from results - only return actual patients
             var whereConditions = new List<string>
             {
-                "COALESCE(u.IsDeleted, false) = false"
+                "COALESCE(u.IsDeleted, false) = false",
+                "NOT EXISTS (SELECT 1 FROM doctors d WHERE d.Id = u.Id AND COALESCE(d.IsDeleted, false) = false)"
             };
 
             var parameters = new List<NpgsqlParameter>
@@ -133,9 +135,11 @@ public class PatientSearchService : IPatientSearchService
             sql += $" ORDER BY {sortBy} {sortDirection}";
 
             // Get total count - rebuild where clause without latest_risk reference for count
+            // IMPORTANT: Exclude doctors from count - only count actual patients
             var countWhereConditions = new List<string>
             {
-                "COALESCE(u.IsDeleted, false) = false"
+                "COALESCE(u.IsDeleted, false) = false",
+                "NOT EXISTS (SELECT 1 FROM doctors d WHERE d.Id = u.Id AND COALESCE(d.IsDeleted, false) = false)"
             };
 
             var countParameters = new List<NpgsqlParameter>

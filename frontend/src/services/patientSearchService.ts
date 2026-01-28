@@ -75,16 +75,31 @@ const patientSearchService = {
     );
     
     // Additional client-side filtering to ensure no doctors are returned
+    // This is a safety layer - backend should already filter doctors, but we double-check here
     const filteredPatients = response.data.patients.filter((patient: any) => {
       // Filter out any results that have doctor-specific fields
-      return !patient.licenseNumber && !patient.specialization;
+      // Check multiple fields to be absolutely sure
+      const hasDoctorFields = 
+        patient.licenseNumber || 
+        patient.specialization || 
+        patient.yearsOfExperience !== undefined ||
+        patient.qualification ||
+        patient.hospitalAffiliation ||
+        patient.isVerified !== undefined ||
+        patient.isActive !== undefined;
+      
+      // If any doctor-specific field exists, exclude this result
+      return !hasDoctorFields;
     });
+    
+    // Recalculate totals based on filtered results
+    const filteredCount = filteredPatients.length;
     
     return {
       ...response.data,
       patients: filteredPatients,
-      totalCount: filteredPatients.length,
-      totalPages: Math.ceil(filteredPatients.length / (params.pageSize || 20)),
+      totalCount: filteredCount,
+      totalPages: Math.ceil(filteredCount / (params.pageSize || 20)),
     };
   },
 };
