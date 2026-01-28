@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import clinicAuthService from "../../services/clinicAuthService";
 import clinicReportService, {
   CreateClinicReportDto,
   ClinicReportDto,
@@ -27,6 +28,12 @@ const ClinicReportGenerationPage = () => {
   useEffect(() => {
     loadTemplates();
     loadRecentReports();
+    // Prefill clinicId from current clinic session
+    const clinic = clinicAuthService.getCurrentClinic();
+    if (clinic?.id) {
+      setClinicId(clinic.id);
+      loadClinicInfo(clinic.id);
+    }
   }, [location.pathname]); // Reload when route changes
 
   useEffect(() => {

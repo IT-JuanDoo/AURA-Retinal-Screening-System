@@ -80,6 +80,21 @@ export interface ClinicAuthResponse {
 }
 
 const clinicAuthService = {
+  /**
+   * Ensure clinic session is available.
+   * - If access token is missing, try refresh via cookie.
+   * - Returns true if session exists/was restored.
+   */
+  async ensureLoggedIn(): Promise<boolean> {
+    if (this.isLoggedIn()) return true;
+    try {
+      const res = await this.refreshToken();
+      return !!(res.success && res.accessToken);
+    } catch {
+      return false;
+    }
+  },
+
   // Register new clinic – payload khớp với backend ClinicRegisterDto (camelCase)
   async register(data: ClinicRegisterData): Promise<ClinicAuthResponse> {
     const payload = {

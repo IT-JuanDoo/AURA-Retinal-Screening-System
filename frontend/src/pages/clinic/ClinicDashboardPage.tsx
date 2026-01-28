@@ -352,7 +352,7 @@ const ClinicDashboardPage = () => {
             {/* Quick Actions */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <Link
-                to="/clinic/bulk-upload"
+                to="/clinic/upload"
                 className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 hover:shadow-md transition-shadow group"
               >
                 <div className="flex items-center gap-4">
@@ -362,8 +362,8 @@ const ClinicDashboardPage = () => {
                     </svg>
                   </div>
                   <div>
-                    <h4 className="font-semibold text-slate-900 dark:text-white">Upload hàng loạt</h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Tải lên nhiều ảnh cùng lúc</p>
+                    <h4 className="font-semibold text-slate-900 dark:text-white">Upload & AI</h4>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Tải ảnh và chạy phân tích AI</p>
                   </div>
                 </div>
               </Link>

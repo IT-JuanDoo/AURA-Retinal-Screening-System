@@ -53,15 +53,21 @@ const LoginPage = () => {
     e.preventDefault();
     clearError();
     
+    // 1) Try Patient/Doctor login first
     try {
-      // Thử đăng nhập Bệnh nhân/Bác sĩ trước
       const success = await login({ email, password });
       if (success) {
         toast.success('Đăng nhập thành công!');
         setTimeout(() => handlePostLoginRedirect(), 100);
         return;
       }
-      // Nếu không phải bệnh nhân/bác sĩ, thử đăng nhập Phòng khám
+    } catch (err: any) {
+      // Ignore and fallback to clinic login
+      console.warn('Patient/Doctor login failed, fallback to clinic:', err);
+    }
+
+    // 2) Fallback: Clinic login (call ONLY once)
+    try {
       const clinicResult = await clinicAuthService.login({ email, password });
       if (clinicResult.success && clinicResult.accessToken) {
         toast.success('Đăng nhập thành công!');
@@ -71,23 +77,8 @@ const LoginPage = () => {
         navigate('/clinic/dashboard', { replace: true });
         return;
       }
-      toast.error(clinicResult.message || error || 'Đăng nhập thất bại');
+      toast.error(clinicResult.message || 'Đăng nhập thất bại');
     } catch (err: any) {
-      const status = err?.response?.status;
-      const is401 = status === 401;
-      if (is401) {
-        try {
-          const clinicResult = await clinicAuthService.login({ email, password });
-          if (clinicResult.success && clinicResult.accessToken) {
-            toast.success('Đăng nhập thành công!');
-            if (clinicResult.clinic?.verificationStatus === 'Pending') {
-              toast('Phòng khám đang chờ xét duyệt', { icon: '⏳' });
-            }
-            navigate('/clinic/dashboard', { replace: true });
-            return;
-          }
-        } catch (_) {}
-      }
       const errorMessage = err?.response?.data?.message || err?.message || 'Đăng nhập thất bại';
       toast.error(errorMessage);
     }

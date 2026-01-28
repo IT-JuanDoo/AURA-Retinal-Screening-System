@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import ClinicHeader from "../../components/clinic/ClinicHeader";
+import clinicAuthService from "../../services/clinicAuthService";
 import clinicImageService, {
   ClinicBulkUploadResponse,
   BatchAnalysisStatus,
@@ -9,6 +11,7 @@ import toast from "react-hot-toast";
 
 const ClinicBulkUploadPage = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -34,6 +37,23 @@ const ClinicBulkUploadPage = () => {
   const [captureDevice, setCaptureDevice] = useState("");
   const [captureDate, setCaptureDate] = useState("");
   const [autoStartAnalysis, setAutoStartAnalysis] = useState(true);
+
+  // Ensure only clinic accounts can access this page
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const ok = await clinicAuthService.ensureLoggedIn();
+      if (!ok && !cancelled) {
+        toast.error("Phiên đăng nhập phòng khám đã hết hạn. Vui lòng đăng nhập lại.");
+        // Don't bounce clinic users to the generic /login from inside clinic flows.
+        // Keep them in clinic area to avoid confusing redirects.
+        navigate("/clinic/dashboard", { replace: true });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
@@ -265,8 +285,9 @@ const ClinicBulkUploadPage = () => {
   const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <ClinicHeader />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">

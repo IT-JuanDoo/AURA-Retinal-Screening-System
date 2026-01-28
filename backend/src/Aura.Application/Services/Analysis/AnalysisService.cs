@@ -1105,18 +1105,35 @@ public class AnalysisService : IAnalysisService
     }
 
     /// <summary>
-    /// Kiểm tra và trừ credits trước khi phân tích
-    /// Luôn yêu cầu credits (không cho tắt bằng cấu hình) để đảm bảo số lượt còn lại luôn được trừ chính xác.
-    /// Trả về true nếu trừ credits thành công, false nếu không đủ credits hoặc đã hết lượt (remainingAnalyses = 0).
+    /// Kiểm tra và trừ credits trước khi phân tích.
+    /// Với user thường: trừ từ bảng user_packages.
+    /// Với tài khoản phòng khám (clinic_id): bỏ qua kiểm tra user_packages vì credits đã được quản lý ở clinic_packages.
     /// </summary>
     private async Task<bool> CheckAndDeductCreditsAsync(string userId, int creditsNeeded)
     {
-        // Luôn yêu cầu credits cho môi trường thực tế
-        // (bỏ cơ chế tắt bằng cấu hình Analysis:RequireCredits để tránh nhầm lẫn)
-        // Mỗi lần phân tích sẽ trừ đi 1 lượt, và khi về 0 thì không được phân tích nữa.
-
         using var connection = new Npgsql.NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
+
+        // Nếu userId thuộc bảng clinics → đây là phân tích từ phía phòng khám, không dùng user_packages
+        try
+        {
+            var clinicCheckSql = "SELECT 1 FROM clinics WHERE Id = @Id AND IsDeleted = false";
+            using (var clinicCmd = new Npgsql.NpgsqlCommand(clinicCheckSql, connection))
+            {
+                clinicCmd.Parameters.AddWithValue("Id", userId);
+                var clinicExists = await clinicCmd.ExecuteScalarAsync();
+                if (clinicExists != null)
+                {
+                    _logger?.LogInformation("Skip user_packages credits check for clinic user {ClinicId}", userId);
+                    return true;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error checking clinic id {UserId} when validating credits", userId);
+            // Nếu lỗi khi kiểm tra clinic, tiếp tục fallback sang cơ chế user_packages
+        }
 
         // Kiểm tra xem user có package đang hoạt động với số lượt còn lại > 0 không
         // Chỉ chọn package có RemainingAnalyses > 0 (không cho phép = 0)

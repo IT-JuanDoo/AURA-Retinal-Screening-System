@@ -131,9 +131,9 @@ const ClinicHeader = () => {
               </Link>
 
               <Link 
-                to="/clinic/bulk-upload"
+                to="/clinic/upload"
                 className={`text-sm flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                  isActive('/clinic/bulk-upload')
+                  isActive('/clinic/upload')
                     ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 font-semibold'
                     : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}

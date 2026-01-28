@@ -1,4 +1,5 @@
 using Aura.Application.DTOs.Images;
+using Aura.Application.DTOs.Analysis;
 using Aura.Application.Services.Analysis;
 using Aura.Application.Services.Images;
 using Microsoft.AspNetCore.Authorization;
@@ -6,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace Aura.API.Controllers;
 
@@ -229,6 +231,121 @@ public class ClinicImagesController : ControllerBase
         {
             _logger.LogError(ex, "Error queueing batch analysis for clinic {ClinicId}", clinicId);
             return StatusCode(500, new { message = "Failed to queue analysis", error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Get AI analysis results for a batch analysis job (clinic scope)
+    /// </summary>
+    [HttpGet("analysis/{jobId}/results")]
+    [ProducesResponseType(typeof(List<AnalysisResultDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetBatchAnalysisResults(string jobId)
+    {
+        var clinicId = User.FindFirstValue("clinic_id") ??
+                       User.FindFirstValue("ClinicId") ??
+                       User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrEmpty(clinicId))
+            return Unauthorized(new { message = "Clinic ID not found" });
+
+        try
+        {
+            var status = await _analysisQueueService.GetBatchAnalysisStatusAsync(jobId);
+            if (status == null)
+                return NotFound(new { message = "Analysis job not found" });
+
+            var imageIds = status.ImageIds?.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray() ?? Array.Empty<string>();
+            if (imageIds.Length == 0)
+                return Ok(new List<AnalysisResultDto>());
+
+            var connStr = _configuration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrEmpty(connStr))
+                return StatusCode(500, new { message = "DefaultConnection not configured" });
+
+            using var connection = new NpgsqlConnection(connStr);
+            await connection.OpenAsync();
+
+            var sql = @"
+                SELECT 
+                    ar.Id, ar.ImageId, ar.AnalysisStatus, ar.OverallRiskLevel, ar.RiskScore,
+                    ar.HypertensionRisk, ar.HypertensionScore,
+                    ar.DiabetesRisk, ar.DiabetesScore, ar.DiabeticRetinopathyDetected, ar.DiabeticRetinopathySeverity,
+                    ar.StrokeRisk, ar.StrokeScore,
+                    ar.VesselTortuosity, ar.VesselWidthVariation, ar.MicroaneurysmsCount, ar.HemorrhagesDetected, ar.ExudatesDetected,
+                    ar.AnnotatedImageUrl, ar.HeatmapUrl,
+                    ar.AiConfidenceScore,
+                    ar.Recommendations, ar.HealthWarnings,
+                    ar.ProcessingTimeSeconds, ar.AnalysisStartedAt, ar.AnalysisCompletedAt,
+                    ar.DetailedFindings
+                FROM analysis_results ar
+                INNER JOIN retinal_images ri ON ri.Id = ar.ImageId
+                WHERE ri.ClinicId = @ClinicId
+                  AND ri.IsDeleted = false
+                  AND ar.IsDeleted = false
+                  AND ar.ImageId = ANY(@ImageIds)
+                ORDER BY ar.AnalysisCompletedAt DESC NULLS LAST";
+
+            using var cmd = new NpgsqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("ClinicId", clinicId);
+            cmd.Parameters.AddWithValue("ImageIds", imageIds);
+
+            var results = new List<AnalysisResultDto>();
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                Dictionary<string, object>? detailed = null;
+                if (!reader.IsDBNull(29))
+                {
+                    try
+                    {
+                        var json = reader.GetString(29);
+                        detailed = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+                    }
+                    catch
+                    {
+                        detailed = null;
+                    }
+                }
+
+                results.Add(new AnalysisResultDto
+                {
+                    Id = reader.GetString(0),
+                    ImageId = reader.GetString(1),
+                    AnalysisStatus = reader.GetString(2),
+                    OverallRiskLevel = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    RiskScore = reader.IsDBNull(4) ? null : reader.GetDecimal(4),
+                    HypertensionRisk = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    HypertensionScore = reader.IsDBNull(6) ? null : reader.GetDecimal(6),
+                    DiabetesRisk = reader.IsDBNull(7) ? null : reader.GetString(7),
+                    DiabetesScore = reader.IsDBNull(8) ? null : reader.GetDecimal(8),
+                    DiabeticRetinopathyDetected = !reader.IsDBNull(9) && reader.GetBoolean(9),
+                    DiabeticRetinopathySeverity = reader.IsDBNull(10) ? null : reader.GetString(10),
+                    StrokeRisk = reader.IsDBNull(11) ? null : reader.GetString(11),
+                    StrokeScore = reader.IsDBNull(12) ? null : reader.GetDecimal(12),
+                    VesselTortuosity = reader.IsDBNull(13) ? null : reader.GetDecimal(13),
+                    VesselWidthVariation = reader.IsDBNull(14) ? null : reader.GetDecimal(14),
+                    MicroaneurysmsCount = reader.IsDBNull(15) ? 0 : reader.GetInt32(15),
+                    HemorrhagesDetected = !reader.IsDBNull(16) && reader.GetBoolean(16),
+                    ExudatesDetected = !reader.IsDBNull(17) && reader.GetBoolean(17),
+                    AnnotatedImageUrl = reader.IsDBNull(18) ? null : reader.GetString(18),
+                    HeatmapUrl = reader.IsDBNull(19) ? null : reader.GetString(19),
+                    AiConfidenceScore = reader.IsDBNull(20) ? null : reader.GetDecimal(20),
+                    Recommendations = reader.IsDBNull(21) ? null : reader.GetString(21),
+                    HealthWarnings = reader.IsDBNull(22) ? null : reader.GetString(22),
+                    ProcessingTimeSeconds = reader.IsDBNull(23) ? null : reader.GetInt32(23),
+                    AnalysisStartedAt = reader.IsDBNull(24) ? null : reader.GetDateTime(24),
+                    AnalysisCompletedAt = reader.IsDBNull(25) ? null : reader.GetDateTime(25),
+                    DetailedFindings = detailed
+                });
+            }
+
+            return Ok(results);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting batch analysis results for job {JobId}", jobId);
+            return StatusCode(500, new { message = "Failed to get analysis results" });
         }
     }
 

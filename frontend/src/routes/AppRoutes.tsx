@@ -17,6 +17,7 @@ import ImageUploadPage from "../pages/patient/ImageUploadPage";
 import AnalysisResultPage from "../pages/patient/AnalysisResultPage";
 import ChatPage from "../pages/patient/ChatPage";
 import ClinicBulkUploadPage from "../pages/clinic/ClinicBulkUploadPage";
+import ClinicUploadPage from "../pages/clinic/ClinicUploadPage";
 import ClinicAlertsPage from "../pages/clinic/ClinicAlertsPage";
 import PatientTrendPage from "../pages/clinic/PatientTrendPage";
 import ClinicUsageDashboardPage from "../pages/clinic/ClinicUsageDashboardPage";
@@ -327,53 +328,17 @@ const AppRoutes = () => {
         {/* Clinic Auth routes (public - login unified at /login) */}
         <Route path="/clinic/register" element={<ClinicRegisterPage />} />
         
-        {/* Clinic Dashboard routes (clinic auth handled internally) */}
+        {/* Clinic routes (auth handled via clinicAuthService inside each page) */}
         <Route path="/clinic/dashboard" element={<ClinicDashboardPage />} />
         <Route path="/clinic/doctors" element={<ClinicDoctorsPage />} />
         <Route path="/clinic/patients" element={<ClinicPatientsPage />} />
         <Route path="/clinic/packages" element={<ClinicPackagesPage />} />
-
-        {/* Clinic routes (user auth) */}
-        <Route
-          path="/clinic/bulk-upload"
-          element={
-            <ProtectedRoute>
-              <ClinicBulkUploadPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/clinic/alerts"
-          element={
-            <ProtectedRoute>
-              <ClinicAlertsPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/clinic/patient-trend/:patientUserId"
-          element={
-            <ProtectedRoute>
-              <PatientTrendPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/clinic/usage-dashboard"
-          element={
-            <ProtectedRoute>
-              <ClinicUsageDashboardPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/clinic/reports"
-          element={
-            <ProtectedRoute>
-              <ClinicReportGenerationPage />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/clinic/upload" element={<ClinicUploadPage />} />
+        <Route path="/clinic/bulk-upload" element={<ClinicBulkUploadPage />} />
+        <Route path="/clinic/alerts" element={<ClinicAlertsPage />} />
+        <Route path="/clinic/patient-trend/:patientUserId" element={<PatientTrendPage />} />
+        <Route path="/clinic/usage-dashboard" element={<ClinicUsageDashboardPage />} />
+        <Route path="/clinic/reports" element={<ClinicReportGenerationPage />} />
 
         {/* Doctor routes */}
         <Route

@@ -1,4 +1,19 @@
-import api from "./api";
+import axios from "axios";
+import clinicAuthService from "./clinicAuthService";
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
+
+// Clinic-scoped axios instance (uses clinic_token, not patient token)
+const clinicApi = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true,
+});
+
+clinicApi.interceptors.request.use((config) => {
+  const token = clinicAuthService.getToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
 
 export interface ClinicBulkUploadResponse {
   batchId: string;
@@ -34,6 +49,36 @@ export interface BatchAnalysisStatus {
   startedAt?: string;
   completedAt?: string;
   imageIds: string[];
+}
+
+export interface ClinicAnalysisResult {
+  id: string;
+  imageId: string;
+  analysisStatus: string;
+  overallRiskLevel?: "Low" | "Medium" | "High" | "Critical";
+  riskScore?: number;
+  hypertensionRisk?: "Low" | "Medium" | "High";
+  hypertensionScore?: number;
+  diabetesRisk?: "Low" | "Medium" | "High";
+  diabetesScore?: number;
+  diabeticRetinopathyDetected: boolean;
+  diabeticRetinopathySeverity?: string;
+  strokeRisk?: "Low" | "Medium" | "High";
+  strokeScore?: number;
+  vesselTortuosity?: number;
+  vesselWidthVariation?: number;
+  microaneurysmsCount: number;
+  hemorrhagesDetected: boolean;
+  exudatesDetected: boolean;
+  annotatedImageUrl?: string;
+  heatmapUrl?: string;
+  aiConfidenceScore?: number;
+  recommendations?: string;
+  healthWarnings?: string;
+  processingTimeSeconds?: number;
+  analysisStartedAt?: string;
+  analysisCompletedAt?: string;
+  detailedFindings?: Record<string, any>;
 }
 
 export interface QueueAnalysisRequest {
@@ -93,7 +138,7 @@ const clinicImageService = {
       formData.append("captureDate", options.captureDate);
     }
 
-    const response = await api.post<ClinicBulkUploadResponse>(
+    const response = await clinicApi.post<ClinicBulkUploadResponse>(
       "/clinic/images/bulk-upload",
       formData,
       {
@@ -111,8 +156,18 @@ const clinicImageService = {
    * Get status of a batch analysis job
    */
   async getBatchAnalysisStatus(jobId: string): Promise<BatchAnalysisStatus> {
-    const response = await api.get<BatchAnalysisStatus>(
+    const response = await clinicApi.get<BatchAnalysisStatus>(
       `/clinic/images/analysis/${jobId}/status`
+    );
+    return response.data;
+  },
+
+  /**
+   * Get analysis results for a job (clinic scope)
+   */
+  async getBatchAnalysisResults(jobId: string): Promise<ClinicAnalysisResult[]> {
+    const response = await clinicApi.get<ClinicAnalysisResult[]>(
+      `/clinic/images/analysis/${jobId}/results`
     );
     return response.data;
   },
@@ -123,7 +178,7 @@ const clinicImageService = {
   async queueBatchAnalysis(
     request: QueueAnalysisRequest
   ): Promise<BatchAnalysisStatus> {
-    const response = await api.post<BatchAnalysisStatus>(
+    const response = await clinicApi.post<BatchAnalysisStatus>(
       "/clinic/images/queue-analysis",
       request
     );
@@ -134,7 +189,7 @@ const clinicImageService = {
    * Get status of a bulk upload batch
    */
   async getBatchStatus(batchId: string): Promise<BulkUploadBatchStatus> {
-    const response = await api.get<BulkUploadBatchStatus>(
+    const response = await clinicApi.get<BulkUploadBatchStatus>(
       `/clinic/images/batches/${batchId}/status`
     );
     return response.data;
@@ -153,7 +208,7 @@ const clinicImageService = {
     if (options?.pageSize) params.append("pageSize", options.pageSize.toString());
     if (options?.status) params.append("status", options.status);
 
-    const response = await api.get<BulkUploadBatchStatus[]>(
+    const response = await clinicApi.get<BulkUploadBatchStatus[]>(
       `/clinic/images/batches?${params.toString()}`
     );
     return response.data;

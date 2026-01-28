@@ -1,4 +1,21 @@
-import api from "./api";
+import axios from "axios";
+import clinicAuthService from "./clinicAuthService";
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
+
+// Clinic-scoped axios instance (dùng clinic_token, không dùng token bệnh nhân)
+const clinicApi = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true,
+});
+
+clinicApi.interceptors.request.use((config) => {
+  const token = clinicAuthService.getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
 export interface CreateClinicReportDto {
   clinicId: string;
@@ -48,7 +65,7 @@ const clinicReportService = {
    * Generate a new clinic report
    */
   generateReport: async (dto: CreateClinicReportDto): Promise<ClinicReportDto> => {
-    const res = await api.post("/clinic/reports/generate", dto);
+    const res = await clinicApi.post("/clinic/reports/generate", dto);
     return res.data;
   },
 
@@ -56,7 +73,7 @@ const clinicReportService = {
    * Get a clinic report by ID
    */
   getReport: async (reportId: string): Promise<ClinicReportDto> => {
-    const res = await api.get(`/clinic/reports/${reportId}`);
+    const res = await clinicApi.get(`/clinic/reports/${reportId}`);
     return res.data;
   },
 
@@ -67,7 +84,7 @@ const clinicReportService = {
     const params: any = {};
     if (clinicId) params.clinicId = clinicId;
     if (reportType) params.reportType = reportType;
-    const res = await api.get("/clinic/reports", { params });
+    const res = await clinicApi.get("/clinic/reports", { params });
     return res.data;
   },
 
@@ -75,7 +92,7 @@ const clinicReportService = {
    * Get available report templates
    */
   getTemplates: async (): Promise<ReportTemplateDto[]> => {
-    const res = await api.get("/clinic/reports/templates");
+    const res = await clinicApi.get("/clinic/reports/templates");
     return res.data;
   },
 
@@ -83,7 +100,7 @@ const clinicReportService = {
    * Get clinic information
    */
   getClinicInfo: async (clinicId: string): Promise<ClinicInfoDto> => {
-    const res = await api.get(`/clinic/reports/clinic/${clinicId}`);
+    const res = await clinicApi.get(`/clinic/reports/clinic/${clinicId}`);
     return res.data;
   },
 
@@ -91,7 +108,7 @@ const clinicReportService = {
    * Export report to file
    */
   exportReport: async (reportId: string, format: string): Promise<{ fileUrl: string; format: string }> => {
-    const res = await api.post(`/clinic/reports/${reportId}/export`, null, {
+    const res = await clinicApi.post(`/clinic/reports/${reportId}/export`, null, {
       params: { format },
     });
     return res.data;
