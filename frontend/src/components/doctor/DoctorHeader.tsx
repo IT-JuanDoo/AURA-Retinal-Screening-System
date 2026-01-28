@@ -173,7 +173,7 @@ const DoctorHeader = () => {
           </nav>
 
           {/* Right side */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 ml-6">
             {/* Mobile Search Button */}
             <Link
               to="/doctor/patients/search"
