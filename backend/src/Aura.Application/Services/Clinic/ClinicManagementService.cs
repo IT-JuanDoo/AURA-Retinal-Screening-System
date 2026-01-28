@@ -270,6 +270,10 @@ public class ClinicManagementService : IClinicManagementService
                     var names = dto.FullName.Split(' ');
                     var firstName = names.Length > 0 ? names[0] : dto.FullName;
                     var lastName = names.Length > 1 ? string.Join(" ", names.Skip(1)) : "";
+                    // doctors.LicenseNumber is NOT NULL UNIQUE in schema
+                    var licenseNumber = !string.IsNullOrWhiteSpace(dto.LicenseNumber)
+                        ? dto.LicenseNumber.Trim()
+                        : ("PENDING-" + doctorId);
 
                     var createDoctorSql = @"
                         INSERT INTO doctors (Id, FirstName, LastName, Email, Password, Phone, Specialization, LicenseNumber, IsActive, CreatedDate, IsDeleted)
@@ -284,7 +288,7 @@ public class ClinicManagementService : IClinicManagementService
                         cmd.Parameters.AddWithValue("Password", passwordHash);
                         cmd.Parameters.AddWithValue("Phone", (object?)dto.Phone ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("Specialization", (object?)dto.Specialization ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("LicenseNumber", (object?)dto.LicenseNumber ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("LicenseNumber", licenseNumber);
                         cmd.Parameters.AddWithValue("Now", DateTime.UtcNow);
                         await cmd.ExecuteNonQueryAsync();
                     }

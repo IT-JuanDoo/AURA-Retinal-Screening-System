@@ -35,7 +35,9 @@ public class AddClinicDoctorDto
     [Required(ErrorMessage = "Họ tên bác sĩ là bắt buộc")]
     public string FullName { get; set; } = string.Empty;
 
-    [Phone(ErrorMessage = "Số điện thoại không hợp lệ")]
+    // Optional; accept Vietnamese formats (digits, spaces, + - ( ))
+    [RegularExpression(@"^[\d\s\-\+\(\)]*$", ErrorMessage = "Số điện thoại chỉ được chứa chữ số, khoảng trắng, dấu + - ( )")]
+    [MaxLength(20)]
     public string? Phone { get; set; }
 
     public string? Specialization { get; set; }
@@ -95,7 +97,9 @@ public class RegisterClinicPatientDto
     [Required(ErrorMessage = "Họ tên bệnh nhân là bắt buộc")]
     public string FullName { get; set; } = string.Empty;
 
-    [Phone(ErrorMessage = "Số điện thoại không hợp lệ")]
+    // Optional; accept Vietnamese formats (digits, spaces, + - ( ))
+    [RegularExpression(@"^[\d\s\-\+\(\)]*$", ErrorMessage = "Số điện thoại chỉ được chứa chữ số, khoảng trắng, dấu + - ( )")]
+    [MaxLength(20)]
     public string? Phone { get; set; }
 
     public DateTime? DateOfBirth { get; set; }

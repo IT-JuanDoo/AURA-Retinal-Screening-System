@@ -116,9 +116,10 @@ const clinicManagementService = {
 
   // Doctors
   async getDoctors(search?: string, isActive?: boolean): Promise<ClinicDoctor[]> {
-    const response = await clinicApi.get<ClinicDoctor[]>('/doctors', {
-      params: { search, isActive },
-    });
+    const params: Record<string, string | boolean> = {};
+    if (search != null && search !== '') params.search = search;
+    if (isActive != null) params.isActive = isActive;
+    const response = await clinicApi.get<ClinicDoctor[]>('/doctors', { params });
     return response.data;
   },
 
@@ -128,7 +129,17 @@ const clinicManagementService = {
   },
 
   async addDoctor(data: AddDoctorData): Promise<ClinicDoctor> {
-    const response = await clinicApi.post<ClinicDoctor>('/doctors', data);
+    // Avoid sending empty strings for optional fields (can trigger backend validation)
+    const body: Record<string, unknown> = {
+      email: data.email.trim(),
+      fullName: data.fullName.trim(),
+      isPrimary: data.isPrimary ?? false,
+    };
+    if (data.phone != null && String(data.phone).trim() !== '') body.phone = String(data.phone).trim();
+    if (data.specialization != null && String(data.specialization).trim() !== '') body.specialization = String(data.specialization).trim();
+    if (data.licenseNumber != null && String(data.licenseNumber).trim() !== '') body.licenseNumber = String(data.licenseNumber).trim();
+    if (data.password != null && String(data.password).trim() !== '') body.password = String(data.password).trim();
+    const response = await clinicApi.post<ClinicDoctor>('/doctors', body);
     return response.data;
   },
 
@@ -161,7 +172,17 @@ const clinicManagementService = {
   },
 
   async registerPatient(data: RegisterPatientData): Promise<ClinicPatient> {
-    const response = await clinicApi.post<ClinicPatient>('/patients', data);
+    const body: Record<string, unknown> = {
+      email: data.email.trim(),
+      fullName: data.fullName.trim(),
+    };
+    if (data.phone != null && String(data.phone).trim() !== '') body.phone = String(data.phone).trim();
+    if (data.dateOfBirth != null && String(data.dateOfBirth).trim() !== '') body.dateOfBirth = data.dateOfBirth;
+    if (data.gender != null && String(data.gender).trim() !== '') body.gender = data.gender;
+    if (data.address != null && String(data.address).trim() !== '') body.address = data.address;
+    if (data.assignedDoctorId != null && String(data.assignedDoctorId).trim() !== '') body.assignedDoctorId = data.assignedDoctorId;
+    if (data.password != null && String(data.password).trim() !== '') body.password = String(data.password).trim();
+    const response = await clinicApi.post<ClinicPatient>('/patients', body);
     return response.data;
   },
 

@@ -104,18 +104,32 @@ public class ClinicManagementController : ControllerBase
     public async Task<IActionResult> AddDoctor([FromBody] AddClinicDoctorDto dto)
     {
         if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+        {
+            var firstError = ModelState
+                .Where(x => x.Value?.Errors?.Count > 0)
+                .SelectMany(x => x.Value!.Errors.Select(e => e.ErrorMessage))
+                .FirstOrDefault();
+            return BadRequest(new { message = firstError ?? "Dữ liệu không hợp lệ", errors = ModelState });
+        }
 
         var clinicId = GetCurrentClinicId();
         if (clinicId == null)
-            return Forbid();
+            return StatusCode(403, new { message = "Vui lòng đăng nhập bằng tài khoản phòng khám để thêm bác sĩ." });
 
-        var (success, message, doctor) = await _clinicManagementService.AddDoctorAsync(clinicId, dto);
-        
-        if (!success)
-            return BadRequest(new { message });
+        try
+        {
+            var (success, message, doctor) = await _clinicManagementService.AddDoctorAsync(clinicId, dto);
+            
+            if (!success)
+                return BadRequest(new { message });
 
-        return CreatedAtAction(nameof(GetDoctor), new { doctorId = doctor?.DoctorId }, doctor);
+            return CreatedAtAction(nameof(GetDoctor), new { doctorId = doctor?.DoctorId }, doctor);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AddDoctor failed for clinic {ClinicId}", clinicId);
+            return StatusCode(500, new { message = "Đã xảy ra lỗi khi thêm bác sĩ. Vui lòng thử lại sau." });
+        }
     }
 
     /// <summary>
@@ -230,18 +244,32 @@ public class ClinicManagementController : ControllerBase
     public async Task<IActionResult> RegisterPatient([FromBody] RegisterClinicPatientDto dto)
     {
         if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+        {
+            var firstError = ModelState
+                .Where(x => x.Value?.Errors?.Count > 0)
+                .SelectMany(x => x.Value!.Errors.Select(e => e.ErrorMessage))
+                .FirstOrDefault();
+            return BadRequest(new { message = firstError ?? "Dữ liệu không hợp lệ", errors = ModelState });
+        }
 
         var clinicId = GetCurrentClinicId();
         if (clinicId == null)
-            return Forbid();
+            return StatusCode(403, new { message = "Vui lòng đăng nhập bằng tài khoản phòng khám để thêm bệnh nhân." });
 
-        var (success, message, patient) = await _clinicManagementService.RegisterPatientAsync(clinicId, dto);
-        
-        if (!success)
-            return BadRequest(new { message });
+        try
+        {
+            var (success, message, patient) = await _clinicManagementService.RegisterPatientAsync(clinicId, dto);
+            
+            if (!success)
+                return BadRequest(new { message });
 
-        return CreatedAtAction(nameof(GetPatient), new { patientId = patient?.UserId }, patient);
+            return CreatedAtAction(nameof(GetPatient), new { patientId = patient?.UserId }, patient);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "RegisterPatient failed for clinic {ClinicId}", clinicId);
+            return StatusCode(500, new { message = "Đã xảy ra lỗi khi thêm bệnh nhân. Vui lòng thử lại sau." });
+        }
     }
 
     /// <summary>
