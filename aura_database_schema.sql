@@ -23,6 +23,7 @@ DROP TABLE IF EXISTS annotations CASCADE;
 DROP TABLE IF EXISTS analysis_results CASCADE;
 DROP TABLE IF EXISTS retinal_images CASCADE;
 DROP TABLE IF EXISTS patient_doctor_assignments CASCADE;
+DROP TABLE IF EXISTS clinic_admins CASCADE;
 DROP TABLE IF EXISTS clinic_doctors CASCADE;
 DROP TABLE IF EXISTS clinic_users CASCADE;
 DROP TABLE IF EXISTS ai_feedback CASCADE;
@@ -217,6 +218,37 @@ CREATE TABLE clinics (
 );
 
 -- =====================================================
+-- 6.1 CLINIC ADMINS (Separate authentication for clinics)
+-- =====================================================
+
+CREATE TABLE clinic_admins (
+    Id VARCHAR(255) PRIMARY KEY,
+    ClinicId VARCHAR(255) NOT NULL REFERENCES clinics(Id) ON DELETE CASCADE,
+    Email VARCHAR(255) NOT NULL UNIQUE,
+    PasswordHash VARCHAR(500) NOT NULL,
+    FullName VARCHAR(255) NOT NULL,
+    Phone VARCHAR(50),
+    Role VARCHAR(50) DEFAULT 'ClinicAdmin' CHECK (Role IN ('ClinicAdmin', 'ClinicManager', 'ClinicStaff')),
+    IsActive BOOLEAN DEFAULT TRUE,
+    LastLoginAt TIMESTAMP,
+    PasswordResetToken VARCHAR(500),
+    PasswordResetExpires TIMESTAMP,
+    RefreshToken VARCHAR(500),
+    RefreshTokenExpires TIMESTAMP,
+    CreatedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CreatedBy VARCHAR(255),
+    UpdatedDate TIMESTAMP,
+    UpdatedBy VARCHAR(255),
+    IsDeleted BOOLEAN DEFAULT FALSE,
+    Note VARCHAR(255)
+);
+
+-- Index for clinic_admins
+CREATE INDEX idx_clinic_admins_clinic_id ON clinic_admins(ClinicId);
+CREATE INDEX idx_clinic_admins_email ON clinic_admins(Email);
+CREATE INDEX idx_clinic_admins_is_active ON clinic_admins(IsActive);
+
+-- =====================================================
 -- 7. CLINIC RELATIONSHIPS
 -- =====================================================
 
@@ -256,6 +288,7 @@ CREATE TABLE patient_doctor_assignments (
     UserId VARCHAR(255) NOT NULL REFERENCES users(Id) ON DELETE CASCADE,
     DoctorId VARCHAR(255) NOT NULL REFERENCES doctors(Id) ON DELETE CASCADE,
     ClinicId VARCHAR(255) REFERENCES clinics(Id) ON DELETE SET NULL,
+    IsPrimary BOOLEAN DEFAULT FALSE,
     AssignedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     AssignedBy VARCHAR(255) REFERENCES admins(Id),
     IsActive BOOLEAN DEFAULT TRUE,
@@ -437,6 +470,7 @@ CREATE TABLE service_packages (
     Price DECIMAL(10,2) NOT NULL,
     Currency VARCHAR(10) DEFAULT 'VND',
     ValidityDays INTEGER,
+    Features TEXT,
     IsActive BOOLEAN DEFAULT TRUE,
     CreatedBy VARCHAR(255) REFERENCES admins(Id),
     CreatedDate DATE,
@@ -455,6 +489,8 @@ CREATE TABLE user_packages (
     UserId VARCHAR(255) REFERENCES users(Id) ON DELETE CASCADE,
     ClinicId VARCHAR(255) REFERENCES clinics(Id) ON DELETE CASCADE,
     PackageId VARCHAR(255) NOT NULL REFERENCES service_packages(Id),
+    TotalAnalyses INTEGER NOT NULL DEFAULT 0,
+    UsedAnalyses INTEGER NOT NULL DEFAULT 0,
     RemainingAnalyses INTEGER NOT NULL,
     PurchasedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ExpiresAt TIMESTAMP,

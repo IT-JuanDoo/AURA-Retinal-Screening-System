@@ -149,7 +149,7 @@ public class ClinicReportsController : ControllerBase
     /// Get clinic information
     /// </summary>
     [HttpGet("clinic/{clinicId}")]
-    [ProducesResponseType(typeof(ClinicInfoDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Aura.Application.Services.Reports.ClinicInfoDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetClinicInfo(string clinicId)
     {

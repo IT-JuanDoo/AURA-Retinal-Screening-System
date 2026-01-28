@@ -335,6 +335,12 @@ builder.Services.AddScoped<Aura.API.Admin.NotificationTemplateRepository>();
 builder.Services.AddScoped<ClinicDb>();
 builder.Services.AddScoped<ClinicRepository>();
 
+// FR-22: Clinic Authentication
+builder.Services.AddScoped<Aura.Application.Services.Clinic.IClinicAuthService, Aura.Application.Services.Clinic.ClinicAuthService>();
+
+// FR-23: Clinic Management (Doctors/Patients)
+builder.Services.AddScoped<Aura.Application.Services.Clinic.IClinicManagementService, Aura.Application.Services.Clinic.ClinicManagementService>();
+
 // Register background worker services
 builder.Services.AddScoped<Aura.API.Services.BackgroundJobs.AnalysisQueueWorker>();
 builder.Services.AddScoped<Aura.API.Services.BackgroundJobs.RiskAlertWorker>();

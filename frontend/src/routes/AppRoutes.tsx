@@ -20,6 +20,12 @@ import ClinicBulkUploadPage from "../pages/clinic/ClinicBulkUploadPage";
 import ClinicAlertsPage from "../pages/clinic/ClinicAlertsPage";
 import PatientTrendPage from "../pages/clinic/PatientTrendPage";
 import ClinicUsageDashboardPage from "../pages/clinic/ClinicUsageDashboardPage";
+import ClinicLoginPage from "../pages/clinic/ClinicLoginPage";
+import ClinicRegisterPage from "../pages/clinic/ClinicRegisterPage";
+import ClinicDashboardPage from "../pages/clinic/ClinicDashboardPage";
+import ClinicDoctorsPage from "../pages/clinic/ClinicDoctorsPage";
+import ClinicPatientsPage from "../pages/clinic/ClinicPatientsPage";
+import ClinicPackagesPage from "../pages/clinic/ClinicPackagesPage";
 import PatientReportsPage from "../pages/patient/PatientReportsPage";
 import PatientNotesPage from "../pages/patient/PatientNotesPage";
 import ClinicReportGenerationPage from "../pages/clinic/ClinicReportGenerationPage";
@@ -319,7 +325,17 @@ const AppRoutes = () => {
 
       {/* Settings Page */}
 
-        {/* Clinic routes */}
+        {/* Clinic Auth routes (public) */}
+        <Route path="/clinic/login" element={<ClinicLoginPage />} />
+        <Route path="/clinic/register" element={<ClinicRegisterPage />} />
+        
+        {/* Clinic Dashboard routes (clinic auth handled internally) */}
+        <Route path="/clinic/dashboard" element={<ClinicDashboardPage />} />
+        <Route path="/clinic/doctors" element={<ClinicDoctorsPage />} />
+        <Route path="/clinic/patients" element={<ClinicPatientsPage />} />
+        <Route path="/clinic/packages" element={<ClinicPackagesPage />} />
+
+        {/* Clinic routes (user auth) */}
         <Route
           path="/clinic/bulk-upload"
           element={
