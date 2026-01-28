@@ -105,7 +105,7 @@ services:
       # Analysis: allow fallback to mock if AI service unavailable (set to false to force AI only)
       # Tạm thời bật lại để test, sau đó set = false khi AI Core đã chạy ổn định
       - Analysis__FallbackToMock=true
-      
+
       # Analysis: simulated processing delay in milliseconds (to make it feel more realistic)
       - Analysis__ProcessingDelayMs=8000
 
@@ -549,7 +549,9 @@ services:
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: 0.0.0.0:8001
-      KONG_ADMIN_GUI_URL: http://localhost:${KONG_ADMIN_PORT:-8002}
+      KONG_DECLARATIVE_CONFIG: /kong/kong-declarative.yml
+    volumes:
+      - ./kong-declarative.yml:/kong/kong-declarative.yml:ro
     ports:
       - "${KONG_PROXY_PORT:-8003}:8000"
       - "${KONG_ADMIN_PORT:-8002}:8001"
@@ -558,6 +560,8 @@ services:
     depends_on:
       kong-database:
         condition: service_healthy
+      kong-migrations:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "kong", "health"]
       interval: 30s
