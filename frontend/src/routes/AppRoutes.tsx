@@ -35,6 +35,7 @@ import DoctorStatisticsPage from "../pages/doctor/DoctorStatisticsPage";
 import DoctorPatientProfilePage from "../pages/doctor/PatientProfilePage";
 import DoctorChatPage from "../pages/doctor/DoctorChatPage";
 import DoctorExportHistoryPage from "../pages/doctor/DoctorExportHistoryPage";
+import DoctorProfilePage from "../pages/doctor/DoctorProfilePage";
 import { useAuthStore } from "../store/authStore";
 import { useAdminAuthStore } from "../store/adminAuthStore";
 
@@ -82,11 +83,53 @@ const AdminPublicRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+// Landing Page Route - redirect to dashboard if authenticated (cannot access landing page after login)
+const LandingPageRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated } = useAuthStore();
+  const { isAdminAuthenticated } = useAdminAuthStore();
+
+  // If user is authenticated (patient/doctor) or admin, redirect to their dashboard
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  if (isAdminAuthenticated) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+// 404 Not Found Route - redirect based on authentication status
+const NotFoundRoute = () => {
+  const { isAuthenticated } = useAuthStore();
+  const { isAdminAuthenticated } = useAdminAuthStore();
+
+  // If authenticated, redirect to dashboard instead of landing page
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  if (isAdminAuthenticated) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+
+  // If not authenticated, redirect to landing page
+  return <Navigate to="/" replace />;
+};
+
 const AppRoutes = () => {
   return (
     <Routes>
-      {/* Public routes */}
-      <Route path="/" element={<HomePage />} />
+      {/* Public routes - Landing page should not be accessible after login */}
+      <Route 
+        path="/" 
+        element={
+          <LandingPageRoute>
+            <HomePage />
+          </LandingPageRoute>
+        } 
+      />
       <Route
         path="/login"
         element={
@@ -399,9 +442,17 @@ const AppRoutes = () => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/doctor/profile"
+          element={
+            <ProtectedRoute>
+              <DoctorProfilePage />
+            </ProtectedRoute>
+          }
+        />
 
-      {/* 404 - redirect to home */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      {/* 404 - redirect based on authentication status */}
+      <Route path="*" element={<NotFoundRoute />} />
     </Routes>
   );
 };

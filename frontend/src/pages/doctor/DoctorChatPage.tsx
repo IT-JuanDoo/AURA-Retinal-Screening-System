@@ -384,7 +384,7 @@ const DoctorChatPage = () => {
       return `${hours.toString().padStart(2, "0")}:${minutesInHour.toString().padStart(2, "0")}`;
     }
     if (minutes < 1440) return "Hôm qua";
-    return date.toLocaleDateString("vi-VN");
+    return date.toLocaleDateString("vi-VN", { timeZone: 'Asia/Ho_Chi_Minh' });
   };
 
   const formatMessageTime = (dateString: string) => {
@@ -673,7 +673,7 @@ const DoctorChatPage = () => {
                     {/* Today Divider */}
                     <div className="flex justify-center">
                       <span className="text-xs font-medium text-slate-400 bg-white dark:bg-slate-800 px-3 py-1 rounded-full shadow-sm">
-                        {new Date().toLocaleDateString("vi-VN", { weekday: 'long', day: 'numeric', month: 'long' })}
+                        {new Date().toLocaleDateString("vi-VN", { timeZone: 'Asia/Ho_Chi_Minh', weekday: 'long', day: 'numeric', month: 'long' })}
                       </span>
                     </div>
 

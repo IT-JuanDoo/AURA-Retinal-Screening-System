@@ -132,7 +132,8 @@ const PatientReportsPage = () => {
   const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A";
     const date = new Date(dateString);
-    return date.toLocaleDateString("vi-VN", {
+    return date.toLocaleString("vi-VN", {
+      timeZone: "Asia/Ho_Chi_Minh",
       year: "numeric",
       month: "long",
       day: "numeric",
@@ -148,12 +149,18 @@ const PatientReportsPage = () => {
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     
-    if (date.toDateString() === today.toDateString()) {
+    // Convert to Vietnam timezone for comparison
+    const vnDate = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+    const vnToday = new Date(today.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+    const vnYesterday = new Date(yesterday.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+    
+    if (vnDate.toDateString() === vnToday.toDateString()) {
       return "Hôm nay";
-    } else if (date.toDateString() === yesterday.toDateString()) {
+    } else if (vnDate.toDateString() === vnYesterday.toDateString()) {
       return "Hôm qua";
     } else {
       return date.toLocaleDateString("vi-VN", {
+        timeZone: "Asia/Ho_Chi_Minh",
         year: "numeric",
         month: "long",
         day: "numeric",

@@ -343,21 +343,28 @@ const ChatPage = () => {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
-    const hours = date.getHours();
-    const minutesInHour = date.getMinutes();
+    
+    // Convert to Vietnam timezone
+    const vnDate = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+    const vnNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+    const hours = vnDate.getHours();
+    const minutesInHour = vnDate.getMinutes();
 
     if (minutes < 1) return "Vừa xong";
     if (minutes < 60) return `${minutes} phút trước`;
-    if (date.toDateString() === now.toDateString()) {
+    if (vnDate.toDateString() === vnNow.toDateString()) {
       return `${hours.toString().padStart(2, "0")}:${minutesInHour.toString().padStart(2, "0")}`;
     }
     if (minutes < 1440) return "Hôm qua";
-    return date.toLocaleDateString("vi-VN");
+    return date.toLocaleDateString("vi-VN", {
+      timeZone: "Asia/Ho_Chi_Minh",
+    });
   };
 
   const formatMessageTime = (dateString: string) => {
     const date = new Date(dateString);
-    return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
+    const vnDate = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+    return `${vnDate.getHours().toString().padStart(2, "0")}:${vnDate.getMinutes().toString().padStart(2, "0")}`;
   };
 
   const filteredConversations = conversations.filter((conv) =>
@@ -603,7 +610,7 @@ const ChatPage = () => {
                 {messages.length > 0 && (
                   <div className="flex justify-center">
                     <span className="text-xs font-medium text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
-                      Hôm nay, {new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                      Hôm nay, {new Date().toLocaleTimeString("vi-VN", { timeZone: 'Asia/Ho_Chi_Minh', hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </div>
                 )}

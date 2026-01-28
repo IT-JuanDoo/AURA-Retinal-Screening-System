@@ -69,6 +69,7 @@ const DoctorPatientsPage = () => {
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
       year: 'numeric',
       month: 'short',
       day: 'numeric',

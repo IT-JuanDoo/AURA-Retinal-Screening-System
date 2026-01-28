@@ -40,6 +40,7 @@ export interface PatientSearchResponse {
 const patientSearchService = {
   /**
    * Search and filter patients assigned to the current doctor
+   * Note: This endpoint should only return patients, not doctors
    */
   async searchPatients(params: PatientSearchParams): Promise<PatientSearchResponse> {
     const queryParams = new URLSearchParams();
@@ -65,11 +66,26 @@ const patientSearchService = {
     if (params.sortDirection) {
       queryParams.append('sortDirection', params.sortDirection);
     }
+    
+    // Explicitly request only patients, not doctors
+    queryParams.append('userType', 'patient');
 
     const response = await api.get<PatientSearchResponse>(
       `/doctors/patients/search?${queryParams.toString()}`
     );
-    return response.data;
+    
+    // Additional client-side filtering to ensure no doctors are returned
+    const filteredPatients = response.data.patients.filter((patient: any) => {
+      // Filter out any results that have doctor-specific fields
+      return !patient.licenseNumber && !patient.specialization;
+    });
+    
+    return {
+      ...response.data,
+      patients: filteredPatients,
+      totalCount: filteredPatients.length,
+      totalPages: Math.ceil(filteredPatients.length / (params.pageSize || 20)),
+    };
   },
 };
 

@@ -247,9 +247,9 @@ const PatientDashboard = () => {
       .slice(0, 3)
       .map(r => ({
         id: r.id,
-        title: `Phân tích ${r.analysisCompletedAt ? new Date(r.analysisCompletedAt).toLocaleDateString('vi-VN') : ''}`,
+        title: `Phân tích ${r.analysisCompletedAt ? new Date(r.analysisCompletedAt).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : ''}`,
         date: r.analysisCompletedAt 
-          ? new Date(r.analysisCompletedAt).toLocaleDateString('vi-VN')
+          ? new Date(r.analysisCompletedAt).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
           : 'N/A',
         risk: (r.overallRiskLevel || 'Low').toLowerCase()
       }));
@@ -257,6 +257,7 @@ const PatientDashboard = () => {
     // Format last analysis date
     const lastAnalysisDate = latestResult.analysisCompletedAt
       ? new Date(latestResult.analysisCompletedAt).toLocaleDateString('vi-VN', {
+          timeZone: 'Asia/Ho_Chi_Minh',
           year: 'numeric',
           month: 'long',
           day: 'numeric'
@@ -337,7 +338,7 @@ const PatientDashboard = () => {
       .map(([monthKey, scores]) => {
         const [year, month] = monthKey.split('-');
         const date = new Date(parseInt(year), parseInt(month) - 1);
-        const monthLabel = date.toLocaleDateString('vi-VN', { month: 'short' });
+        const monthLabel = date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', month: 'short' });
         const avgScore = scores.reduce((sum, s) => sum + s, 0) / scores.length;
         // Round to 1 decimal place, then to integer for display
         const roundedScore = Math.round(Math.round(avgScore * 10) / 10);
@@ -412,6 +413,7 @@ const PatientDashboard = () => {
 
   const formatNoteDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
       day: 'numeric',
       month: 'short',
       year: 'numeric',
@@ -948,7 +950,7 @@ const PatientDashboard = () => {
             <Link to="/terms" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Điều khoản dịch vụ</Link>
             <Link to="/support" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Hỗ trợ</Link>
           </div>
-          <p className="text-xs text-slate-300 dark:text-slate-600">© 2024 AURA AI Inc.</p>
+          <p className="text-xs text-slate-300 dark:text-slate-600">© 2026 AURA AI Inc.</p>
         </div>
       </footer>
 

@@ -293,7 +293,7 @@ const ClinicBulkUploadPage = () => {
                 value={batchName}
                 onChange={(e) => setBatchName(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                placeholder="Ví dụ: Screening Campaign 2024"
+                placeholder="Ví dụ: Screening Campaign 2026"
               />
             </div>
             <div>
@@ -648,7 +648,7 @@ const ClinicBulkUploadPage = () => {
                     Hoàn thành lúc
                   </p>
                   <p className="text-sm text-slate-900 dark:text-white">
-                    {new Date(batchStatus.completedAt).toLocaleString("vi-VN")}
+                    {new Date(batchStatus.completedAt).toLocaleString("vi-VN", { timeZone: 'Asia/Ho_Chi_Minh' })}
                   </p>
                 </div>
               )}
@@ -751,7 +751,7 @@ const ClinicBulkUploadPage = () => {
                     </div>
                     {batch.startedAt && (
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                        Bắt đầu: {new Date(batch.startedAt).toLocaleString("vi-VN")}
+                        Bắt đầu: {new Date(batch.startedAt).toLocaleString("vi-VN", { timeZone: 'Asia/Ho_Chi_Minh' })}
                       </p>
                     )}
                   </div>

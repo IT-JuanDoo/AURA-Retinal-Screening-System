@@ -126,7 +126,11 @@ const AnalysisResultDisplay = ({ result, onValidated }: AnalysisResultDisplayPro
         }
 
         console.log('Blob downloaded successfully:', { size: blob.size, type: blob.type });
-        const fileName = exportResult.fileName || `aura_report_${result.id.substring(0, 8)}_${new Date().toISOString().split('T')[0]}.${format}`;
+        // Get current date in Vietnam timezone (UTC+7)
+        const now = new Date();
+        const vnDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+        const dateStr = vnDate.toISOString().split('T')[0];
+        const fileName = exportResult.fileName || `aura_report_${result.id.substring(0, 8)}_${dateStr}.${format}`;
         exportService.downloadFile(blob, fileName);
         toast.success(`✅ Xuất ${format.toUpperCase()} thành công!`, { id: `export-${format}` });
       } catch (downloadError: any) {
@@ -201,7 +205,14 @@ const AnalysisResultDisplay = ({ result, onValidated }: AnalysisResultDisplayPro
             Phân tích được thực hiện vào{' '}
             <span className="font-semibold text-slate-700 dark:text-slate-300">
               {result.analysisCompletedAt
-                ? new Date(result.analysisCompletedAt).toLocaleString('vi-VN')
+                ? new Date(result.analysisCompletedAt).toLocaleString('vi-VN', {
+                    timeZone: 'Asia/Ho_Chi_Minh',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
                 : 'Chưa hoàn thành'}
             </span>
           </p>

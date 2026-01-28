@@ -55,7 +55,9 @@ const PatientTrendPage = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("vi-VN");
+    return new Date(dateString).toLocaleDateString("vi-VN", {
+      timeZone: 'Asia/Ho_Chi_Minh',
+    });
   };
 
   // Simple line chart component

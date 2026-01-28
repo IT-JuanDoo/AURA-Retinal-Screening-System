@@ -339,7 +339,7 @@ function AuditLogsContent({
                 logs.map((log: AuditLog) => (
                   <tr key={log.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 ${selected?.id === log.id ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-slate-100">
-                      {log.createdDate ? new Date(log.createdDate).toLocaleString("vi-VN") : "N/A"}
+                      {log.createdDate ? new Date(log.createdDate).toLocaleString("vi-VN", { timeZone: 'Asia/Ho_Chi_Minh' }) : "N/A"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-slate-100">
                       {log.adminId ? `Admin: ${log.adminId.substring(0, 8)}...` : log.userId ? `User: ${log.userId.substring(0, 8)}...` : log.doctorId ? `Doctor: ${log.doctorId.substring(0, 8)}...` : "System"}
@@ -393,7 +393,7 @@ function AuditLogsContent({
                 <ReadOnlyField label="ID" value={selected.id} />
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Thời gian</label>
-                  <p className="text-sm text-slate-900 dark:text-slate-100">{selected.createdDate ? new Date(selected.createdDate).toLocaleString("vi-VN") : "N/A"}</p>
+                  <p className="text-sm text-slate-900 dark:text-slate-100">{selected.createdDate ? new Date(selected.createdDate).toLocaleString("vi-VN", { timeZone: 'Asia/Ho_Chi_Minh' }) : "N/A"}</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Loại hành động</label>

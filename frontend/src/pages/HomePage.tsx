@@ -1,12 +1,32 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { useAdminAuthStore } from '../store/adminAuthStore';
 import { useEffect, useState } from 'react';
 import messageService from '../services/messageService';
 
 const HomePage = () => {
   const { isAuthenticated } = useAuthStore();
+  const { isAdminAuthenticated } = useAdminAuthStore();
+  const navigate = useNavigate();
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // Redirect if user is authenticated - prevent access to landing page after login
+  // This is a double protection in addition to LandingPageRoute wrapper
+  useEffect(() => {
+    if (isAuthenticated) {
+      // Immediately redirect to dashboard (don't wait for doctor check to avoid delay)
+      // The dashboard will handle role-based routing if needed
+      navigate('/dashboard', { replace: true });
+      return;
+    }
+
+    if (isAdminAuthenticated) {
+      navigate('/admin/dashboard', { replace: true });
+      return;
+    }
+  }, [isAuthenticated, isAdminAuthenticated, navigate]);
+
+  // Fetch unread count only if authenticated (this won't run if redirected above)
   useEffect(() => {
     if (isAuthenticated) {
       messageService.getUnreadCount()
@@ -393,7 +413,7 @@ const HomePage = () => {
             </div>
           </div>
           <div className="border-t border-slate-100 dark:border-slate-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-xs text-slate-500 dark:text-slate-400">© 2023 AURA Health Systems. All rights reserved.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">© 2026 AURA Health Systems. All rights reserved.</p>
             <div className="flex gap-4 text-slate-400">
               <a className="hover:text-primary transition-colors" href="#">
                 <span className="sr-only">Facebook</span>FB

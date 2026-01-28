@@ -192,7 +192,7 @@ const PatientProfilePage = () => {
       {/* Header */}
       <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#e7edf3] dark:border-b-gray-700 bg-white dark:bg-[#1a2632] px-6 py-3 z-20 shadow-sm">
         <div className="flex items-center gap-4">
-          <Link to="/" className="flex items-center gap-2 text-primary">
+          <Link to="/dashboard" className="flex items-center gap-2 text-primary">
             <div className="size-8 flex items-center justify-center rounded bg-primary/10">
               <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -525,7 +525,7 @@ const PatientProfilePage = () => {
                       <svg className="w-[14px] h-[14px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      Cập nhật: {new Date().toLocaleDateString('vi-VN')}
+                      Cập nhật: {new Date().toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
                     </span>
                   </div>
                   <div className="p-6 space-y-6">

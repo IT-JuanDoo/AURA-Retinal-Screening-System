@@ -141,8 +141,8 @@ const LoginPage = () => {
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-90"></div>
         </div>
 
-        {/* Logo */}
-        <div className="relative z-10 flex items-center gap-3">
+        {/* Logo - Clickable to return to landing page */}
+        <Link to="/" className="relative z-10 flex items-center gap-3 hover:opacity-90 transition-opacity cursor-pointer">
           <div className="size-11 text-primary bg-white rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/20">
             <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
@@ -152,7 +152,7 @@ const LoginPage = () => {
             <h2 className="text-2xl font-bold tracking-tight text-white">AURA</h2>
             <p className="text-xs text-blue-200 uppercase tracking-widest font-medium">Hệ thống Sàng lọc</p>
           </div>
-        </div>
+        </Link>
 
         {/* Main Content */}
         <div className="relative z-10">
@@ -182,7 +182,7 @@ const LoginPage = () => {
 
         {/* Footer */}
         <div className="relative z-10 text-xs text-slate-400 flex justify-between w-full">
-          <span>© 2024 Hệ thống AURA.</span>
+          <span>© 2026 Hệ thống AURA.</span>
           <span className="flex items-center gap-1">
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
@@ -196,12 +196,12 @@ const LoginPage = () => {
       <div className="w-full lg:w-[55%] flex flex-col relative bg-white dark:bg-background-dark">
         {/* Mobile Header */}
         <div className="lg:hidden p-4 flex items-center justify-between border-b border-border-light dark:border-border-dark">
-          <div className="flex items-center gap-2 text-text-main dark:text-white">
+          <Link to="/" className="flex items-center gap-2 text-text-main dark:text-white hover:opacity-90 transition-opacity cursor-pointer">
             <svg className="w-6 h-6 text-primary" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
             </svg>
             <h2 className="text-lg font-bold">AURA</h2>
-          </div>
+          </Link>
         </div>
 
         {/* Help Button */}
@@ -387,11 +387,24 @@ const LoginPage = () => {
                   Điều khoản sử dụng
                 </a>
               </div>
-              <p className="mt-4 text-xs text-text-secondary dark:text-gray-500">
-                <Link className="hover:text-primary transition-colors" to="/register?type=doctor">
-                  Đăng kí bác sĩ
+              {/* Doctor Registration - Prominent Button */}
+              <div className="mt-6 pt-4 border-t border-border-light dark:border-border-dark">
+                <Link
+                  to="/register?type=doctor"
+                  className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold text-sm shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/40 transition-all active:scale-[0.98]"
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                  </svg>
+                  <span>Đăng kí bác sĩ</span>
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M5 12h14M12 5l7 7-7 7"></path>
+                  </svg>
                 </Link>
-              </p>
+              </div>
             </div>
           </div>
         </div>

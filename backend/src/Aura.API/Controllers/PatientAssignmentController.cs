@@ -54,6 +54,9 @@ public class PatientAssignmentController : ControllerBase
 
         try
         {
+            _logger.LogInformation("Creating assignment: doctorId={DoctorId}, userId={UserId}, clinicId={ClinicId}", 
+                doctorId, dto.UserId, dto.ClinicId ?? "null");
+
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
@@ -69,29 +72,49 @@ public class PatientAssignmentController : ControllerBase
             var existingId = await checkCmd.ExecuteScalarAsync();
             if (existingId != null)
             {
+                _logger.LogWarning("Assignment already exists: doctorId={DoctorId}, userId={UserId}", doctorId, dto.UserId);
                 return Conflict(new { message = "Bệnh nhân đã được assign cho bác sĩ này" });
             }
 
-            // Verify user exists
-            var userSql = "SELECT Id FROM users WHERE Id = @UserId AND COALESCE(IsDeleted, false) = false";
+            // Verify user exists and is not a doctor
+            var userSql = @"
+                SELECT u.Id, 
+                       CASE WHEN d.Id IS NOT NULL THEN 1 ELSE 0 END as IsDoctor
+                FROM users u
+                LEFT JOIN doctors d ON d.Id = u.Id
+                WHERE u.Id = @UserId AND COALESCE(u.IsDeleted, false) = false";
             using var userCmd = new NpgsqlCommand(userSql, connection);
             userCmd.Parameters.AddWithValue("UserId", dto.UserId);
-            var userId = await userCmd.ExecuteScalarAsync();
-            if (userId == null)
+            using var userReader = await userCmd.ExecuteReaderAsync();
+            if (!await userReader.ReadAsync())
             {
+                _logger.LogWarning("User not found: {UserId}", dto.UserId);
                 return NotFound(new { message = "Không tìm thấy bệnh nhân" });
+            }
+            
+            // Read as integer (PostgreSQL CASE returns integer 0 or 1), then convert to boolean
+            var isDoctorInt = userReader.GetInt32(1);
+            var isDoctor = isDoctorInt == 1;
+            await userReader.CloseAsync();
+            
+            if (isDoctor)
+            {
+                _logger.LogWarning("Cannot assign doctor to doctor: userId={UserId} is a doctor", dto.UserId);
+                return BadRequest(new { message = "Không thể gán bác sĩ cho bác sĩ" });
             }
 
             // Create assignment
             var assignmentId = Guid.NewGuid().ToString();
             var now = DateTime.UtcNow;
 
+            // Use ExecuteNonQuery first to insert, then select separately
+            // This avoids issues with RETURNING clause
+            // Note: AssignedBy references admins(Id), so we set it to NULL when doctor assigns themselves
             var insertSql = @"
                 INSERT INTO patient_doctor_assignments
                 (Id, UserId, DoctorId, ClinicId, AssignedAt, AssignedBy, IsActive, Notes, CreatedDate, CreatedBy, IsDeleted)
                 VALUES
-                (@Id, @UserId, @DoctorId, @ClinicId, @AssignedAt, @AssignedBy, true, @Notes, @CreatedDate, @CreatedBy, false)
-                RETURNING Id, UserId, DoctorId, ClinicId, AssignedAt, AssignedBy, IsActive, Notes";
+                (@Id, @UserId, @DoctorId, @ClinicId, @AssignedAt, @AssignedBy, true, @Notes, @CreatedDate, @CreatedBy, false)";
 
             using var insertCmd = new NpgsqlCommand(insertSql, connection);
             insertCmd.Parameters.AddWithValue("Id", assignmentId);
@@ -99,18 +122,22 @@ public class PatientAssignmentController : ControllerBase
             insertCmd.Parameters.AddWithValue("DoctorId", doctorId);
             insertCmd.Parameters.AddWithValue("ClinicId", (object?)dto.ClinicId ?? DBNull.Value);
             insertCmd.Parameters.AddWithValue("AssignedAt", now);
-            insertCmd.Parameters.AddWithValue("AssignedBy", doctorId);
+            // AssignedBy references admins(Id) - set to NULL when doctor assigns themselves
+            // Only set AssignedBy when an admin performs the assignment
+            insertCmd.Parameters.AddWithValue("AssignedBy", DBNull.Value);
             insertCmd.Parameters.AddWithValue("Notes", (object?)dto.Notes ?? DBNull.Value);
             insertCmd.Parameters.AddWithValue("CreatedDate", now.Date);
             insertCmd.Parameters.AddWithValue("CreatedBy", doctorId);
 
-            using var reader = await insertCmd.ExecuteReaderAsync();
-            if (!await reader.ReadAsync())
+            var rowsAffected = await insertCmd.ExecuteNonQueryAsync();
+            if (rowsAffected == 0)
             {
-                return StatusCode(500, new { message = "Không thể tạo assignment" });
+                _logger.LogWarning("Failed to insert assignment: {AssignmentId} for patient {UserId} by doctor {DoctorId}", 
+                    assignmentId, dto.UserId, doctorId);
+                return StatusCode(500, new { message = "Không thể tạo assignment - không có dòng nào được chèn" });
             }
 
-            // Get assignment details with JOINs
+            // Get assignment details with JOINs after successful insert
             var selectSql = @"
                 SELECT pda.Id, pda.UserId, pda.DoctorId, pda.ClinicId, pda.AssignedAt, 
                        pda.AssignedBy, pda.IsActive, pda.Notes,
@@ -129,6 +156,7 @@ public class PatientAssignmentController : ControllerBase
             using var selectReader = await selectCmd.ExecuteReaderAsync();
             if (!await selectReader.ReadAsync())
             {
+                _logger.LogWarning("Assignment inserted but not found when selecting: {AssignmentId}", assignmentId);
                 return StatusCode(500, new { message = "Không thể lấy thông tin assignment vừa tạo" });
             }
 
@@ -138,10 +166,32 @@ public class PatientAssignmentController : ControllerBase
 
             return CreatedAtAction(nameof(GetAssignment), new { id = assignmentId }, assignment);
         }
+        catch (Npgsql.PostgresException pgEx)
+        {
+            // Handle PostgreSQL-specific errors
+            _logger.LogError(pgEx, "PostgreSQL error creating patient assignment: {ErrorCode}, {Message}, {Detail}, {Constraint}", 
+                pgEx.SqlState, pgEx.Message, pgEx.Detail, pgEx.ConstraintName);
+            
+            // Provide more specific error messages based on error code
+            if (pgEx.SqlState == "23503") // Foreign key violation
+            {
+                _logger.LogError("Foreign key constraint violation. AssignedBy must reference admins(Id) or be NULL");
+                return BadRequest(new { message = "Lỗi ràng buộc dữ liệu. Vui lòng thử lại." });
+            }
+            else if (pgEx.SqlState == "23505") // Unique constraint violation
+            {
+                return Conflict(new { message = "Bệnh nhân đã được assign cho bác sĩ này" });
+            }
+            
+            return StatusCode(500, new { message = $"Lỗi database: {pgEx.Message}" });
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating patient assignment for doctor {DoctorId}", doctorId);
-            return StatusCode(500, new { message = "Không thể tạo assignment" });
+            _logger.LogError(ex, "Error creating patient assignment for doctor {DoctorId}, patient {UserId}, clinicId: {ClinicId}", 
+                doctorId, dto.UserId, dto.ClinicId ?? "null");
+            _logger.LogError("Exception details: {ExceptionType}, {Message}, {StackTrace}", 
+                ex.GetType().Name, ex.Message, ex.StackTrace);
+            return StatusCode(500, new { message = $"Không thể tạo assignment: {ex.Message}" });
         }
     }
 

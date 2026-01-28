@@ -165,6 +165,25 @@ const doctorService = {
     };
     await api.post('/doctors/ai-feedback', request);
   },
+
+  /**
+   * Update current doctor profile
+   */
+  async updateProfile(data: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    gender?: string;
+    specialization?: string;
+    yearsOfExperience?: number;
+    qualification?: string;
+    hospitalAffiliation?: string;
+    bio?: string;
+    profileImageUrl?: string;
+  }): Promise<DoctorDto> {
+    const response = await api.put<DoctorDto>('/doctors/me', data);
+    return response.data;
+  },
 };
 
 export default doctorService;

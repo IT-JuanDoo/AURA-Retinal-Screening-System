@@ -101,7 +101,7 @@ const DoctorLoginPage = () => {
 
         {/* Footer */}
         <div className="relative z-10 text-sm text-slate-400">
-          <p>© 2024 AURA AI. All rights reserved.</p>
+          <p>© 2026 AURA AI. All rights reserved.</p>
         </div>
       </div>
 

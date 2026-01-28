@@ -9,7 +9,7 @@ const Header = () => {
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-semibold">AURA</h1>
           <nav className="hidden sm:flex gap-4 text-sm text-gray-600">
-            <a href="/">Home</a>
+            <a href="/dashboard">Dashboard</a>
           </nav>
         </div>
 

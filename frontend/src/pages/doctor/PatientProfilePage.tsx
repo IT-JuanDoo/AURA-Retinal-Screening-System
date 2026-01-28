@@ -33,18 +33,107 @@ const PatientProfilePage = () => {
   };
 
   const handleAssignPatient = async () => {
-    if (!patientId) return;
+    if (!patientId) {
+      toast.error('Không tìm thấy ID bệnh nhân');
+      return;
+    }
+    
     try {
       setAssigning(true);
-      await patientAssignmentService.createAssignment({
-        userId: patientId,
-        clinicId: patient?.clinicId,
+      
+      // Validate patientId
+      const trimmedPatientId = patientId.trim();
+      if (!trimmedPatientId || trimmedPatientId === '') {
+        toast.error('ID bệnh nhân không hợp lệ');
+        return;
+      }
+      
+      // Get current doctor info to verify doctor is authenticated
+      const currentDoctor = await doctorService.getCurrentDoctor();
+      if (!currentDoctor || !currentDoctor.id) {
+        toast.error('Không tìm thấy thông tin bác sĩ. Vui lòng đăng nhập lại.');
+        return;
+      }
+      
+      // Prepare assignment payload
+      // clinicId is optional - only include if we have a valid UUID/ID
+      // Do NOT use hospitalAffiliation as it's a name, not an ID
+      const assignmentRequest: {
+        userId: string;
+        clinicId?: string;
+      } = {
+        userId: trimmedPatientId,
+      };
+      
+      // Only add clinicId if patient has a valid clinicId
+      // Check if it looks like a UUID (basic validation)
+      if (patient?.clinicId && 
+          typeof patient.clinicId === 'string' && 
+          patient.clinicId.trim() !== '' &&
+          patient.clinicId.length >= 10) { // Basic validation - UUIDs are typically 36 chars
+        assignmentRequest.clinicId = patient.clinicId.trim();
+      }
+      
+      console.log('Assigning patient:', {
+        userId: assignmentRequest.userId,
+        clinicId: assignmentRequest.clinicId || '(not included)',
+        doctorId: currentDoctor.id,
+        hasClinicId: !!assignmentRequest.clinicId,
       });
+      
+      // Call service to create assignment
+      await patientAssignmentService.createAssignment(assignmentRequest);
+      
       toast.success('Đã gán bệnh nhân cho bác sĩ hiện tại');
+      
+      // Wait a bit for backend to fully process
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // Reload patient data to get updated assignment status
       await loadPatientData();
     } catch (error: any) {
       console.error('Error assigning patient:', error);
-      toast.error(error?.response?.data?.message || 'Lỗi khi gán bệnh nhân');
+      
+      // Extract error message with priority order
+      let errorMessage = 'Lỗi khi gán bệnh nhân';
+      
+      if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error?.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      // Handle specific HTTP status codes
+      const status = error?.response?.status;
+      if (status === 400) {
+        errorMessage = errorMessage || 'Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.';
+      } else if (status === 401) {
+        errorMessage = 'Chưa xác thực. Vui lòng đăng nhập lại.';
+      } else if (status === 404) {
+        errorMessage = 'Không tìm thấy bệnh nhân hoặc bác sĩ.';
+      } else if (status === 409) {
+        errorMessage = 'Bệnh nhân đã được gán cho bác sĩ này rồi.';
+      } else if (status === 500) {
+        errorMessage = 'Lỗi server khi tạo assignment. Vui lòng thử lại sau hoặc liên hệ admin.';
+      }
+      
+      toast.error(errorMessage);
+      
+      // Comprehensive error logging for debugging
+      console.error('=== Assignment Error Details ===');
+      console.error('Status:', status);
+      console.error('Status Text:', error?.response?.statusText);
+      console.error('Response Data:', error?.response?.data);
+      console.error('Request Config:', {
+        url: error?.config?.url,
+        method: error?.config?.method,
+        data: error?.config?.data,
+        headers: error?.config?.headers,
+      });
+      console.error('Full Error Object:', error);
+      console.error('================================');
     } finally {
       setAssigning(false);
     }

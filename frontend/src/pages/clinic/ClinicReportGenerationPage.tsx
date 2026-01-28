@@ -32,7 +32,7 @@ const ClinicReportGenerationPage = () => {
   useEffect(() => {
     if (selectedTemplate) {
       // Auto-generate report name
-      const dateStr = new Date().toLocaleDateString("vi-VN");
+      const dateStr = new Date().toLocaleDateString("vi-VN", { timeZone: 'Asia/Ho_Chi_Minh' });
       setReportName(`${selectedTemplate.name} - ${dateStr}`);
       
       // Set default period for templates that require it
@@ -345,7 +345,7 @@ const ClinicReportGenerationPage = () => {
                         {report.reportName}
                       </h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        {new Date(report.generatedAt).toLocaleDateString("vi-VN")}
+                        {new Date(report.generatedAt).toLocaleDateString("vi-VN", { timeZone: 'Asia/Ho_Chi_Minh' })}
                       </p>
                       <div className="flex items-center gap-2 mt-2">
                         <span className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">

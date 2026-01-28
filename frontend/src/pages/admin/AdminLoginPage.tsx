@@ -146,7 +146,7 @@ export default function AdminLoginPage() {
 
         {/* Footer */}
         <div className="relative z-10 text-blue-200 text-sm">
-          <p>© 2024 AURA Retinal Screening System. All rights reserved.</p>
+          <p>© 2026 AURA Retinal Screening System. All rights reserved.</p>
         </div>
       </div>
 

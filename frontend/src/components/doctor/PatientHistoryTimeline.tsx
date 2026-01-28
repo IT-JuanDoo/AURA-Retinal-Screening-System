@@ -72,7 +72,8 @@ const PatientHistoryTimeline = ({ patientId }: PatientHistoryTimelineProps) => {
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
-    return date.toLocaleDateString('vi-VN', {
+    return date.toLocaleString('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
