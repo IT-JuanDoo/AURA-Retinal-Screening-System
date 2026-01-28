@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// Dev: dùng '/api' để đi qua Vite proxy -> tránh CORS; Prod: dùng VITE_API_URL hoặc '/api'
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Create axios instance for clinic auth
 const clinicAuthApi = axios.create({

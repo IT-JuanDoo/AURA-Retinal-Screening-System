@@ -91,6 +91,7 @@ services:
       - Jwt__Audience=AuraClient
       - Jwt__ExpirationMinutes=60
       - Jwt__RefreshTokenExpirationDays=7
+      - Jwt__RefreshTokenDays=7
 
       # App Configuration
       - App__FrontendUrl=http://localhost:${FRONTEND_PORT:-3000}
@@ -450,8 +451,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-      kong:
-        condition: service_started
 
   # ===========================================================================
   # Infrastructure - Redis Cache

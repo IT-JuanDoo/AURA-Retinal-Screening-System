@@ -92,6 +92,20 @@ const ClinicRegisterPage = () => {
     
     if (!validateStep2()) return;
 
+    // Đảm bảo đã điền bước 1 (thông tin phòng khám)
+    if (!formData.clinicName?.trim()) {
+      toast.error('Vui lòng nhập tên phòng khám (bước 1)');
+      return;
+    }
+    if (!formData.clinicEmail?.trim()) {
+      toast.error('Vui lòng nhập email phòng khám (bước 1)');
+      return;
+    }
+    if (!formData.address?.trim()) {
+      toast.error('Vui lòng nhập địa chỉ (bước 1)');
+      return;
+    }
+
     setLoading(true);
     try {
       const result = await clinicAuthService.register(formData);

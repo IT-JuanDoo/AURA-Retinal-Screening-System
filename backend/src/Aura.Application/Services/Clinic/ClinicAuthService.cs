@@ -27,6 +27,14 @@ public class ClinicAuthService : IClinicAuthService
 
     public async Task<ClinicAuthResponseDto> RegisterAsync(ClinicRegisterDto dto)
     {
+        // Validate required clinic (step 1) fields trước khi vào DB
+        if (string.IsNullOrWhiteSpace(dto.ClinicName))
+            return new ClinicAuthResponseDto { Success = false, Message = "Vui lòng nhập tên phòng khám (bước 1)." };
+        if (string.IsNullOrWhiteSpace(dto.ClinicEmail))
+            return new ClinicAuthResponseDto { Success = false, Message = "Vui lòng nhập email phòng khám (bước 1)." };
+        if (string.IsNullOrWhiteSpace(dto.Address))
+            return new ClinicAuthResponseDto { Success = false, Message = "Vui lòng nhập địa chỉ (bước 1)." };
+
         try
         {
             using var connection = new NpgsqlConnection(_connectionString);
@@ -81,12 +89,14 @@ public class ClinicAuthService : IClinicAuthService
                         'Pending', true, @Now, false
                     )";
 
+                var regNumber = string.IsNullOrWhiteSpace(dto.RegistrationNumber) ? null : dto.RegistrationNumber;
+                var taxCode = string.IsNullOrWhiteSpace(dto.TaxCode) ? null : dto.TaxCode;
                 using (var cmd = new NpgsqlCommand(createClinicSql, connection, transaction))
                 {
                     cmd.Parameters.AddWithValue("Id", clinicId);
-                    cmd.Parameters.AddWithValue("ClinicName", dto.ClinicName);
-                    cmd.Parameters.AddWithValue("RegistrationNumber", (object?)dto.RegistrationNumber ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("TaxCode", (object?)dto.TaxCode ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("ClinicName", dto.ClinicName.Trim());
+                    cmd.Parameters.AddWithValue("RegistrationNumber", (object?)regNumber ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("TaxCode", (object?)taxCode ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("Email", dto.ClinicEmail);
                     cmd.Parameters.AddWithValue("Phone", (object?)dto.ClinicPhone ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("Address", dto.Address);
@@ -177,10 +187,15 @@ public class ClinicAuthService : IClinicAuthService
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Error registering clinic: {ClinicName}", dto.ClinicName);
+            var inner = ex.InnerException?.Message ?? ex.Message;
+            // Trả về lỗi rõ ràng để frontend hiển thị (giới hạn 300 ký tự, bỏ nội dung nhạy cảm)
+            var safeMessage = inner.Length > 300 ? inner.Substring(0, 300) + "…" : inner;
+            if (ex is Npgsql.PostgresException pgEx && !string.IsNullOrEmpty(pgEx.Message))
+                safeMessage = pgEx.Message;
             return new ClinicAuthResponseDto
             {
                 Success = false,
-                Message = "Đã xảy ra lỗi khi đăng ký. Vui lòng thử lại sau."
+                Message = "Đã xảy ra lỗi khi đăng ký. " + safeMessage
             };
         }
     }

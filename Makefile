@@ -2,7 +2,7 @@
 # AURA - Makefile for Docker Commands
 # =============================================================================
 
-.PHONY: help build up down logs clean dev prod restart rebuild-frontend rebuild-backend
+.PHONY: help build up down logs clean dev prod restart docker docker-full migrate-clinic rebuild-frontend rebuild-backend
 
 # Default target
 help:
@@ -33,7 +33,31 @@ help:
 	@echo "  make restore-db FILE=path - Restore database from backup"
 	@echo "  make health-db       - Check PostgreSQL health status"
 	@echo "  make test-cloudinary - Test Cloudinary configuration"
+	@echo "  make docker        - Chạy bằng Docker (core: postgres, backend, frontend, redis, rabbitmq, aicore)"
+	@echo "  make docker-full   - Chạy full stack Docker (tất cả services)"
+	@echo "  make migrate-clinic - Thêm bảng clinics/clinic_admins khi gặp lỗi 'clinic_admins does not exist'"
 	@echo ""
+
+# Chạy bằng Docker - core services (đủ để dùng app + đăng nhập phòng khám)
+docker: build
+	docker-compose up -d postgres redis rabbitmq aicore backend frontend
+	@echo ""
+	@echo "AURA đang chạy bằng Docker (core):"
+	@echo "  App:       http://localhost:3000"
+	@echo "  Đăng nhập phòng khám: http://localhost:3000/clinic/login"
+	@echo "  Đăng ký phòng khám:   http://localhost:3000/clinic/register"
+	@echo "  Backend:   http://localhost:5000"
+	@echo "  pgAdmin:   http://localhost:5050 (nếu cần)"
+	@echo ""
+	@echo "Xem log: make logs-b hoặc make logs-f"
+
+# Chạy full stack Docker (tất cả services gồm Kong, microservices, ...)
+docker-full: build
+	docker-compose up -d
+	@echo ""
+	@echo "AURA full stack đã khởi động."
+	@echo "  App:     http://localhost:3000"
+	@echo "  Backend: http://localhost:5000"
 
 # Development mode (only database for local backend/frontend development)
 dev:
@@ -172,6 +196,12 @@ restore-db:
 	@echo "Restoring database from $(FILE)..."
 	@docker-compose exec -T postgres psql -U aura_user -d aura_db < $(FILE)
 	@echo "Database restored!"
+
+# Thêm bảng clinics và clinic_admins (khi DB cũ thiếu, lỗi "clinic_admins does not exist")
+migrate-clinic:
+	@echo "Running migration: add clinics and clinic_admins tables..."
+	@docker-compose exec -T postgres psql -U aura_user -d aura_db < migrations/001_add_clinic_tables.sql
+	@echo "Done. Thử đăng ký phòng khám lại."
 
 # Database health check
 health-db:

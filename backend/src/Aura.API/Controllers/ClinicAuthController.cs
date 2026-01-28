@@ -213,11 +213,12 @@ public class ClinicAuthController : ControllerBase
 
     private void SetRefreshTokenCookie(string refreshToken)
     {
+        var isHttps = Request.IsHttps;
         var cookieOptions = new CookieOptions
         {
             HttpOnly = true,
-            Secure = true,
-            SameSite = SameSiteMode.Strict,
+            Secure = isHttps, // false on localhost/HTTP so cookie works in dev
+            SameSite = SameSiteMode.Lax, // Strict blocks cookie on cross-origin; Lax allows POST redirect
             Expires = DateTime.UtcNow.AddDays(7)
         };
         Response.Cookies.Append("clinic_refreshToken", refreshToken, cookieOptions);

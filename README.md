@@ -12,21 +12,46 @@ Hệ thống sàng lọc và phân tích sức khỏe mạch máu võng mạc s�
 - **Git**
 - **Windows/Linux/Mac** (đã test trên Windows)
 
-### Cài đặt và chạy (3 bước)
+### Cài đặt và chạy (Docker)
+
+**Cách 1 – Core (chỉ các service cần thiết: app + đăng nhập phòng khám):**
 
 ```bash
-# 1. Clone repository
-git clone <repository-url>
-cd AURA-Retinal-Screening-System
+# Có Make: chạy core services (postgres, redis, rabbitmq, aicore, backend, frontend)
+make docker
 
-# 2. Chạy tất cả services với Docker Compose
-docker-compose up -d
+# Hoặc không có Make – chạy thủ công:
+docker-compose build backend frontend
+docker-compose up -d postgres redis rabbitmq aicore backend frontend
+```
 
-# 3. Đợi services khởi động (khoảng 2–3 phút)
-# Kiểm tra logs backend:
-docker-compose logs -f backend
+**Cách 2 – Full stack (tất cả services, gồm Kong, microservices):**
 
-# Khi thấy "Now listening on: http://[::]:5000" → Backend đã sẵn sàng!
+```bash
+make prod
+# hoặc: docker-compose build && docker-compose up -d
+```
+
+Sau khi chạy:
+
+- **App:** http://localhost:3000  
+- **Đăng nhập phòng khám:** http://localhost:3000/clinic/login  
+- **Đăng ký phòng khám:** http://localhost:3000/clinic/register  
+- **Backend API:** http://localhost:5000  
+
+Đợi vài phút cho backend healthy, rồi mở app. Xem log: `docker-compose logs -f backend` hoặc `make logs-b`.
+
+**Lỗi "relation clinic_admins does not exist" khi đăng ký phòng khám:**  
+DB được tạo trước khi có bảng `clinics`/`clinic_admins`. Chạy migration:
+
+```bash
+make migrate-clinic
+```
+
+Hoặc thủ công (PowerShell, tại thư mục gốc repo):
+
+```powershell
+Get-Content migrations/001_add_clinic_tables.sql | docker-compose exec -T postgres psql -U aura_user -d aura_db
 ```
 
 ---
