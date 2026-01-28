@@ -1105,33 +1105,29 @@ public class AnalysisService : IAnalysisService
     }
 
     /// <summary>
-    /// Check if user has enough credits and deduct if available
-    /// Returns true if credits were successfully deducted, false otherwise
+    /// Kiểm tra và trừ credits trước khi phân tích
+    /// Luôn yêu cầu credits (không cho tắt bằng cấu hình) để đảm bảo số lượt còn lại luôn được trừ chính xác.
+    /// Trả về true nếu trừ credits thành công, false nếu không đủ credits hoặc đã hết lượt (remainingAnalyses = 0).
     /// </summary>
     private async Task<bool> CheckAndDeductCreditsAsync(string userId, int creditsNeeded)
     {
-        // Allow disabling credits check for demo/dev environments
-        // Default behavior: require credits (true)
-        var requireCredits = _configuration.GetValue("Analysis:RequireCredits", true);
-        if (!requireCredits)
-        {
-            _logger?.LogWarning(
-                "Credits check disabled (Analysis:RequireCredits=false). Skipping deduction for user {UserId}, Needed={CreditsNeeded}",
-                userId, creditsNeeded);
-            return true;
-        }
+        // Luôn yêu cầu credits cho môi trường thực tế
+        // (bỏ cơ chế tắt bằng cấu hình Analysis:RequireCredits để tránh nhầm lẫn)
+        // Mỗi lần phân tích sẽ trừ đi 1 lượt, và khi về 0 thì không được phân tích nữa.
 
         using var connection = new Npgsql.NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
 
-        // Check if user has active package with remaining credits
+        // Kiểm tra xem user có package đang hoạt động với số lượt còn lại > 0 không
+        // Chỉ chọn package có RemainingAnalyses > 0 (không cho phép = 0)
         var checkSql = @"
             SELECT Id, RemainingAnalyses, ExpiresAt, IsActive
             FROM user_packages
             WHERE UserId = @UserId 
                 AND COALESCE(IsDeleted, false) = false
                 AND IsActive = true
-                AND RemainingAnalyses >= @CreditsNeeded
+                AND RemainingAnalyses > 0  -- Phải > 0, không cho phép = 0
+                AND RemainingAnalyses >= @CreditsNeeded  -- Phải đủ số lượt cần thiết
                 AND (ExpiresAt IS NULL OR ExpiresAt > CURRENT_TIMESTAMP)
             ORDER BY 
                 CASE WHEN ExpiresAt IS NULL THEN 0 ELSE 1 END,  -- Non-expiring packages first
@@ -1146,7 +1142,8 @@ public class AnalysisService : IAnalysisService
         using var checkReader = await checkCmd.ExecuteReaderAsync();
         if (!await checkReader.ReadAsync())
         {
-            _logger?.LogWarning("User {UserId} does not have enough credits ({CreditsNeeded} needed)", userId, creditsNeeded);
+            _logger?.LogWarning("User {UserId} không có đủ credits để phân tích (cần {CreditsNeeded} lượt, hoặc đã hết lượt - remainingAnalyses = 0)", 
+                userId, creditsNeeded);
             return false;
         }
 
@@ -1154,13 +1151,15 @@ public class AnalysisService : IAnalysisService
         var remainingAnalyses = checkReader.GetInt32(1);
         checkReader.Close();
 
-        // Deduct credits atomically
+        // Trừ credits một cách atomic (đảm bảo thread-safe)
+        // Chỉ trừ khi RemainingAnalyses > 0 và >= creditsNeeded
         var deductSql = @"
             UPDATE user_packages
             SET RemainingAnalyses = RemainingAnalyses - @CreditsNeeded,
                 UpdatedDate = CURRENT_DATE
             WHERE Id = @UserPackageId
-                AND RemainingAnalyses >= @CreditsNeeded
+                AND RemainingAnalyses > 0  -- Phải > 0 mới được trừ
+                AND RemainingAnalyses >= @CreditsNeeded  -- Phải đủ số lượt cần thiết
                 AND IsActive = true
                 AND COALESCE(IsDeleted, false) = false
                 AND (ExpiresAt IS NULL OR ExpiresAt > CURRENT_TIMESTAMP)
@@ -1173,15 +1172,17 @@ public class AnalysisService : IAnalysisService
         var newRemaining = await deductCmd.ExecuteScalarAsync();
         if (newRemaining == null)
         {
-            _logger?.LogWarning("Failed to deduct credits for user {UserId}, package {UserPackageId}", userId, userPackageId);
+            // Có thể xảy ra race condition: giữa lúc check và deduct, lượt đã bị trừ hết bởi request khác
+            _logger?.LogWarning("Không thể trừ credits cho user {UserId}, package {UserPackageId}. Có thể đã hết lượt hoặc bị trừ bởi request khác.", 
+                userId, userPackageId);
             return false;
         }
 
         var newRemainingCount = Convert.ToInt32(newRemaining);
-        _logger?.LogInformation("Credits deducted for user {UserId}: Package {UserPackageId}, Remaining: {Remaining}", 
-            userId, userPackageId, newRemainingCount);
+        _logger?.LogInformation("Đã trừ {CreditsNeeded} lượt phân tích cho user {UserId}, package {UserPackageId}. Số lượt còn lại: {Remaining}", 
+            creditsNeeded, userId, userPackageId, newRemainingCount);
 
-        // Deactivate package if credits exhausted
+        // Tự động deactivate package nếu số lượt về 0
         if (newRemainingCount <= 0)
         {
             var deactivateSql = @"
@@ -1193,7 +1194,8 @@ public class AnalysisService : IAnalysisService
             deactivateCmd.Parameters.AddWithValue("UserPackageId", userPackageId);
             await deactivateCmd.ExecuteNonQueryAsync();
 
-            _logger?.LogInformation("Package {UserPackageId} deactivated (credits exhausted)", userPackageId);
+            _logger?.LogInformation("Package {UserPackageId} đã được tắt tự động vì hết lượt (remainingAnalyses = {Remaining})", 
+                userPackageId, newRemainingCount);
         }
 
         return true;

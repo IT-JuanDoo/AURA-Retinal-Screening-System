@@ -179,7 +179,16 @@ const ImageUploadPage = () => {
       return;
     }
 
-    // Check if user has enough credits for the number of images
+    // Check if user has enough credits for the number of images - phải > 0
+    if (currentPackage.remainingAnalyses <= 0) {
+      toast.error(
+        'Bạn đã hết lượt phân tích (số lượt còn lại = 0). Vui lòng mua gói dịch vụ mới để tiếp tục sử dụng.',
+        { duration: 6000 }
+      );
+      navigate('/packages');
+      return;
+    }
+
     const imagesToUpload = files.length;
     if (currentPackage.remainingAnalyses < imagesToUpload) {
       toast.error(
@@ -376,10 +385,19 @@ const ImageUploadPage = () => {
       return;
     }
 
-    // Check credits again with current package
-    if (!currentPackage || currentPackage.remainingAnalyses < readyImages.length) {
+    // Check credits again with current package - phải > 0 và đủ số lượt cần thiết
+    if (!currentPackage || currentPackage.remainingAnalyses <= 0) {
       toast.error(
-        `Bạn chỉ còn ${currentPackage?.remainingAnalyses || 0} lượt phân tích. Không đủ để phân tích ${readyImages.length} ảnh. Vui lòng mua thêm gói dịch vụ.`,
+        'Bạn đã hết lượt phân tích (số lượt còn lại = 0). Vui lòng mua gói dịch vụ mới để tiếp tục sử dụng.',
+        { duration: 6000 }
+      );
+      navigate('/packages');
+      return;
+    }
+
+    if (currentPackage.remainingAnalyses < readyImages.length) {
+      toast.error(
+        `Bạn chỉ còn ${currentPackage.remainingAnalyses} lượt phân tích. Không đủ để phân tích ${readyImages.length} ảnh. Vui lòng mua thêm gói dịch vụ.`,
         { duration: 6000 }
       );
       navigate('/packages');
