@@ -1,4 +1,5 @@
 using Aura.Application.DTOs.MedicalNotes;
+using Aura.Application.Services.Notifications;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -17,14 +18,17 @@ namespace Aura.API.Controllers;
 public class MedicalNotesController : ControllerBase
 {
     private readonly IConfiguration _configuration;
+    private readonly INotificationService _notificationService;
     private readonly ILogger<MedicalNotesController> _logger;
     private readonly string _connectionString;
 
     public MedicalNotesController(
         IConfiguration configuration,
+        INotificationService notificationService,
         ILogger<MedicalNotesController> logger)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _connectionString = _configuration.GetConnectionString("DefaultConnection") 
             ?? throw new InvalidOperationException("Database connection string not configured");
@@ -166,6 +170,23 @@ public class MedicalNotesController : ControllerBase
             await insertCmd.ExecuteNonQueryAsync();
             _logger.LogInformation("Medical note saved to database: Id={NoteId}, DoctorId={DoctorId}, PatientUserId={PatientUserId}", noteId, doctorId, patientUserId);
 
+            // Gửi thông báo cho bệnh nhân khi bác sĩ thêm ghi chú y tế
+            if (!string.IsNullOrEmpty(patientUserId))
+            {
+                try
+                {
+                    await _notificationService.CreateAsync(patientUserId,
+                        "Ghi chú y tế mới",
+                        "Bác sĩ đã thêm ghi chú y tế cho bạn. Vào mục Ghi chú y tế để xem chi tiết.",
+                        "Other",
+                        new { noteId });
+                }
+                catch (Exception notifEx)
+                {
+                    _logger.LogWarning(notifEx, "Could not create notification for medical note {NoteId}", noteId);
+                }
+            }
+
             // Get the created note with patient info
             var note = await GetNoteByIdInternal(connection, noteId, doctorId);
             if (note == null)
@@ -292,7 +313,7 @@ public class MedicalNotesController : ControllerBase
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            // Get non-private notes for this patient
+            // Get non-private notes for this patient (kèm ViewedByPatientAt để badge "chưa xem")
             var sql = @"
                 SELECT mn.Id, mn.ResultId, mn.PatientUserId, mn.DoctorId, 
                        COALESCE(d.FirstName || ' ' || d.LastName, d.Email) as DoctorName,
@@ -300,7 +321,7 @@ public class MedicalNotesController : ControllerBase
                        mn.NoteType, mn.NoteContent, mn.Diagnosis, mn.Prescription,
                        mn.TreatmentPlan, mn.ClinicalObservations, mn.Severity,
                        mn.FollowUpDate, mn.IsImportant, mn.IsPrivate, mn.CreatedDate, mn.CreatedBy,
-                       mn.UpdatedDate, mn.UpdatedBy
+                       mn.UpdatedDate, mn.UpdatedBy, mn.ViewedByPatientAt
                 FROM medical_notes mn
                 INNER JOIN doctors d ON d.Id = mn.DoctorId
                 LEFT JOIN users u ON u.Id = mn.PatientUserId
@@ -326,6 +347,79 @@ public class MedicalNotesController : ControllerBase
         {
             _logger.LogError(ex, "Error getting medical notes for patient {UserId}", userId);
             return StatusCode(500, new { message = "Không thể lấy danh sách ghi chú" });
+        }
+    }
+
+    /// <summary>
+    /// Số ghi chú chưa xem (cho badge menu bệnh nhân).
+    /// </summary>
+    [HttpGet("my-notes/unread-count")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetMyNotesUnreadCount()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) return Unauthorized(new { message = "Chưa xác thực" });
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var sql = @"
+                SELECT COUNT(*) FROM medical_notes
+                WHERE PatientUserId = @UserId
+                    AND COALESCE(IsDeleted, false) = false
+                    AND COALESCE(IsPrivate, false) = false
+                    AND ViewedByPatientAt IS NULL";
+
+            using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("UserId", userId);
+            var count = Convert.ToInt32(await command.ExecuteScalarAsync());
+            return Ok(new { count });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting unread notes count for patient {UserId}", userId);
+            return Ok(new { count = 0 });
+        }
+    }
+
+    /// <summary>
+    /// Bệnh nhân đánh dấu ghi chú đã xem (giảm badge đỏ trên menu).
+    /// </summary>
+    [HttpPost("my-notes/{id}/mark-viewed")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> MarkNoteViewed(string id)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) return Unauthorized(new { message = "Chưa xác thực" });
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var sql = @"
+                UPDATE medical_notes
+                SET ViewedByPatientAt = CURRENT_TIMESTAMP, UpdatedDate = CURRENT_TIMESTAMP
+                WHERE Id = @Id AND PatientUserId = @UserId
+                    AND COALESCE(IsDeleted, false) = false";
+
+            using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("Id", id);
+            command.Parameters.AddWithValue("UserId", userId);
+            var rows = await command.ExecuteNonQueryAsync();
+            if (rows == 0)
+                return NotFound(new { message = "Không tìm thấy ghi chú hoặc không có quyền" });
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error marking note {NoteId} as viewed for patient {UserId}", id, userId);
+            return StatusCode(500, new { message = "Không thể đánh dấu đã xem" });
         }
     }
 
@@ -514,7 +608,7 @@ public class MedicalNotesController : ControllerBase
                    mn.NoteType, mn.NoteContent, mn.Diagnosis, mn.Prescription,
                    mn.TreatmentPlan, mn.ClinicalObservations, mn.Severity,
                    mn.FollowUpDate, mn.IsImportant, mn.IsPrivate, mn.CreatedDate, mn.CreatedBy,
-                   mn.UpdatedDate, mn.UpdatedBy
+                   mn.UpdatedDate, mn.UpdatedBy, mn.ViewedByPatientAt
             FROM medical_notes mn
             LEFT JOIN doctors d ON d.Id = mn.DoctorId AND COALESCE(d.IsDeleted, false) = false
             LEFT JOIN users u ON u.Id = mn.PatientUserId AND COALESCE(u.IsDeleted, false) = false
@@ -561,7 +655,8 @@ public class MedicalNotesController : ControllerBase
             CreatedAt = createdDate.ToString("o"),
             CreatedBy = reader.IsDBNull(17) ? null : reader.GetString(17),
             UpdatedDate = reader.IsDBNull(18) ? null : reader.GetDateTime(18),
-            UpdatedBy = reader.IsDBNull(19) ? null : reader.GetString(19)
+            UpdatedBy = reader.IsDBNull(19) ? null : reader.GetString(19),
+            ViewedByPatientAt = reader.FieldCount > 20 && !reader.IsDBNull(20) ? reader.GetDateTime(20) : null
         };
     }
 

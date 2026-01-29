@@ -624,6 +624,7 @@ CREATE TABLE medical_notes (
     FollowUpDate TIMESTAMP,
     IsImportant BOOLEAN DEFAULT FALSE,
     IsPrivate BOOLEAN DEFAULT FALSE,
+    ViewedByPatientAt TIMESTAMP,
     CreatedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CreatedBy VARCHAR(255),
     UpdatedDate TIMESTAMP,
@@ -756,6 +757,9 @@ CREATE TABLE bulk_upload_batches (
 
 -- Add BatchId to retinal_images for bulk upload tracking
 ALTER TABLE retinal_images ADD COLUMN BatchId VARCHAR(255) REFERENCES bulk_upload_batches(Id) ON DELETE SET NULL;
+
+-- Add ViewedByPatientAt for patient "đã xem" badge (chạy nếu DB đã tồn tại trước khi thêm cột)
+ALTER TABLE medical_notes ADD COLUMN IF NOT EXISTS ViewedByPatientAt TIMESTAMP NULL;
 
 -- =====================================================
 -- INDEXES FOR PERFORMANCE

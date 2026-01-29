@@ -305,7 +305,25 @@ const PatientNotesPage = () => {
                 <div
                   key={note.id}
                   className="p-5 md:p-6 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group"
-                  onClick={() => setSelectedNote(note)}
+                  onClick={() => {
+                    setSelectedNote(note);
+                    // Đánh dấu đã xem → giảm badge đỏ trên menu "Ghi chú y tế"
+                    if (!note.viewedByPatientAt) {
+                      medicalNotesService
+                        .markNoteAsViewed(note.id)
+                        .then(() => {
+                          window.dispatchEvent(new Event("medical-notes-viewed"));
+                          setNotes((prev) =>
+                            prev.map((n) =>
+                              n.id === note.id
+                                ? { ...n, viewedByPatientAt: new Date().toISOString() }
+                                : n,
+                            ),
+                          );
+                        })
+                        .catch(() => {});
+                    }
+                  }}
                 >
                   <div className="flex items-start gap-4">
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getNoteTypeColor(note.noteType)}`}>

@@ -18,6 +18,8 @@ export interface MedicalNote {
   updatedAt?: string;
   doctorName?: string;
   patientName?: string;
+  /** Thời điểm bệnh nhân xem ghi chú (null = chưa xem, dùng cho badge đỏ). */
+  viewedByPatientAt?: string | null;
 }
 
 export interface CreateMedicalNoteDto {
@@ -90,6 +92,21 @@ const medicalNotesService = {
   async getMyNotes(): Promise<MedicalNote[]> {
     const response = await api.get<MedicalNote[]>('/medical-notes/my-notes');
     return response.data;
+  },
+
+  /**
+   * Số ghi chú chưa xem (cho badge menu "Ghi chú y tế").
+   */
+  async getUnreadNotesCount(): Promise<number> {
+    const response = await api.get<{ count: number }>('/medical-notes/my-notes/unread-count');
+    return response.data.count ?? 0;
+  },
+
+  /**
+   * Bệnh nhân đánh dấu ghi chú đã xem (gọi khi mở xem chi tiết → giảm badge đỏ).
+   */
+  async markNoteAsViewed(noteId: string): Promise<void> {
+    await api.post(`/medical-notes/my-notes/${noteId}/mark-viewed`);
   },
 
   /**

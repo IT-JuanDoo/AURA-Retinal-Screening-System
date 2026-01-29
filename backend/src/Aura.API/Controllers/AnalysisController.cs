@@ -2,6 +2,7 @@ using Aura.Application.DTOs.Analysis;
 using Aura.Application.DTOs.Export;
 using Aura.Application.Services.Analysis;
 using Aura.Application.Services.Export;
+using Aura.Application.Services.Notifications;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -21,17 +22,20 @@ public class AnalysisController : ControllerBase
 {
     private readonly IAnalysisService _analysisService;
     private readonly IExportService _exportService;
+    private readonly INotificationService _notificationService;
     private readonly ILogger<AnalysisController> _logger;
     private readonly IRabbitMQService _rabbitMqService;
 
     public AnalysisController(
         IAnalysisService analysisService, 
         IExportService exportService,
+        INotificationService notificationService,
         ILogger<AnalysisController> logger,
         IRabbitMQService rabbitMqService)
     {
         _analysisService = analysisService ?? throw new ArgumentNullException(nameof(analysisService));
         _exportService = exportService ?? throw new ArgumentNullException(nameof(exportService));
+        _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _rabbitMqService = rabbitMqService ?? throw new ArgumentNullException(nameof(rabbitMqService));
     }
@@ -67,16 +71,48 @@ public class AnalysisController : ControllerBase
                     // Publish event analysis.completed cho 1 ảnh
                     PublishAnalysisCompletedEvent(userId, result);
 
+                    // Gửi thông báo cho bệnh nhân khi phân tích hoàn thành
+                    if (string.Equals(result.Status, "Completed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            await _notificationService.CreateAsync(userId,
+                                "Phân tích hoàn thành",
+                                "Kết quả phân tích võng mạc của bạn đã sẵn sàng. Vào Báo cáo để xem chi tiết.",
+                                "AnalysisComplete",
+                                new { analysisId = result.AnalysisId });
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Could not create notification for analysis {AnalysisId}", result.AnalysisId);
+                        }
+                    }
+
                     return Ok(result);
                 }
                 else
                 {
                     var results = await _analysisService.StartMultipleAnalysisAsync(userId, request.ImageIds);
 
-                    // Publish event analysis.completed cho từng ảnh (nếu Completed)
+                    // Publish event analysis.completed và gửi thông báo cho từng ảnh (nếu Completed)
                     foreach (var r in results)
                     {
                         PublishAnalysisCompletedEvent(userId, r);
+                        if (string.Equals(r.Status, "Completed", StringComparison.OrdinalIgnoreCase))
+                        {
+                            try
+                            {
+                                await _notificationService.CreateAsync(userId,
+                                    "Phân tích hoàn thành",
+                                    "Kết quả phân tích võng mạc của bạn đã sẵn sàng. Vào Báo cáo để xem chi tiết.",
+                                    "AnalysisComplete",
+                                    new { analysisId = r.AnalysisId });
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Could not create notification for analysis {AnalysisId}", r.AnalysisId);
+                            }
+                        }
                     }
 
                     return Ok(results);

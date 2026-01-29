@@ -27,4 +27,6 @@ public class MedicalNoteDto
     public string? CreatedBy { get; set; }
     public DateTime? UpdatedDate { get; set; }
     public string? UpdatedBy { get; set; }
+    /// <summary>Thời điểm bệnh nhân xem ghi chú (null = chưa xem).</summary>
+    public DateTime? ViewedByPatientAt { get; set; }
 }
