@@ -830,7 +830,37 @@ public class DoctorController : ControllerBase
                 return NotFound(new { message = "Không tìm thấy kết quả phân tích hoặc không có quyền truy cập" });
             }
 
-            // Update analysis_results with validated/corrected data if needed
+            // Cập nhật trạng thái phân tích theo lựa chọn bác sĩ
+            if (dto.ValidationStatus == "Corrected")
+            {
+                // "Cần sửa đổi" -> Đang chờ xử lý (Pending)
+                var statusUpdateSql = @"
+                    UPDATE analysis_results
+                    SET AnalysisStatus = 'Pending',
+                        Note = COALESCE(@ValidationNotes, Note),
+                        UpdatedDate = CURRENT_DATE
+                    WHERE Id = @AnalysisId";
+                using var statusUpdateCmd = new NpgsqlCommand(statusUpdateSql, connection);
+                statusUpdateCmd.Parameters.AddWithValue("AnalysisId", analysisId);
+                statusUpdateCmd.Parameters.AddWithValue("ValidationNotes", (object?)dto.ValidationNotes ?? DBNull.Value);
+                await statusUpdateCmd.ExecuteNonQueryAsync();
+            }
+            else if (dto.ValidationStatus == "Validated")
+            {
+                // "Kết quả chính xác" -> Đã xác nhận (Completed)
+                var statusUpdateSql = @"
+                    UPDATE analysis_results
+                    SET AnalysisStatus = 'Completed',
+                        Note = COALESCE(@ValidationNotes, Note),
+                        UpdatedDate = CURRENT_DATE
+                    WHERE Id = @AnalysisId";
+                using var statusUpdateCmd = new NpgsqlCommand(statusUpdateSql, connection);
+                statusUpdateCmd.Parameters.AddWithValue("AnalysisId", analysisId);
+                statusUpdateCmd.Parameters.AddWithValue("ValidationNotes", (object?)dto.ValidationNotes ?? DBNull.Value);
+                await statusUpdateCmd.ExecuteNonQueryAsync();
+            }
+
+            // Update analysis_results with corrected risk/note data if provided (chỉ khi Cần sửa đổi + có sửa mức rủi ro)
             if (dto.ValidationStatus == "Corrected" && 
                 (dto.CorrectedRiskLevel != null || dto.CorrectedRiskScore.HasValue))
             {

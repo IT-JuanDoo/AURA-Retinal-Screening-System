@@ -165,6 +165,12 @@ const DoctorAnalysisPage = () => {
             Đang xử lý
           </span>
         );
+      case "pending":
+        return (
+          <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+            Đang chờ xử lý
+          </span>
+        );
       case "failed":
         return (
           <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
@@ -191,10 +197,10 @@ const DoctorAnalysisPage = () => {
           return false;
         }
       } else if (statusFilter === "validated") {
-        // Đã xác nhận: đã được validate
-        if (!a.isValidated) {
-          return false;
-        }
+        // Đã xác nhận: đã validate và không ở trạng thái Đang xử lý / Đang chờ xử lý
+        if (!a.isValidated) return false;
+        const status = a.analysisStatus?.toLowerCase();
+        if (status === "processing" || status === "pending") return false;
       } else if (statusFilter === "processing") {
         // Đang xử lý: status = processing hoặc pending
         if (
