@@ -1119,6 +1119,14 @@ public class DoctorController : ControllerBase
 
     private string? GetCurrentDoctorId()
     {
+        // Ưu tiên lấy từ claim "doctor_id" (nếu có)
+        var doctorId = User.FindFirstValue("doctor_id");
+        if (!string.IsNullOrEmpty(doctorId))
+        {
+            return doctorId;
+        }
+        
+        // Fallback về NameIdentifier nếu không có doctor_id claim
         return User.FindFirstValue(ClaimTypes.NameIdentifier);
     }
 

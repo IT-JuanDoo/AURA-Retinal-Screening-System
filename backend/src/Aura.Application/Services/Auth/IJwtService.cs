@@ -4,7 +4,9 @@ namespace Aura.Application.Services.Auth;
 
 public interface IJwtService
 {
-    string GenerateAccessToken(User user, string? userType = null);
+    // userType: "User" | "Doctor" | ...
+    // doctorId: dùng cho trường hợp tài khoản là bác sĩ nhưng user.Id không trùng doctors.id (vd: đã có doctor theo email)
+    string GenerateAccessToken(User user, string? userType = null, string? doctorId = null);
     string GenerateRefreshToken();
     bool ValidateToken(string token);
     string? GetUserIdFromToken(string token);

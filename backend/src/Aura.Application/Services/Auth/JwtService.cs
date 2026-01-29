@@ -25,10 +25,12 @@ public class JwtService : IJwtService
         _expirationMinutes = int.Parse(_configuration["Jwt:ExpirationMinutes"] ?? "60");
     }
 
-    public string GenerateAccessToken(User user, string? userType = null)
+    public string GenerateAccessToken(User user, string? userType = null, string? doctorId = null)
     {
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_secretKey));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+
+        var normalizedUserType = string.IsNullOrWhiteSpace(userType) ? "User" : userType;
 
         var claims = new List<Claim>
         {
@@ -36,8 +38,15 @@ public class JwtService : IJwtService
             new Claim(ClaimTypes.Email, user.Email),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new Claim("auth_provider", user.AuthenticationProvider),
-            new Claim("user_type", userType ?? "User")  // Add user_type claim
+            new Claim("user_type", normalizedUserType)  // Add user_type claim
         };
+
+        // Nếu là Doctor, thêm claim doctor_id (ưu tiên doctorId truyền vào; fallback về user.Id nếu hợp lệ)
+        if (normalizedUserType.Equals("Doctor", StringComparison.OrdinalIgnoreCase))
+        {
+            var resolvedDoctorId = !string.IsNullOrWhiteSpace(doctorId) ? doctorId : user.Id;
+            claims.Add(new Claim("doctor_id", resolvedDoctorId));
+        }
 
         if (!string.IsNullOrEmpty(user.FirstName))
             claims.Add(new Claim(ClaimTypes.GivenName, user.FirstName));

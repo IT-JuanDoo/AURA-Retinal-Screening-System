@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useGoogleLogin } from '@react-oauth/google';
 import FacebookLogin from '@greatsumini/react-facebook-login';
 import { useAuthStore } from '../../store/authStore';
-import doctorService from '../../services/doctorService';
+import authService from '../../services/authService';
 import clinicAuthService from '../../services/clinicAuthService';
 import toast from 'react-hot-toast';
 
@@ -28,25 +28,14 @@ const LoginPage = () => {
   }, [searchParams, clearError]);
 
   // Helper function to check if user is doctor and redirect accordingly
-  // Always check the actual role, not just the URL parameter
-  const handlePostLoginRedirect = async () => {
-    try {
-      // Try to get doctor profile - if successful, user is a doctor
-      const doctor = await doctorService.getCurrentDoctor();
-      const redirectPath = doctor ? '/doctor/dashboard' : '/dashboard';
-      
-      // Ensure we have a valid path before navigating
-      if (redirectPath && typeof redirectPath === 'string') {
-        navigate(redirectPath, { replace: true });
-      } else {
-        // Fallback to patient dashboard
-        navigate('/dashboard', { replace: true });
-      }
-    } catch (error: any) {
-      // On any error, redirect to patient dashboard (safer default)
-      console.warn('Error checking doctor status:', error);
-      navigate('/dashboard', { replace: true });
-    }
+  // Use user_type claim from JWT token (faster, no API call needed)
+  const handlePostLoginRedirect = () => {
+    // Check user_type from JWT token
+    const userType = authService.getUserTypeFromToken();
+    const isDoctor = userType?.toLowerCase() === 'doctor';
+    
+    const redirectPath = isDoctor ? '/doctor/dashboard' : '/dashboard';
+    navigate(redirectPath, { replace: true });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

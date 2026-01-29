@@ -49,6 +49,7 @@ public class AuthService : IAuthService
         try
         {
             using var conn = OpenConnection();
+            var isDoctorRegistration = registerDto.UserType?.ToLower() == "doctor";
             
             // Check if email already exists in database
             var checkEmailQuery = @"
@@ -70,6 +71,11 @@ public class AuthService : IAuthService
                 }
             }
 
+            // Transaction để đảm bảo: đăng ký bác sĩ thì phải có cả users + doctors (nếu fail -> rollback)
+            await using var tx = await conn.BeginTransactionAsync();
+
+            _logger.LogInformation("Register: bắt đầu đăng ký, UserType={UserType}, Email={Email}", registerDto.UserType, registerDto.Email);
+
             // Create new user
             var userId = Guid.NewGuid().ToString();
             var hashedPassword = HashPassword(registerDto.Password);
@@ -85,6 +91,7 @@ public class AuthService : IAuthService
             
             using (var cmd = new NpgsqlCommand(insertQuery, conn))
             {
+                cmd.Transaction = tx;
                 cmd.Parameters.AddWithValue("id", userId);
                 cmd.Parameters.AddWithValue("email", registerDto.Email.ToLower());
                 cmd.Parameters.AddWithValue("password", hashedPassword);
@@ -101,6 +108,8 @@ public class AuthService : IAuthService
                 cmd.ExecuteNonQuery();
             }
 
+            _logger.LogInformation("Register: đã insert vào bảng users, UserId={UserId}", userId);
+
             // Read the newly created user
             var getUserQuery = @"
                 SELECT id, email, password, firstname, lastname, phone, authenticationprovider, 
@@ -112,6 +121,7 @@ public class AuthService : IAuthService
             User? user = null;
             using (var cmd = new NpgsqlCommand(getUserQuery, conn))
             {
+                cmd.Transaction = tx;
                 cmd.Parameters.AddWithValue("id", userId);
                 using var reader = cmd.ExecuteReader();
                 if (reader.Read())
@@ -122,6 +132,7 @@ public class AuthService : IAuthService
 
             if (user == null)
             {
+                await tx.RollbackAsync();
                 _logger.LogError("Failed to retrieve user after registration: {UserId}", userId);
                 return new AuthResponseDto
                 {
@@ -130,8 +141,8 @@ public class AuthService : IAuthService
                 };
             }
 
-            // If registering as doctor, create doctor record
-            if (registerDto.UserType?.ToLower() == "doctor")
+            // If registering as doctor, create doctor record (BẮT BUỘC phải thành công)
+            if (isDoctorRegistration)
             {
                 try
                 {
@@ -143,6 +154,7 @@ public class AuthService : IAuthService
                     bool doctorExists = false;
                     using (var checkCmd = new NpgsqlCommand(checkDoctorQuery, conn))
                     {
+                        checkCmd.Transaction = tx;
                         checkCmd.Parameters.AddWithValue("userId", userId);
                         checkCmd.Parameters.AddWithValue("email", registerDto.Email.ToLower());
                         using var checkReader = checkCmd.ExecuteReader();
@@ -172,6 +184,7 @@ public class AuthService : IAuthService
 
                         using (var doctorCmd = new NpgsqlCommand(insertDoctorQuery, conn))
                         {
+                            doctorCmd.Transaction = tx;
                             doctorCmd.Parameters.AddWithValue("id", userId);
                             doctorCmd.Parameters.AddWithValue("email", registerDto.Email.ToLower());
                             doctorCmd.Parameters.AddWithValue("username", (object?)username ?? DBNull.Value);
@@ -188,17 +201,21 @@ public class AuthService : IAuthService
                             doctorCmd.ExecuteNonQuery();
                         }
 
+                        _logger.LogInformation("Register: đã insert vào bảng doctors, DoctorId={UserId}, Email={Email}", userId, registerDto.Email);
+
                         // Try to assign Doctor role (if role exists)
                         try
                         {
+                            // Schema: roles table có cột RoleName (PostgreSQL lưu lowercase: rolename)
                             var getDoctorRoleQuery = @"
                                 SELECT id FROM roles 
-                                WHERE LOWER(name) = 'doctor' AND isdeleted = false 
+                                WHERE LOWER(rolename) = 'doctor' AND COALESCE(isdeleted, false) = false 
                                 LIMIT 1";
                             
                             string? doctorRoleId = null;
                             using (var roleCmd = new NpgsqlCommand(getDoctorRoleQuery, conn))
                             {
+                                roleCmd.Transaction = tx;
                                 var roleResult = roleCmd.ExecuteScalar();
                                 doctorRoleId = roleResult?.ToString();
                             }
@@ -212,6 +229,7 @@ public class AuthService : IAuthService
                                 
                                 using (var assignCmd = new NpgsqlCommand(assignRoleQuery, conn))
                                 {
+                                    assignCmd.Transaction = tx;
                                     assignCmd.Parameters.AddWithValue("id", Guid.NewGuid().ToString());
                                     assignCmd.Parameters.AddWithValue("userid", userId);
                                     assignCmd.Parameters.AddWithValue("roleid", doctorRoleId);
@@ -231,10 +249,20 @@ public class AuthService : IAuthService
                 }
                 catch (Exception doctorEx)
                 {
+                    // Bắt buộc: đăng ký bác sĩ mà không tạo được doctor record -> rollback
+                    await tx.RollbackAsync();
                     _logger.LogError(doctorEx, "Failed to create doctor record during registration for {UserId}", userId);
-                    // Don't fail registration if doctor creation fails - user can still login
+                    return new AuthResponseDto
+                    {
+                        Success = false,
+                        Message = "Đăng ký bác sĩ thất bại. Không thể tạo hồ sơ bác sĩ. Vui lòng thử lại."
+                    };
                 }
             }
+
+            // Commit transaction sau khi đã insert users (+ doctors nếu là bác sĩ)
+            await tx.CommitAsync();
+            _logger.LogInformation("Register: đã commit transaction. Users + Doctors (nếu bác sĩ) đã lưu DB. UserId={UserId}, Email={Email}, IsDoctor={IsDoctor}", userId, registerDto.Email, isDoctorRegistration);
 
             // Create email verification token (still in-memory for now)
             var verificationToken = new EmailVerificationToken
@@ -315,24 +343,29 @@ public class AuthService : IAuthService
                 });
             }
 
-            // Check if user is a doctor
+            // Check if user is a doctor (theo id hoặc email)
             string userType = "User";
+            string? doctorId = null;
             var checkDoctorQuery = @"
                 SELECT id FROM doctors 
-                WHERE id = @userId AND isdeleted = false AND isactive = true";
+                WHERE (id = @userId OR email = @email)
+                  AND isdeleted = false AND isactive = true
+                LIMIT 1";
             
             using (var doctorCmd = new NpgsqlCommand(checkDoctorQuery, conn))
             {
                 doctorCmd.Parameters.AddWithValue("userId", user.Id);
+                doctorCmd.Parameters.AddWithValue("email", user.Email.ToLower());
                 var doctorResult = doctorCmd.ExecuteScalar();
                 if (doctorResult != null)
                 {
                     userType = "Doctor";
+                    doctorId = doctorResult.ToString();
                 }
             }
 
-            // Generate tokens with user type
-            var accessToken = _jwtService.GenerateAccessToken(user, userType);
+            // Generate tokens with user type và doctorId
+            var accessToken = _jwtService.GenerateAccessToken(user, userType, doctorId);
             var refreshToken = CreateRefreshToken(user.Id);
 
             // Update last login in database
@@ -401,8 +434,33 @@ public class AuthService : IAuthService
             token.RevokedByIp = ipAddress;
             token.ReasonRevoked = "Replaced by new token";
 
-            // Generate new tokens
-            var newAccessToken = _jwtService.GenerateAccessToken(user);
+            // Generate new tokens (best-effort: giữ nguyên userType theo DB nếu có)
+            string refreshUserType = "User";
+            string? refreshDoctorId = null;
+            try
+            {
+                using var conn = OpenConnection();
+                var checkDoctorQuery = @"
+                    SELECT id FROM doctors 
+                    WHERE (id = @userId OR email = @email)
+                      AND isdeleted = false AND isactive = true
+                    LIMIT 1";
+                using var doctorCmd = new NpgsqlCommand(checkDoctorQuery, conn);
+                doctorCmd.Parameters.AddWithValue("userId", user.Id);
+                doctorCmd.Parameters.AddWithValue("email", user.Email.ToLower());
+                var doctorResult = doctorCmd.ExecuteScalar();
+                if (doctorResult != null)
+                {
+                    refreshUserType = "Doctor";
+                    refreshDoctorId = doctorResult.ToString();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "RefreshTokenAsync: failed to resolve doctor id, fallback to User token");
+            }
+
+            var newAccessToken = _jwtService.GenerateAccessToken(user, refreshUserType, refreshDoctorId);
             var newRefreshToken = CreateRefreshToken(user.Id, ipAddress);
             token.ReplacedByToken = newRefreshToken.Token;
 
@@ -654,15 +712,18 @@ public class AuthService : IAuthService
                 return null;
             }
             
-            // Check if user is a doctor
+            // Check if user is a doctor (theo id hoặc email)
             string userType = "User";
             var checkDoctorQuery = @"
                 SELECT id FROM doctors 
-                WHERE id = @userId AND isdeleted = false AND isactive = true";
+                WHERE (id = @userId OR email = @email)
+                  AND isdeleted = false AND isactive = true
+                LIMIT 1";
             
             using (var doctorCmd = new NpgsqlCommand(checkDoctorQuery, conn))
             {
                 doctorCmd.Parameters.AddWithValue("userId", userId);
+                doctorCmd.Parameters.AddWithValue("email", user.Email.ToLower());
                 var doctorResult = doctorCmd.ExecuteScalar();
                 if (doctorResult != null)
                 {
@@ -1005,24 +1066,29 @@ public class AuthService : IAuthService
                 };
             }
 
-            // Check if user is a doctor
+            // Check if user is a doctor (theo id hoặc email)
             string userType = "User";
+            string? doctorId = null;
             var checkDoctorQuery = @"
                 SELECT id FROM doctors 
-                WHERE id = @userId AND isdeleted = false AND isactive = true";
+                WHERE (id = @userId OR email = @email)
+                  AND isdeleted = false AND isactive = true
+                LIMIT 1";
             
             using (var doctorCmd = new NpgsqlCommand(checkDoctorQuery, conn))
             {
                 doctorCmd.Parameters.AddWithValue("userId", user.Id);
+                doctorCmd.Parameters.AddWithValue("email", user.Email.ToLower());
                 var doctorResult = doctorCmd.ExecuteScalar();
                 if (doctorResult != null)
                 {
                     userType = "Doctor";
+                    doctorId = doctorResult.ToString();
                 }
             }
 
-            // Generate tokens with user type
-            var accessToken = _jwtService.GenerateAccessToken(user, userType);
+            // Generate tokens with user type và doctorId
+            var accessToken = _jwtService.GenerateAccessToken(user, userType, doctorId);
             var refreshToken = CreateRefreshToken(user.Id, ipAddress);
 
             return new AuthResponseDto

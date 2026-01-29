@@ -147,6 +147,34 @@ const authService = {
 
   isAuthenticated(): boolean {
     return !!localStorage.getItem('token');
+  },
+
+  // Decode JWT token to get user_type claim
+  getUserTypeFromToken(): string | null {
+    const token = this.getToken();
+    if (!token) return null;
+
+    try {
+      // JWT format: header.payload.signature
+      const parts = token.split('.');
+      if (parts.length !== 3) return null;
+
+      // Decode base64url payload
+      const payload = parts[1];
+      const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+      
+      // Return user_type claim (case-insensitive check)
+      return decoded.user_type || decoded['user_type'] || null;
+    } catch (error) {
+      console.error('Error decoding token:', error);
+      return null;
+    }
+  },
+
+  // Check if current user is a doctor based on token
+  isDoctor(): boolean {
+    const userType = this.getUserTypeFromToken();
+    return userType?.toLowerCase() === 'doctor';
   }
 };
 
