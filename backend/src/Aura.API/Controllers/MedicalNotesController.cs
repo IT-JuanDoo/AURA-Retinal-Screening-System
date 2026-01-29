@@ -47,10 +47,11 @@ public class MedicalNotesController : ControllerBase
         var doctorId = GetCurrentDoctorId();
         if (doctorId == null) return Unauthorized(new { message = "Chưa xác thực bác sĩ" });
 
-        // Must have either ResultId or PatientUserId
-        if (string.IsNullOrWhiteSpace(dto.ResultId) && string.IsNullOrWhiteSpace(dto.PatientUserId))
+        var resultIdOrAnalysis = !string.IsNullOrWhiteSpace(dto.ResultId) ? dto.ResultId : dto.AnalysisId;
+        // Must have either ResultId/AnalysisId or PatientUserId
+        if (string.IsNullOrWhiteSpace(resultIdOrAnalysis) && string.IsNullOrWhiteSpace(dto.PatientUserId))
         {
-            return BadRequest(new { message = "Phải cung cấp ResultId hoặc PatientUserId" });
+            return BadRequest(new { message = "Phải cung cấp ResultId/AnalysisId hoặc PatientUserId" });
         }
 
         if (string.IsNullOrWhiteSpace(dto.NoteContent))
@@ -74,7 +75,7 @@ public class MedicalNotesController : ControllerBase
             await connection.OpenAsync();
 
             string? patientUserId = dto.PatientUserId;
-            string? resultId = dto.ResultId;
+            string? resultId = resultIdOrAnalysis;
 
             // If ResultId is provided, verify access and get patient
             if (!string.IsNullOrWhiteSpace(resultId))
@@ -163,11 +164,13 @@ public class MedicalNotesController : ControllerBase
             insertCmd.Parameters.AddWithValue("CreatedBy", doctorId);
 
             await insertCmd.ExecuteNonQueryAsync();
+            _logger.LogInformation("Medical note saved to database: Id={NoteId}, DoctorId={DoctorId}, PatientUserId={PatientUserId}", noteId, doctorId, patientUserId);
 
             // Get the created note with patient info
             var note = await GetNoteByIdInternal(connection, noteId, doctorId);
             if (note == null)
             {
+                _logger.LogWarning("Medical note inserted but GetNoteByIdInternal returned null for Id={NoteId}", noteId);
                 return StatusCode(500, new { message = "Không thể tạo medical note" });
             }
 
@@ -178,8 +181,8 @@ public class MedicalNotesController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating medical note for doctor {DoctorId}", doctorId);
-            return StatusCode(500, new { message = "Không thể tạo medical note" });
+            _logger.LogError(ex, "Error creating medical note for doctor {DoctorId}: {Message}", doctorId, ex.Message);
+            return StatusCode(500, new { message = "Không thể tạo medical note", detail = ex.Message });
         }
     }
 
@@ -506,15 +509,15 @@ public class MedicalNotesController : ControllerBase
     {
         var sql = @"
             SELECT mn.Id, mn.ResultId, mn.PatientUserId, mn.DoctorId, 
-                   COALESCE(d.FirstName || ' ' || d.LastName, d.Email) as DoctorName,
-                   COALESCE(u.FirstName || ' ' || u.LastName, u.Email) as PatientName,
+                   COALESCE(d.FirstName || ' ' || d.LastName, d.Email, 'Bác sĩ') as DoctorName,
+                   COALESCE(u.FirstName || ' ' || u.LastName, u.Email, '') as PatientName,
                    mn.NoteType, mn.NoteContent, mn.Diagnosis, mn.Prescription,
                    mn.TreatmentPlan, mn.ClinicalObservations, mn.Severity,
                    mn.FollowUpDate, mn.IsImportant, mn.IsPrivate, mn.CreatedDate, mn.CreatedBy,
                    mn.UpdatedDate, mn.UpdatedBy
             FROM medical_notes mn
-            INNER JOIN doctors d ON d.Id = mn.DoctorId
-            LEFT JOIN users u ON u.Id = mn.PatientUserId
+            LEFT JOIN doctors d ON d.Id = mn.DoctorId AND COALESCE(d.IsDeleted, false) = false
+            LEFT JOIN users u ON u.Id = mn.PatientUserId AND COALESCE(u.IsDeleted, false) = false
             WHERE mn.Id = @Id
                 AND mn.DoctorId = @DoctorId
                 AND COALESCE(mn.IsDeleted, false) = false";

@@ -11,6 +11,11 @@ public class CreateMedicalNoteDto
     /// ID của kết quả phân tích (optional nếu có PatientUserId)
     /// </summary>
     public string? ResultId { get; set; }
+
+    /// <summary>
+    /// Alias cho ResultId (frontend gửi analysisId)
+    /// </summary>
+    public string? AnalysisId { get => ResultId; set => ResultId = value; }
     
     /// <summary>
     /// ID của bệnh nhân (optional nếu có ResultId)

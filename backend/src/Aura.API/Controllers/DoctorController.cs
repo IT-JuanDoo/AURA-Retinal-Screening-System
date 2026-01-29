@@ -395,12 +395,14 @@ public class DoctorController : ControllerBase
                     u.Id, u.FirstName, u.LastName, u.Email, u.Phone, u.Dob, u.Gender, u.ProfileImageUrl,
                     pda.AssignedAt, pda.ClinicId, c.ClinicName,
                     COUNT(DISTINCT ar.Id) as AnalysisCount,
-                    COUNT(DISTINCT mn.Id) as MedicalNotesCount
+                    (SELECT COUNT(*) FROM medical_notes mn2 
+                     WHERE mn2.DoctorId = @DoctorId 
+                       AND (mn2.PatientUserId = u.Id OR mn2.ResultId IN (SELECT Id FROM analysis_results WHERE UserId = u.Id))
+                       AND COALESCE(mn2.IsDeleted, false) = false) as MedicalNotesCount
                 FROM patient_doctor_assignments pda
                 INNER JOIN users u ON u.Id = pda.UserId
                 LEFT JOIN clinics c ON c.Id = pda.ClinicId
                 LEFT JOIN analysis_results ar ON ar.UserId = u.Id
-                LEFT JOIN medical_notes mn ON mn.DoctorId = @DoctorId AND mn.ResultId = ar.Id
                 WHERE pda.DoctorId = @DoctorId 
                     AND COALESCE(pda.IsDeleted, false) = false
                     AND COALESCE(u.IsDeleted, false) = false
@@ -468,7 +470,10 @@ public class DoctorController : ControllerBase
                     u.Id, u.FirstName, u.LastName, u.Email, u.Phone, u.Dob, u.Gender, u.ProfileImageUrl,
                     pda.AssignedAt, pda.ClinicId, c.ClinicName,
                     COUNT(DISTINCT ar.Id) as AnalysisCount,
-                    COUNT(DISTINCT mn.Id) as MedicalNotesCount
+                    (SELECT COUNT(*) FROM medical_notes mn2 
+                     WHERE mn2.DoctorId = @DoctorId 
+                       AND (mn2.PatientUserId = u.Id OR mn2.ResultId IN (SELECT Id FROM analysis_results WHERE UserId = u.Id))
+                       AND COALESCE(mn2.IsDeleted, false) = false) as MedicalNotesCount
                 FROM users u
                 LEFT JOIN patient_doctor_assignments pda 
                     ON pda.UserId = u.Id 
@@ -476,7 +481,6 @@ public class DoctorController : ControllerBase
                     AND COALESCE(pda.IsDeleted, false) = false
                 LEFT JOIN clinics c ON c.Id = pda.ClinicId
                 LEFT JOIN analysis_results ar ON ar.UserId = u.Id
-                LEFT JOIN medical_notes mn ON mn.DoctorId = @DoctorId AND mn.ResultId = ar.Id
                 WHERE u.Id = @PatientId
                     AND COALESCE(u.IsDeleted, false) = false
                 GROUP BY u.Id, u.FirstName, u.LastName, u.Email, u.Phone, u.Dob, u.Gender, 

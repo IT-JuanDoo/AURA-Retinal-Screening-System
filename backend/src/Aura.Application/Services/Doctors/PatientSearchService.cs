@@ -112,7 +112,10 @@ public class PatientSearchService : IPatientSearchService
                     pda.ClinicId, 
                     c.ClinicName,
                     COUNT(DISTINCT ar.Id) as AnalysisCount,
-                    COUNT(DISTINCT mn.Id) as MedicalNotesCount,
+                    (SELECT COUNT(*) FROM medical_notes mn2 
+                     WHERE mn2.DoctorId = @DoctorId 
+                       AND (mn2.PatientUserId = u.Id OR mn2.ResultId IN (SELECT Id FROM analysis_results WHERE UserId = u.Id))
+                       AND COALESCE(mn2.IsDeleted, false) = false) as MedicalNotesCount,
                     latest_risk.OverallRiskLevel as LatestRiskLevel,
                     latest_risk.RiskScore as LatestRiskScore,
                     latest_risk.AnalysisCompletedAt as LatestAnalysisDate
@@ -123,7 +126,6 @@ public class PatientSearchService : IPatientSearchService
                     AND COALESCE(pda.IsDeleted, false) = false
                 LEFT JOIN clinics c ON c.Id = pda.ClinicId
                 LEFT JOIN analysis_results ar ON ar.UserId = u.Id
-                LEFT JOIN medical_notes mn ON mn.DoctorId = @DoctorId AND mn.ResultId = ar.Id
                 LEFT JOIN latest_risk ON latest_risk.UserId = u.Id
                 WHERE {whereClause}
                 GROUP BY 
