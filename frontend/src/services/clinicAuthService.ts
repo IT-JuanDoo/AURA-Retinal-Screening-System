@@ -1,20 +1,20 @@
-import axios from 'axios';
+import axios from "axios";
 
 // Dev: dùng '/api' để đi qua Vite proxy -> tránh CORS; Prod: dùng VITE_API_URL hoặc '/api'
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
 // Create axios instance for clinic auth
 const clinicAuthApi = axios.create({
   baseURL: `${API_BASE_URL}/clinic/auth`,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
   withCredentials: true, // For refresh token cookies
 });
 
 // Add interceptor to include auth token
 clinicAuthApi.interceptors.request.use((config) => {
-  const token = localStorage.getItem('clinic_token');
+  const token = localStorage.getItem("clinic_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -98,90 +98,126 @@ const clinicAuthService = {
   // Register new clinic – payload khớp với backend ClinicRegisterDto (camelCase)
   async register(data: ClinicRegisterData): Promise<ClinicAuthResponse> {
     const payload = {
-      clinicName: data.clinicName ?? '',
+      clinicName: data.clinicName ?? "",
       registrationNumber: data.registrationNumber ?? undefined,
       taxCode: data.taxCode ?? undefined,
-      clinicEmail: data.clinicEmail ?? '',
+      clinicEmail: data.clinicEmail ?? "",
       clinicPhone: data.clinicPhone || undefined,
-      address: data.address ?? '',
+      address: data.address ?? "",
       city: data.city || undefined,
       province: data.province || undefined,
-      country: data.country ?? 'Vietnam',
+      country: data.country ?? "Vietnam",
       websiteUrl: data.websiteUrl || undefined,
-      clinicType: data.clinicType ?? 'Clinic',
-      adminEmail: data.adminEmail ?? '',
-      adminPassword: data.adminPassword ?? '',
-      confirmPassword: data.confirmPassword ?? '',
-      adminFullName: data.adminFullName ?? '',
+      clinicType: data.clinicType ?? "Clinic",
+      adminEmail: data.adminEmail ?? "",
+      adminPassword: data.adminPassword ?? "",
+      confirmPassword: data.confirmPassword ?? "",
+      adminFullName: data.adminFullName ?? "",
       adminPhone: data.adminPhone || undefined,
     };
-    const response = await clinicAuthApi.post<ClinicAuthResponse>('/register', payload);
+    const response = await clinicAuthApi.post<ClinicAuthResponse>(
+      "/register",
+      payload,
+    );
     if (response.data.success && response.data.accessToken) {
-      localStorage.setItem('clinic_token', response.data.accessToken);
-      localStorage.setItem('clinic_admin', JSON.stringify(response.data.admin));
-      localStorage.setItem('clinic_info', JSON.stringify(response.data.clinic));
+      localStorage.setItem("clinic_token", response.data.accessToken);
+      localStorage.setItem("clinic_admin", JSON.stringify(response.data.admin));
+      localStorage.setItem("clinic_info", JSON.stringify(response.data.clinic));
     }
     return response.data;
   },
 
   // Login
   async login(data: ClinicLoginData): Promise<ClinicAuthResponse> {
-    const response = await clinicAuthApi.post<ClinicAuthResponse>('/login', data);
+    const response = await clinicAuthApi.post<ClinicAuthResponse>(
+      "/login",
+      data,
+    );
     if (response.data.success && response.data.accessToken) {
-      localStorage.setItem('clinic_token', response.data.accessToken);
-      localStorage.setItem('clinic_admin', JSON.stringify(response.data.admin));
-      localStorage.setItem('clinic_info', JSON.stringify(response.data.clinic));
+      localStorage.setItem("clinic_token", response.data.accessToken);
+      localStorage.setItem("clinic_admin", JSON.stringify(response.data.admin));
+      localStorage.setItem("clinic_info", JSON.stringify(response.data.clinic));
     }
     return response.data;
   },
 
   // Refresh token
   async refreshToken(): Promise<ClinicAuthResponse> {
-    const response = await clinicAuthApi.post<ClinicAuthResponse>('/refresh', {});
+    const response = await clinicAuthApi.post<ClinicAuthResponse>(
+      "/refresh",
+      {},
+    );
     if (response.data.success && response.data.accessToken) {
-      localStorage.setItem('clinic_token', response.data.accessToken);
-      localStorage.setItem('clinic_admin', JSON.stringify(response.data.admin));
-      localStorage.setItem('clinic_info', JSON.stringify(response.data.clinic));
+      localStorage.setItem("clinic_token", response.data.accessToken);
+      localStorage.setItem("clinic_admin", JSON.stringify(response.data.admin));
+      localStorage.setItem("clinic_info", JSON.stringify(response.data.clinic));
     }
     return response.data;
   },
 
   // Get profile
   async getProfile(): Promise<ClinicAuthResponse> {
-    const response = await clinicAuthApi.get<ClinicAuthResponse>('/me');
+    const response = await clinicAuthApi.get<ClinicAuthResponse>("/me");
     return response.data;
   },
 
+  /**
+   * Gọi /me và cập nhật localStorage (clinic_info, admin).
+   * Dùng để poll khi đang "Đang chờ xét duyệt" để biết admin đã duyệt/hủy.
+   */
+  async refreshClinicInfo(): Promise<ClinicInfo | null> {
+    try {
+      const data = await this.getProfile();
+      if (data.clinic) {
+        localStorage.setItem("clinic_info", JSON.stringify(data.clinic));
+        if (data.admin) {
+          localStorage.setItem("clinic_admin", JSON.stringify(data.admin));
+        }
+        return data.clinic;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
   // Change password
-  async changePassword(currentPassword: string, newPassword: string, confirmNewPassword: string): Promise<ClinicAuthResponse> {
-    const response = await clinicAuthApi.post<ClinicAuthResponse>('/change-password', {
-      currentPassword,
-      newPassword,
-      confirmNewPassword,
-    });
+  async changePassword(
+    currentPassword: string,
+    newPassword: string,
+    confirmNewPassword: string,
+  ): Promise<ClinicAuthResponse> {
+    const response = await clinicAuthApi.post<ClinicAuthResponse>(
+      "/change-password",
+      {
+        currentPassword,
+        newPassword,
+        confirmNewPassword,
+      },
+    );
     return response.data;
   },
 
   // Logout
   async logout(): Promise<void> {
     try {
-      await clinicAuthApi.post('/logout');
+      await clinicAuthApi.post("/logout");
     } catch {
       // Ignore errors on logout
     }
-    localStorage.removeItem('clinic_token');
-    localStorage.removeItem('clinic_admin');
-    localStorage.removeItem('clinic_info');
+    localStorage.removeItem("clinic_token");
+    localStorage.removeItem("clinic_admin");
+    localStorage.removeItem("clinic_info");
   },
 
   // Check if logged in
   isLoggedIn(): boolean {
-    return !!localStorage.getItem('clinic_token');
+    return !!localStorage.getItem("clinic_token");
   },
 
   // Get current admin info
   getCurrentAdmin(): ClinicAdminInfo | null {
-    const adminStr = localStorage.getItem('clinic_admin');
+    const adminStr = localStorage.getItem("clinic_admin");
     if (adminStr) {
       try {
         return JSON.parse(adminStr);
@@ -194,7 +230,7 @@ const clinicAuthService = {
 
   // Get current clinic info
   getCurrentClinic(): ClinicInfo | null {
-    const clinicStr = localStorage.getItem('clinic_info');
+    const clinicStr = localStorage.getItem("clinic_info");
     if (clinicStr) {
       try {
         return JSON.parse(clinicStr);
@@ -207,7 +243,7 @@ const clinicAuthService = {
 
   // Get token
   getToken(): string | null {
-    return localStorage.getItem('clinic_token');
+    return localStorage.getItem("clinic_token");
   },
 };
 

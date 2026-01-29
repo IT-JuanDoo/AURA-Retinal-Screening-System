@@ -187,11 +187,23 @@ public class ClinicAuthService : IClinicAuthService
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Error registering clinic: {ClinicName}", dto.ClinicName);
+
+            // Lỗi trùng mã đăng ký kinh doanh (23505 unique violation) → thông báo ngắn gọn, dễ hiểu
+            if (ex is Npgsql.PostgresException pgEx && pgEx.SqlState == "23505")
+            {
+                var constraint = (pgEx.ConstraintName ?? "").ToLowerInvariant();
+                var message = constraint.Contains("registration") || constraint.Contains("registrationnumber")
+                    ? "Mã đăng ký kinh doanh đã được sử dụng. Vui lòng kiểm tra lại hoặc dùng mã khác."
+                    : constraint.Contains("email")
+                        ? "Email phòng khám hoặc email quản trị đã được đăng ký. Vui lòng dùng email khác."
+                        : "Dữ liệu trùng lặp. Vui lòng kiểm tra lại.";
+                return new ClinicAuthResponseDto { Success = false, Message = message };
+            }
+
             var inner = ex.InnerException?.Message ?? ex.Message;
-            // Trả về lỗi rõ ràng để frontend hiển thị (giới hạn 300 ký tự, bỏ nội dung nhạy cảm)
             var safeMessage = inner.Length > 300 ? inner.Substring(0, 300) + "…" : inner;
-            if (ex is Npgsql.PostgresException pgEx && !string.IsNullOrEmpty(pgEx.Message))
-                safeMessage = pgEx.Message;
+            if (ex is Npgsql.PostgresException px && !string.IsNullOrEmpty(px.Message))
+                safeMessage = px.Message;
             return new ClinicAuthResponseDto
             {
                 Success = false,

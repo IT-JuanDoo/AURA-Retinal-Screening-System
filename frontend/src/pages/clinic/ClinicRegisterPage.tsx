@@ -121,14 +121,24 @@ const ClinicRegisterPage = () => {
         toast.error(result.message || 'Đăng ký thất bại');
       }
     } catch (error: any) {
-      // Log chi tiết để debug: response 400 trả về message từ backend
       if (error?.response?.status === 400 && error?.response?.data) {
-        console.error('[Clinic Register] 400 Bad Request – backend trả về:', error.response.data);
+        const raw = getApiErrorMessage(error, '');
+        // Hiển thị thông báo ngắn gọn: trùng mã ĐKKD hoặc duplicate key
+        if (raw.includes('23505') || raw.toLowerCase().includes('duplicate key')) {
+          if (raw.toLowerCase().includes('email') || raw.includes('đã được đăng ký')) {
+            toast.error(raw.length < 120 ? raw : 'Email hoặc mã đăng ký kinh doanh đã được sử dụng. Vui lòng kiểm tra lại.');
+          } else {
+            toast.error('Mã đăng ký kinh doanh đã được sử dụng. Vui lòng kiểm tra lại hoặc dùng mã khác.');
+          }
+        } else {
+          toast.error(raw || 'Đăng ký thất bại. Vui lòng thử lại.');
+        }
+      } else {
+        const message = error?.response
+          ? getApiErrorMessage(error, 'Đã xảy ra lỗi khi đăng ký. Vui lòng thử lại sau.')
+          : 'Không kết nối được máy chủ. Kiểm tra lại địa chỉ API (VITE_API_URL) hoặc đảm bảo backend đang chạy.';
+        toast.error(message);
       }
-      const message = error?.response
-        ? getApiErrorMessage(error, 'Đã xảy ra lỗi khi đăng ký. Vui lòng thử lại sau.')
-        : 'Không kết nối được máy chủ. Kiểm tra lại địa chỉ API (VITE_API_URL) hoặc đảm bảo backend đang chạy.';
-      toast.error(message);
     } finally {
       setLoading(false);
     }
