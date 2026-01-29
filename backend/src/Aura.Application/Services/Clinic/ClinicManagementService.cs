@@ -260,6 +260,73 @@ public class ClinicManagementService : IClinicManagementService
                             return (false, "Bác sĩ đã có trong phòng khám", null);
                         }
                     }
+
+                    // Đảm bảo bác sĩ cũ cũng có bản ghi trong bảng users để có thể login
+                    var checkUserSql = "SELECT Id FROM users WHERE Id = @Id AND IsDeleted = false";
+                    using (var checkUserCmd = new NpgsqlCommand(checkUserSql, connection, transaction))
+                    {
+                        checkUserCmd.Parameters.AddWithValue("Id", existingDoctorId);
+                        var userExisting = await checkUserCmd.ExecuteScalarAsync();
+                        if (userExisting == null)
+                        {
+                            // Lấy thông tin từ bảng doctors để tạo user tương ứng
+                            var getDoctorSql = @"
+                                SELECT FirstName, LastName, Email, Phone, Password 
+                                FROM doctors 
+                                WHERE Id = @Id AND IsDeleted = false
+                                LIMIT 1";
+
+                            string? firstNameFromDoctor = null;
+                            string? lastNameFromDoctor = null;
+                            string? emailFromDoctor = null;
+                            string? phoneFromDoctor = null;
+                            string? passwordFromDoctor = null;
+
+                            using (var getDoctorCmd = new NpgsqlCommand(getDoctorSql, connection, transaction))
+                            {
+                                getDoctorCmd.Parameters.AddWithValue("Id", existingDoctorId);
+                                using var reader = await getDoctorCmd.ExecuteReaderAsync();
+                                if (await reader.ReadAsync())
+                                {
+                                    firstNameFromDoctor = reader.IsDBNull(0) ? null : reader.GetString(0);
+                                    lastNameFromDoctor = reader.IsDBNull(1) ? null : reader.GetString(1);
+                                    emailFromDoctor = reader.IsDBNull(2) ? null : reader.GetString(2);
+                                    phoneFromDoctor = reader.IsDBNull(3) ? null : reader.GetString(3);
+                                    passwordFromDoctor = reader.IsDBNull(4) ? null : reader.GetString(4);
+                                }
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(emailFromDoctor))
+                            {
+                                var userPassword = !string.IsNullOrEmpty(passwordFromDoctor)
+                                    ? passwordFromDoctor
+                                    : BCrypt.Net.BCrypt.HashPassword(dto.Password ?? "Aura@123");
+
+                                var createUserFromExistingDoctorSql = @"
+                                    INSERT INTO users (
+                                        Id, FirstName, LastName, Email, Password, Phone,
+                                        AuthenticationProvider, IsEmailVerified, IsActive, CreatedDate, IsDeleted
+                                    )
+                                    VALUES (
+                                        @Id, @FirstName, @LastName, @Email, @Password, @Phone,
+                                        'email', false, true, @Now, false
+                                    )";
+
+                                using (var userCmd = new NpgsqlCommand(createUserFromExistingDoctorSql, connection, transaction))
+                                {
+                                    userCmd.Parameters.AddWithValue("Id", existingDoctorId);
+                                    userCmd.Parameters.AddWithValue("FirstName", (object?)firstNameFromDoctor ?? DBNull.Value);
+                                    userCmd.Parameters.AddWithValue("LastName", (object?)lastNameFromDoctor ?? DBNull.Value);
+                                    userCmd.Parameters.AddWithValue("Email", emailFromDoctor.ToLower());
+                                    userCmd.Parameters.AddWithValue("Password", userPassword);
+                                    userCmd.Parameters.AddWithValue("Phone", (object?)phoneFromDoctor ?? DBNull.Value);
+                                    userCmd.Parameters.AddWithValue("Now", DateTime.UtcNow.Date);
+                                    await userCmd.ExecuteNonQueryAsync();
+                                }
+                            }
+                        }
+                    }
+
                     doctorId = existingDoctorId;
                 }
                 else
@@ -275,6 +342,29 @@ public class ClinicManagementService : IClinicManagementService
                         ? dto.LicenseNumber.Trim()
                         : ("PENDING-" + doctorId);
 
+                    // Also create a corresponding user account so doctor có thể login qua /login
+                    var createUserSql = @"
+                        INSERT INTO users (
+                            Id, FirstName, LastName, Email, Password, Phone,
+                            AuthenticationProvider, IsEmailVerified, IsActive, CreatedDate, IsDeleted
+                        )
+                        VALUES (
+                            @Id, @FirstName, @LastName, @Email, @Password, @Phone,
+                            'email', false, true, @Now, false
+                        )";
+
+                    using (var userCmd = new NpgsqlCommand(createUserSql, connection, transaction))
+                    {
+                        userCmd.Parameters.AddWithValue("Id", doctorId);
+                        userCmd.Parameters.AddWithValue("FirstName", firstName);
+                        userCmd.Parameters.AddWithValue("LastName", lastName);
+                        userCmd.Parameters.AddWithValue("Email", dto.Email.ToLower());
+                        userCmd.Parameters.AddWithValue("Password", passwordHash);
+                        userCmd.Parameters.AddWithValue("Phone", (object?)dto.Phone ?? DBNull.Value);
+                        userCmd.Parameters.AddWithValue("Now", DateTime.UtcNow.Date);
+                        await userCmd.ExecuteNonQueryAsync();
+                    }
+
                     var createDoctorSql = @"
                         INSERT INTO doctors (Id, FirstName, LastName, Email, Password, Phone, Specialization, LicenseNumber, IsActive, CreatedDate, IsDeleted)
                         VALUES (@Id, @FirstName, @LastName, @Email, @Password, @Phone, @Specialization, @LicenseNumber, true, @Now, false)";
@@ -284,12 +374,12 @@ public class ClinicManagementService : IClinicManagementService
                         cmd.Parameters.AddWithValue("Id", doctorId);
                         cmd.Parameters.AddWithValue("FirstName", firstName);
                         cmd.Parameters.AddWithValue("LastName", lastName);
-                        cmd.Parameters.AddWithValue("Email", dto.Email);
+                        cmd.Parameters.AddWithValue("Email", dto.Email.ToLower());
                         cmd.Parameters.AddWithValue("Password", passwordHash);
                         cmd.Parameters.AddWithValue("Phone", (object?)dto.Phone ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("Specialization", (object?)dto.Specialization ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("LicenseNumber", licenseNumber);
-                        cmd.Parameters.AddWithValue("Now", DateTime.UtcNow);
+                        cmd.Parameters.AddWithValue("Now", DateTime.UtcNow.Date);
                         await cmd.ExecuteNonQueryAsync();
                     }
                 }
