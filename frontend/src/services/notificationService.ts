@@ -1,7 +1,7 @@
-import api from './api';
-import type { Notification } from '../types/notification';
+import api from "./api";
+import type { Notification } from "../types/notification";
 
-const API_PREFIX = '/notifications'; // will be appended to baseURL from api
+const API_PREFIX = "/notifications"; // will be appended to baseURL from api
 
 export async function fetchNotifications(): Promise<Notification[]> {
   const res = await api.get<Notification[]>(API_PREFIX);
@@ -17,8 +17,14 @@ export async function markAllRead(): Promise<void> {
 }
 
 // Real-time via Server-Sent Events (SSE)
+// EventSource không hỗ trợ header Authorization → truyền token qua query (backend đọc trong OnMessageReceived)
 export function connectNotificationsSSE(onMessage: (n: Notification) => void) {
-  const url = (api.defaults.baseURL || '') + API_PREFIX + '/stream';
+  const baseUrl = (api.defaults.baseURL || "") + API_PREFIX + "/stream";
+  const token =
+    typeof localStorage !== "undefined" ? localStorage.getItem("token") : null;
+  const url = token
+    ? `${baseUrl}?access_token=${encodeURIComponent(token)}`
+    : baseUrl;
 
   try {
     const es = new EventSource(url, { withCredentials: true } as any);
@@ -28,31 +34,34 @@ export function connectNotificationsSSE(onMessage: (n: Notification) => void) {
         const payload = JSON.parse(ev.data);
         onMessage(payload);
       } catch (e) {
-        console.error('Invalid SSE notification payload', e);
+        console.error("Invalid SSE notification payload", e);
       }
     };
 
     es.onerror = (err) => {
-      console.warn('Notifications SSE error', err);
+      console.warn("Notifications SSE error", err);
       es.close();
     };
 
     return es;
   } catch (err) {
-    console.warn('Could not connect to notifications SSE', err);
+    console.warn("Could not connect to notifications SSE", err);
     return null;
   }
 }
 
 // Fallback polling
-export function startPolling(onFetched: (arr: Notification[]) => void, interval = 15000) {
+export function startPolling(
+  onFetched: (arr: Notification[]) => void,
+  interval = 15000,
+) {
   let mounted = true;
   const fetchOnce = async () => {
     try {
       const arr = await fetchNotifications();
       if (mounted) onFetched(arr);
     } catch (e) {
-      console.warn('Polling notifications failed', e);
+      console.warn("Polling notifications failed", e);
     }
   };
 

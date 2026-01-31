@@ -35,6 +35,7 @@ public class JwtService : IJwtService
         var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id),
+            new Claim(JwtRegisteredClaimNames.Sub, user.Id), // Chuẩn JWT "sub" để API (vd. notifications) đọc userId
             new Claim(ClaimTypes.Email, user.Email),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new Claim("auth_provider", user.AuthenticationProvider),

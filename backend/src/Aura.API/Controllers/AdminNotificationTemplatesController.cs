@@ -1,4 +1,5 @@
 using Aura.API.Admin;
+using Aura.Application.Services.Notifications;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -14,15 +15,21 @@ namespace Aura.API.Controllers;
 public class AdminNotificationTemplatesController : ControllerBase
 {
     private readonly NotificationTemplateRepository _repo;
+    private readonly AdminAccountRepository _accountRepo;
+    private readonly INotificationService _notificationService;
     private readonly IConfiguration _config;
     private readonly ILogger<AdminNotificationTemplatesController>? _logger;
 
     public AdminNotificationTemplatesController(
         NotificationTemplateRepository repo,
+        AdminAccountRepository accountRepo,
+        INotificationService notificationService,
         IConfiguration config,
         ILogger<AdminNotificationTemplatesController>? logger = null)
     {
         _repo = repo;
+        _accountRepo = accountRepo;
+        _notificationService = notificationService;
         _config = config;
         _logger = logger;
     }
@@ -199,6 +206,70 @@ public class AdminNotificationTemplatesController : ControllerBase
         {
             _logger?.LogError(ex, "Error previewing notification template {Id}", id);
             return StatusCode(500, new { message = $"Lỗi khi preview template: {ex.Message}" });
+        }
+    }
+
+    /// <summary>Gửi thông báo theo template: tất cả user hoặc một user cụ thể.</summary>
+    [HttpPost("{id}/send")]
+    public async Task<IActionResult> Send(string id, [FromBody] SendNotificationRequest request)
+    {
+        try
+        {
+            var template = await _repo.GetByIdAsync(id);
+            if (template == null)
+                return NotFound(new { message = "Không tìm thấy template" });
+
+            var variables = request.Variables ?? new Dictionary<string, string>
+            {
+                { "userName", "Người dùng" },
+                { "analysisId", "" },
+                { "result", "" },
+                { "date", DateTime.Now.ToString("dd/MM/yyyy") },
+            };
+
+            var title = template.TitleTemplate;
+            var content = template.ContentTemplate;
+            foreach (var kvp in variables)
+            {
+                var placeholder = "{{ " + kvp.Key + " }}";
+                var placeholder2 = "{{" + kvp.Key + "}}";
+                title = title.Replace(placeholder, kvp.Value).Replace(placeholder2, kvp.Value);
+                content = content.Replace(placeholder, kvp.Value).Replace(placeholder2, kvp.Value);
+            }
+
+            if (string.Equals(request.TargetType, "user", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(request.UserId))
+                    return BadRequest(new { message = "Chọn một người dùng khi gửi tới một user." });
+                await _notificationService.CreateAsync(request.UserId.Trim(), title, content, template.TemplateType, null);
+                return Ok(new { message = "Đã gửi thông báo tới người dùng đã chọn.", count = 1 });
+            }
+
+            if (string.Equals(request.TargetType, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                var users = await _accountRepo.ListUsersAsync(null, null);
+                var count = 0;
+                foreach (var u in users)
+                {
+                    try
+                    {
+                        await _notificationService.CreateAsync(u.Id, title, content, template.TemplateType, null);
+                        count++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Could not send notification to user {UserId}", u.Id);
+                    }
+                }
+                return Ok(new { message = $"Đã gửi thông báo tới {count} người dùng.", count });
+            }
+
+            return BadRequest(new { message = "TargetType phải là 'all' hoặc 'user'." });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error sending notification from template {Id}", id);
+            return StatusCode(500, new { message = $"Không gửi được thông báo: {ex.Message}" });
         }
     }
 }

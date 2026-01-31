@@ -200,7 +200,10 @@ builder.Services.AddAuthentication(options =>
                 }
             }
             
-            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            // SignalR: WebSocket không gửi được header; SSE notifications/stream cũng không gửi được Authorization
+            if (!string.IsNullOrEmpty(accessToken) && (
+                path.StartsWithSegments("/hubs") ||
+                path.StartsWithSegments("/api/notifications/stream", StringComparison.OrdinalIgnoreCase)))
             {
                 context.Token = accessToken;
             }

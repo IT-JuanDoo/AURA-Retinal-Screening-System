@@ -55,7 +55,7 @@ const notificationTemplateApi = {
     search?: string,
     templateType?: string,
     isActive?: boolean,
-    language?: string
+    language?: string,
   ): Promise<NotificationTemplate[]> => {
     const params: any = {};
     if (search) params.search = search;
@@ -72,25 +72,53 @@ const notificationTemplateApi = {
     return res.data;
   },
 
-  create: async (dto: CreateNotificationTemplateDto): Promise<{ id: string }> => {
+  create: async (
+    dto: CreateNotificationTemplateDto,
+  ): Promise<{ id: string }> => {
     const res = await adminApi.post("/admin/notification-templates", dto);
     return res.data;
   },
 
-  update: async (id: string, dto: UpdateNotificationTemplateDto): Promise<void> => {
+  update: async (
+    id: string,
+    dto: UpdateNotificationTemplateDto,
+  ): Promise<void> => {
     await adminApi.put(`/admin/notification-templates/${id}`, dto);
   },
 
   setStatus: async (id: string, isActive: boolean): Promise<void> => {
-    await adminApi.patch(`/admin/notification-templates/${id}/status`, { isActive });
+    await adminApi.patch(`/admin/notification-templates/${id}/status`, {
+      isActive,
+    });
   },
 
   delete: async (id: string): Promise<void> => {
     await adminApi.delete(`/admin/notification-templates/${id}`);
   },
 
-  preview: async (id: string, variables?: Record<string, string>): Promise<TemplatePreview> => {
-    const res = await adminApi.post(`/admin/notification-templates/${id}/preview`, { variables });
+  preview: async (
+    id: string,
+    variables?: Record<string, string>,
+  ): Promise<TemplatePreview> => {
+    const res = await adminApi.post(
+      `/admin/notification-templates/${id}/preview`,
+      { variables },
+    );
+    return res.data;
+  },
+
+  send: async (
+    templateId: string,
+    payload: {
+      targetType: "all" | "user";
+      userId?: string;
+      variables?: Record<string, string>;
+    },
+  ): Promise<{ message: string; count: number }> => {
+    const res = await adminApi.post<{ message: string; count: number }>(
+      `/admin/notification-templates/${templateId}/send`,
+      payload,
+    );
     return res.data;
   },
 };

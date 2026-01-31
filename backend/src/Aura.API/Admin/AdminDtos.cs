@@ -327,5 +327,16 @@ public class UpdateNotificationTemplateDto
     public string? Note { get; set; }
 }
 
+/// <summary>Gửi thông báo theo template: tất cả user hoặc một user cụ thể.</summary>
+public class SendNotificationRequest
+{
+    /// <summary>"all" = gửi tất cả người dùng, "user" = gửi một user (bắt buộc UserId).</summary>
+    public string TargetType { get; set; } = "user";
+    /// <summary>Bắt buộc khi TargetType = "user".</summary>
+    public string? UserId { get; set; }
+    /// <summary>Biến thay thế trong template (vd. userName, date).</summary>
+    public Dictionary<string, string>? Variables { get; set; }
+}
+
 
 

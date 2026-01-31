@@ -1,9 +1,13 @@
 import React, { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useNotificationStore } from "../../store/notificationStore";
 import {
   connectNotificationsSSE,
   startPolling,
 } from "../../services/notificationService";
+import medicalNotesService, {
+  MedicalNote,
+} from "../../services/medicalNotesService";
 import type { Notification } from "../../types/notification";
 
 const timeAgo = (iso?: string) => {
@@ -21,9 +25,14 @@ const timeAgo = (iso?: string) => {
 };
 
 const NotificationBell: React.FC = () => {
+  const navigate = useNavigate();
   const { notifications, unreadCount, load, markRead, markAllRead, add } =
     useNotificationStore();
   const [open, setOpen] = useState(false);
+  const [modalNotification, setModalNotification] =
+    useState<Notification | null>(null);
+  const [noteDetail, setNoteDetail] = useState<MedicalNote | null>(null);
+  const [loadingNote, setLoadingNote] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -70,12 +79,36 @@ const NotificationBell: React.FC = () => {
     });
   };
 
-  const handleMarkRead = async (id: string) => {
-    await markRead(id);
-  };
-
   const handleMarkAllRead = async () => {
     await markAllRead();
+  };
+
+  const handleNotificationClick = async (n: Notification) => {
+    await markRead(n.id);
+    setModalNotification(n);
+    setNoteDetail(null);
+    setLoadingNote(false);
+    const noteId =
+      n.data && typeof n.data === "object" && "noteId" in n.data
+        ? String((n.data as { noteId?: string }).noteId)
+        : null;
+    if (noteId) {
+      setLoadingNote(true);
+      try {
+        const note = await medicalNotesService.getMyNoteById(noteId);
+        setNoteDetail(note);
+        await medicalNotesService.markNoteAsViewed(noteId);
+      } catch {
+        // Không có quyền hoặc không tìm thấy (vd. user là bác sĩ) → chỉ hiển thị title + message
+      } finally {
+        setLoadingNote(false);
+      }
+    }
+  };
+
+  const closeModal = () => {
+    setModalNotification(null);
+    setNoteDetail(null);
   };
 
   return (
@@ -133,7 +166,7 @@ const NotificationBell: React.FC = () => {
                     ? "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50"
                     : "bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700/50"
                 }`}
-                onClick={() => handleMarkRead(n.id)}
+                onClick={() => handleNotificationClick(n)}
               >
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-slate-900 dark:text-white">
@@ -148,6 +181,129 @@ const NotificationBell: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal xem nội dung thông báo / ghi chú */}
+      {modalNotification && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          onClick={closeModal}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="notification-modal-title"
+        >
+          <div
+            className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-lg w-full max-h-[85vh] overflow-hidden flex flex-col border border-slate-200 dark:border-slate-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700 shrink-0">
+              <h2
+                id="notification-modal-title"
+                className="text-lg font-semibold text-slate-900 dark:text-white"
+              >
+                {modalNotification.title}
+              </h2>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                aria-label="Đóng"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="px-4 py-3 overflow-y-auto flex-1">
+              {loadingNote ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Đang tải nội dung...
+                </p>
+              ) : noteDetail ? (
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <p className="font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Nội dung ghi chú
+                    </p>
+                    <p className="text-slate-900 dark:text-white whitespace-pre-wrap">
+                      {noteDetail.noteContent || "—"}
+                    </p>
+                  </div>
+                  {noteDetail.diagnosis && (
+                    <div>
+                      <p className="font-medium text-slate-700 dark:text-slate-300 mb-1">
+                        Chẩn đoán
+                      </p>
+                      <p className="text-slate-900 dark:text-white whitespace-pre-wrap">
+                        {noteDetail.diagnosis}
+                      </p>
+                    </div>
+                  )}
+                  {noteDetail.treatmentPlan && (
+                    <div>
+                      <p className="font-medium text-slate-700 dark:text-slate-300 mb-1">
+                        Kế hoạch điều trị
+                      </p>
+                      <p className="text-slate-900 dark:text-white whitespace-pre-wrap">
+                        {noteDetail.treatmentPlan}
+                      </p>
+                    </div>
+                  )}
+                  {noteDetail.clinicalObservations && (
+                    <div>
+                      <p className="font-medium text-slate-700 dark:text-slate-300 mb-1">
+                        Quan sát lâm sàng
+                      </p>
+                      <p className="text-slate-900 dark:text-white whitespace-pre-wrap">
+                        {noteDetail.clinicalObservations}
+                      </p>
+                    </div>
+                  )}
+                  {noteDetail.doctorName && (
+                    <p className="text-slate-500 dark:text-slate-400 text-xs">
+                      Bác sĩ: {noteDetail.doctorName}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-slate-700 dark:text-slate-300">
+                  {modalNotification.message}
+                </p>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex gap-2 justify-end shrink-0">
+              {noteDetail && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeModal();
+                    navigate("/notes");
+                  }}
+                  className="px-3 py-1.5 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  Xem trang Ghi chú y tế
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={closeModal}
+                className="px-4 py-2 bg-slate-200 dark:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-500 font-medium"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -386,6 +386,56 @@ public class MedicalNotesController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy chi tiết một ghi chú y tế của bệnh nhân (theo id, dùng cho modal xem nhanh từ thông báo).
+    /// </summary>
+    [HttpGet("my-notes/{id}")]
+    [ProducesResponseType(typeof(MedicalNoteDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetMyMedicalNoteById(string id)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) return Unauthorized(new { message = "Chưa xác thực" });
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var sql = @"
+                SELECT mn.Id, mn.ResultId, mn.PatientUserId, mn.DoctorId, 
+                       COALESCE(d.FirstName || ' ' || d.LastName, d.Email) as DoctorName,
+                       COALESCE(u.FirstName || ' ' || u.LastName, u.Email) as PatientName,
+                       mn.NoteType, mn.NoteContent, mn.Diagnosis, mn.Prescription,
+                       mn.TreatmentPlan, mn.ClinicalObservations, mn.Severity,
+                       mn.FollowUpDate, mn.IsImportant, mn.IsPrivate, mn.CreatedDate, mn.CreatedBy,
+                       mn.UpdatedDate, mn.UpdatedBy, mn.ViewedByPatientAt
+                FROM medical_notes mn
+                INNER JOIN doctors d ON d.Id = mn.DoctorId
+                LEFT JOIN users u ON u.Id = mn.PatientUserId
+                WHERE mn.Id = @Id AND mn.PatientUserId = @UserId
+                    AND COALESCE(mn.IsDeleted, false) = false
+                    AND COALESCE(mn.IsPrivate, false) = false";
+
+            using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("Id", id);
+            command.Parameters.AddWithValue("UserId", userId);
+
+            using var reader = await command.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+                return NotFound(new { message = "Không tìm thấy ghi chú" });
+
+            var note = MapToDto(reader);
+            return Ok(note);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting medical note {NoteId} for patient {UserId}", id, userId);
+            return StatusCode(500, new { message = "Không thể lấy ghi chú" });
+        }
+    }
+
+    /// <summary>
     /// Bệnh nhân đánh dấu ghi chú đã xem (giảm badge đỏ trên menu).
     /// </summary>
     [HttpPost("my-notes/{id}/mark-viewed")]

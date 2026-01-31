@@ -32,6 +32,8 @@ public class NotificationsController : ControllerBase
     public async Task<IActionResult> Get()
     {
         var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(new { message = "Không xác định được người dùng. Vui lòng đăng nhập lại." });
         var arr = await _notifications.GetForUserAsync(userId);
         return Ok(arr);
     }
@@ -52,6 +54,8 @@ public class NotificationsController : ControllerBase
     public async Task<IActionResult> MarkRead(string id)
     {
         var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(new { message = "Không xác định được người dùng. Vui lòng đăng nhập lại." });
         await _notifications.MarkReadAsync(userId, id);
         return NoContent();
     }
@@ -62,6 +66,8 @@ public class NotificationsController : ControllerBase
     public async Task<IActionResult> MarkAllRead()
     {
         var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(new { message = "Không xác định được người dùng. Vui lòng đăng nhập lại." });
         await _notifications.MarkAllReadAsync(userId);
         return NoContent();
     }
@@ -71,10 +77,14 @@ public class NotificationsController : ControllerBase
     [Authorize]
     public async Task Stream(CancellationToken ct)
     {
+        var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId))
+        {
+            Response.StatusCode = 401;
+            return;
+        }
         Response.Headers.Append("Cache-Control", "no-cache");
         Response.Headers.Append("Content-Type", "text/event-stream");
-
-        var userId = GetCurrentUserId();
 
         await foreach (var n in _notifications.StreamForUserAsync(userId, ct))
         {
