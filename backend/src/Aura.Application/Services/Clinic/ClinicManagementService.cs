@@ -107,36 +107,39 @@ public class ClinicManagementService : IClinicManagementService
         return stats;
     }
 
-    public async Task<List<ClinicActivityDto>> GetRecentActivityAsync(string clinicId, int limit = 10)
+    public async Task<List<ClinicActivityDto>> GetRecentActivityAsync(string clinicId, int limit = 10, string? search = null)
     {
         using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
 
         var activities = new List<ClinicActivityDto>();
 
-        // Get recent analyses: include both patient-linked (ar.UserId in users) and clinic-only (ar.UserId = clinicId) analyses
+        // Patient name comes from image owner (ri.UserId). Title uses same for display.
         var sql = @"
             SELECT 
                 ar.Id,
                 'Analysis' as Type,
                 CASE 
-                    WHEN u.Id IS NOT NULL THEN 'Phân tích hoàn thành cho ' || COALESCE(u.FirstName || ' ' || NULLIF(TRIM(u.LastName), ''), u.Email, 'Bệnh nhân')
+                    WHEN up.Id IS NOT NULL THEN 'Phân tích hoàn thành cho ' || COALESCE(TRIM(up.FirstName || ' ' || up.LastName), up.Email, 'Bệnh nhân')
                     ELSE 'Phân tích ảnh võng mạc hoàn thành'
                 END as Title,
+                COALESCE(TRIM(up.FirstName || ' ' || up.LastName), up.Email, NULL) as PatientName,
                 ar.OverallRiskLevel as Description,
                 ar.Id as RelatedEntityId,
                 COALESCE(ar.AnalysisCompletedAt, ar.CreatedDate) as CreatedAt
             FROM analysis_results ar
             INNER JOIN retinal_images ri ON ri.Id = ar.ImageId AND ri.ClinicId = @ClinicId AND ri.IsDeleted = false
-            LEFT JOIN users u ON u.Id = ar.UserId AND u.IsDeleted = false
+            LEFT JOIN users up ON up.Id = ri.UserId AND up.IsDeleted = false
             WHERE ar.IsDeleted = false 
                 AND ar.AnalysisStatus = 'Completed'
+                AND (@Search IS NULL OR @Search = '' OR up.FirstName ILIKE '%' || @Search || '%' OR up.LastName ILIKE '%' || @Search || '%' OR up.Email ILIKE '%' || @Search || '%')
             ORDER BY COALESCE(ar.AnalysisCompletedAt, ar.CreatedDate) DESC NULLS LAST
             LIMIT @Limit";
 
         using var cmd = new NpgsqlCommand(sql, connection);
         cmd.Parameters.AddWithValue("ClinicId", clinicId);
         cmd.Parameters.AddWithValue("Limit", limit);
+        cmd.Parameters.AddWithValue("Search", (object?)search ?? DBNull.Value);
 
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -146,9 +149,10 @@ public class ClinicManagementService : IClinicManagementService
                 Id = reader.GetString(0),
                 Type = reader.GetString(1),
                 Title = reader.GetString(2),
-                Description = reader.IsDBNull(3) ? null : reader.GetString(3),
-                RelatedEntityId = reader.IsDBNull(4) ? null : reader.GetString(4),
-                CreatedAt = reader.IsDBNull(5) ? DateTime.UtcNow : reader.GetDateTime(5)
+                PatientName = reader.IsDBNull(3) ? null : reader.GetString(3),
+                Description = reader.IsDBNull(4) ? null : reader.GetString(4),
+                RelatedEntityId = reader.IsDBNull(5) ? null : reader.GetString(5),
+                CreatedAt = reader.IsDBNull(6) ? DateTime.UtcNow : reader.GetDateTime(6)
             });
         }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import clinicAuthService from "../../services/clinicAuthService";
 import clinicReportService, {
   CreateClinicReportDto,
@@ -7,9 +7,12 @@ import clinicReportService, {
   ReportTemplateDto,
   ClinicInfoDto,
 } from "../../services/clinicReportService";
+import ClinicHeader from "../../components/clinic/ClinicHeader";
 import toast from "react-hot-toast";
 
 const ClinicReportGenerationPage = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [templates, setTemplates] = useState<ReportTemplateDto[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplateDto | null>(null);
   const [clinicId, setClinicId] = useState<string>("");
@@ -23,18 +26,22 @@ const ClinicReportGenerationPage = () => {
   const [generating, setGenerating] = useState(false);
   const [recentReports, setRecentReports] = useState<ClinicReportDto[]>([]);
 
-  const location = useLocation();
-
   useEffect(() => {
-    loadTemplates();
-    loadRecentReports();
-    // Prefill clinicId from current clinic session
-    const clinic = clinicAuthService.getCurrentClinic();
-    if (clinic?.id) {
-      setClinicId(clinic.id);
-      loadClinicInfo(clinic.id);
-    }
-  }, [location.pathname]); // Reload when route changes
+    (async () => {
+      const ok = await clinicAuthService.ensureLoggedIn();
+      if (!ok) {
+        navigate("/login");
+        return;
+      }
+      loadTemplates();
+      loadRecentReports();
+      const clinic = clinicAuthService.getCurrentClinic();
+      if (clinic?.id) {
+        setClinicId(clinic.id);
+        loadClinicInfo(clinic.id);
+      }
+    })();
+  }, [navigate, location.pathname]);
 
   useEffect(() => {
     if (selectedTemplate) {
@@ -162,12 +169,13 @@ const ClinicReportGenerationPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <ClinicHeader />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-            Tạo Báo Cáo Clinic (FR-26)
+            Tạo Báo Cáo
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
             Tạo báo cáo tổng hợp cho chiến dịch sàng lọc và phân tích rủi ro

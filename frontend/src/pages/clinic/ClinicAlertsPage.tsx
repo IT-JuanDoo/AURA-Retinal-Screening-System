@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import alertService, {
-  HighRiskAlert,
-  ClinicAlertSummary,
-  AbnormalTrend,
-} from "../../services/alertService";
+import clinicAlertService, {
+  type HighRiskAlert,
+  type ClinicAlertSummary,
+  type AbnormalTrend,
+} from "../../services/clinicAlertService";
+import clinicAuthService from "../../services/clinicAuthService";
+import ClinicHeader from "../../components/clinic/ClinicHeader";
 import toast from "react-hot-toast";
 
 const ClinicAlertsPage = () => {
@@ -18,19 +20,30 @@ const ClinicAlertsPage = () => {
   const [unacknowledgedOnly, setUnacknowledgedOnly] = useState(false);
 
   useEffect(() => {
+    (async () => {
+      const ok = await clinicAuthService.ensureLoggedIn();
+      if (!ok) {
+        navigate("/login");
+        return;
+      }
+      loadData();
+    })();
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!clinicAuthService.isLoggedIn()) return;
     loadData();
-    // Refresh every 30 seconds
     const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
-  }, [unacknowledgedOnly, location.pathname]); // Reload when route changes or filter changes
+  }, [unacknowledgedOnly, location.pathname]);
 
   const loadData = async () => {
     try {
       setLoading(true);
       const [summaryData, alertsData, trendsData] = await Promise.all([
-        alertService.getClinicAlertSummary(),
-        alertService.getClinicAlerts(unacknowledgedOnly, 50),
-        alertService.detectAbnormalTrends(30),
+        clinicAlertService.getClinicAlertSummary(),
+        clinicAlertService.getClinicAlerts(unacknowledgedOnly, 50),
+        clinicAlertService.detectAbnormalTrends(30),
       ]);
       setSummary(summaryData);
       setAlerts(alertsData);
@@ -45,7 +58,7 @@ const ClinicAlertsPage = () => {
 
   const handleAcknowledge = async (alertId: string) => {
     try {
-      await alertService.acknowledgeAlert(alertId);
+      await clinicAlertService.acknowledgeAlert(alertId);
       toast.success("Đã xác nhận cảnh báo");
       loadData();
     } catch (error: any) {
@@ -90,24 +103,28 @@ const ClinicAlertsPage = () => {
     });
   };
 
-  if (loading && !summary) {
+  if (loading && !summary && alerts.length === 0 && abnormalTrends.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-slate-600 dark:text-slate-400">Đang tải...</p>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+        <ClinicHeader />
+        <div className="flex items-center justify-center py-24">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
+            <p className="mt-4 text-slate-600 dark:text-slate-400">Đang tải...</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <ClinicHeader />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-            Hệ Thống Cảnh Báo Bệnh Nhân Nguy Cơ Cao (FR-29)
+            Hệ Thống Cảnh Báo Bệnh Nhân Nguy Cơ Cao
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
             Theo dõi và phân tích xu hướng rủi ro cho bệnh nhân
@@ -338,7 +355,7 @@ const ClinicAlertsPage = () => {
                         )}
                         <button
                           onClick={() =>
-                            navigate(`/analysis/${alert.analysisResultId}`)
+                            navigate(`/clinic/analysis/result/${alert.analysisResultId}`)
                           }
                           className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-sm font-medium"
                         >
@@ -449,11 +466,11 @@ const ClinicAlertsPage = () => {
 
                         <button
                           onClick={() =>
-                            navigate(`/clinic/patient-trend/${trend.patientUserId}`)
+                            navigate(`/clinic/patients?patient=${trend.patientUserId}`)
                           }
                           className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
                         >
-                          Xem chi tiết xu hướng
+                          Xem bệnh nhân
                         </button>
                       </div>
                     </div>

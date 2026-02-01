@@ -112,8 +112,9 @@ public class ClinicReportService : IClinicReportService
                 FROM clinic_reports cr
                 WHERE cr.Id = @Id
                     AND COALESCE(cr.IsDeleted, false) = false
-                    AND (cr.ClinicId IN (SELECT ClinicId FROM clinic_users WHERE UserId = @UserId)
-                         OR cr.ClinicId IN (SELECT ClinicId FROM clinic_doctors WHERE DoctorId = @UserId))";
+                    AND (cr.ClinicId IN (SELECT ClinicId FROM clinic_users WHERE UserId = @UserId AND IsDeleted = false)
+                         OR cr.ClinicId IN (SELECT ClinicId FROM clinic_doctors WHERE DoctorId = @UserId AND IsDeleted = false)
+                         OR cr.ClinicId IN (SELECT ClinicId FROM clinic_admins WHERE Id = @UserId AND IsDeleted = false))";
 
             using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("Id", reportId);
@@ -145,8 +146,9 @@ public class ClinicReportService : IClinicReportService
                        cr.ReportData, cr.ReportFileUrl, cr.GeneratedAt
                 FROM clinic_reports cr
                 WHERE COALESCE(cr.IsDeleted, false) = false
-                    AND (cr.ClinicId IN (SELECT ClinicId FROM clinic_users WHERE UserId = @UserId)
-                         OR cr.ClinicId IN (SELECT ClinicId FROM clinic_doctors WHERE DoctorId = @UserId))
+                    AND (cr.ClinicId IN (SELECT ClinicId FROM clinic_users WHERE UserId = @UserId AND IsDeleted = false)
+                         OR cr.ClinicId IN (SELECT ClinicId FROM clinic_doctors WHERE DoctorId = @UserId AND IsDeleted = false)
+                         OR cr.ClinicId IN (SELECT ClinicId FROM clinic_admins WHERE Id = @UserId AND IsDeleted = false))
                     AND (@ClinicId IS NULL OR cr.ClinicId = @ClinicId)
                     AND (@ReportType IS NULL OR cr.ReportType = @ReportType)
                 ORDER BY cr.GeneratedAt DESC";
@@ -273,11 +275,13 @@ public class ClinicReportService : IClinicReportService
 
     private async Task VerifyClinicAccessAsync(NpgsqlConnection connection, string clinicId, string userId)
     {
+        // Allow: clinic_users (patient), clinic_doctors (doctor), or clinic_admins (admin of this clinic)
         var verifySql = @"
             SELECT Id FROM clinics 
             WHERE Id = @ClinicId 
-                AND (Id IN (SELECT ClinicId FROM clinic_users WHERE UserId = @UserId) 
-                     OR Id IN (SELECT ClinicId FROM clinic_doctors WHERE DoctorId = @UserId))
+                AND (Id IN (SELECT ClinicId FROM clinic_users WHERE UserId = @UserId AND IsDeleted = false) 
+                     OR Id IN (SELECT ClinicId FROM clinic_doctors WHERE DoctorId = @UserId AND IsDeleted = false)
+                     OR Id IN (SELECT ClinicId FROM clinic_admins WHERE Id = @UserId AND IsDeleted = false))
                 AND COALESCE(IsDeleted, false) = false";
 
         using var verifyCmd = new NpgsqlCommand(verifySql, connection);
@@ -447,7 +451,8 @@ public class ClinicReportService : IClinicReportService
         };
         reportCmd.Parameters.Add(reportDataParam);
 
-        reportCmd.Parameters.AddWithValue("GeneratedBy", userId);
+        // GeneratedBy FK references admins(Id); clinic admins are in clinic_admins, so use NULL to avoid FK violation
+        reportCmd.Parameters.AddWithValue("GeneratedBy", DBNull.Value);
         reportCmd.Parameters.AddWithValue("GeneratedAt", DateTime.UtcNow);
         reportCmd.Parameters.AddWithValue("CreatedDate", DateTime.UtcNow.Date);
         reportCmd.Parameters.AddWithValue("CreatedBy", userId);

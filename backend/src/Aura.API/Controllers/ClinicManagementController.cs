@@ -43,17 +43,17 @@ public class ClinicManagementController : ControllerBase
     }
 
     /// <summary>
-    /// Get recent clinic activity
+    /// Get recent clinic activity. Optional search filters by patient name or email.
     /// </summary>
     [HttpGet("dashboard/activity")]
     [ProducesResponseType(typeof(List<ClinicActivityDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetRecentActivity([FromQuery] int limit = 10)
+    public async Task<IActionResult> GetRecentActivity([FromQuery] int limit = 10, [FromQuery] string? search = null)
     {
         var clinicId = GetCurrentClinicId();
         if (clinicId == null)
             return Forbid();
 
-        var activity = await _clinicManagementService.GetRecentActivityAsync(clinicId, limit);
+        var activity = await _clinicManagementService.GetRecentActivityAsync(clinicId, limit, search);
         return Ok(activity);
     }
 

@@ -288,7 +288,8 @@ public class HighRiskAlertService : IHighRiskAlertService
     }
 
     /// <summary>
-    /// Get all high-risk alerts for a clinic
+    /// Get all high-risk alerts for a clinic. Built from analysis_results (notifications optional for acknowledged state).
+    /// Patient name from image owner (ri.UserId); supports clinic-owned analyses where ar.UserId may be clinicId.
     /// </summary>
     public async Task<List<HighRiskAlertDto>> GetClinicAlertsAsync(string clinicId, bool unacknowledgedOnly = false, int limit = 50)
     {
@@ -299,7 +300,11 @@ public class HighRiskAlertService : IHighRiskAlertService
 
             var sql = @"
                 SELECT DISTINCT
-                    n.Id, ar.UserId, u.FirstName, u.LastName, u.Email,
+                    ar.Id,
+                    COALESCE(up.Id, ar.UserId) as PatientUserId,
+                    TRIM(COALESCE(up.FirstName || ' ' || up.LastName, up.Email, 'Bệnh nhân')) as FirstName,
+                    '' as LastName,
+                    up.Email,
                     ri.ClinicId, c.ClinicName, ri.DoctorId, d.FirstName || ' ' || d.LastName as DoctorName,
                     ar.Id as AnalysisResultId, ar.ImageId,
                     ar.OverallRiskLevel, ar.RiskScore,
@@ -308,25 +313,24 @@ public class HighRiskAlertService : IHighRiskAlertService
                     ar.StrokeRisk, ar.StrokeScore,
                     ar.DiabeticRetinopathyDetected, ar.DiabeticRetinopathySeverity,
                     ar.HealthWarnings, ar.AnalysisCompletedAt as DetectedAt,
-                    n.IsRead as IsAcknowledged, n.ReadAt as AcknowledgedAt, n.UpdatedBy as AcknowledgedBy
-                FROM notifications n
-                INNER JOIN analysis_results ar ON n.RelatedEntityId = ar.Id
-                INNER JOIN retinal_images ri ON ar.ImageId = ri.Id
-                INNER JOIN users u ON ar.UserId = u.Id
+                    COALESCE(n.IsRead, false) as IsAcknowledged,
+                    n.ReadAt as AcknowledgedAt, n.UpdatedBy as AcknowledgedBy
+                FROM analysis_results ar
+                INNER JOIN retinal_images ri ON ar.ImageId = ri.Id AND ri.ClinicId = @ClinicId AND ri.IsDeleted = false
+                LEFT JOIN users up ON up.Id = ri.UserId AND up.IsDeleted = false
                 LEFT JOIN clinics c ON ri.ClinicId = c.Id
                 LEFT JOIN doctors d ON ri.DoctorId = d.Id
-                WHERE n.NotificationType = 'HighRiskAlert'
-                    AND ri.ClinicId = @ClinicId
-                    AND n.IsDeleted = false
-                    AND ar.IsDeleted = false
+                LEFT JOIN notifications n ON n.RelatedEntityId = ar.Id AND n.NotificationType = 'HighRiskAlert' AND COALESCE(n.IsDeleted, false) = false
+                WHERE ar.IsDeleted = false
+                    AND ar.AnalysisStatus = 'Completed'
                     AND (ar.OverallRiskLevel = 'High' OR ar.OverallRiskLevel = 'Critical')";
 
             if (unacknowledgedOnly)
             {
-                sql += " AND n.IsRead = false";
+                sql += " AND (n.Id IS NULL OR n.IsRead = false)";
             }
 
-            sql += " ORDER BY ar.AnalysisCompletedAt DESC LIMIT @Limit";
+            sql += " ORDER BY ar.AnalysisCompletedAt DESC NULLS LAST LIMIT @Limit";
 
             using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("ClinicId", clinicId);
@@ -337,7 +341,7 @@ public class HighRiskAlertService : IHighRiskAlertService
             using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                alerts.Add(MapToAlertDto(reader));
+                alerts.Add(MapToAlertDtoFromAnalysis(reader));
             }
 
             return alerts;
@@ -347,6 +351,44 @@ public class HighRiskAlertService : IHighRiskAlertService
             _logger?.LogError(ex, "Error getting clinic alerts for clinic: {ClinicId}", clinicId);
             return new List<HighRiskAlertDto>();
         }
+    }
+
+    /// <summary>Map reader from analysis-based clinic query (FirstName only for patient name, no LastName column).</summary>
+    private static HighRiskAlertDto MapToAlertDtoFromAnalysis(NpgsqlDataReader reader)
+    {
+        var firstName = reader.IsDBNull(2) ? null : reader.GetString(2);
+        var lastName = reader.IsDBNull(3) ? null : reader.GetString(3);
+        var patientName = $"{firstName} {lastName}".Trim();
+        if (string.IsNullOrWhiteSpace(patientName)) patientName = reader.IsDBNull(4) ? "Bệnh nhân" : reader.GetString(4);
+
+        return new HighRiskAlertDto
+        {
+            Id = reader.GetString(0),
+            PatientUserId = reader.IsDBNull(1) ? "" : reader.GetString(1),
+            PatientName = patientName,
+            PatientEmail = reader.IsDBNull(4) ? null : reader.GetString(4),
+            ClinicId = reader.IsDBNull(5) ? null : reader.GetString(5),
+            ClinicName = reader.IsDBNull(6) ? null : reader.GetString(6),
+            DoctorId = reader.IsDBNull(7) ? null : reader.GetString(7),
+            DoctorName = reader.IsDBNull(8) ? null : reader.GetString(8),
+            AnalysisResultId = reader.GetString(9),
+            ImageId = reader.GetString(10),
+            OverallRiskLevel = reader.GetString(11),
+            RiskScore = reader.IsDBNull(12) ? null : reader.GetDecimal(12),
+            HypertensionRisk = reader.IsDBNull(13) ? null : reader.GetString(13),
+            HypertensionScore = reader.IsDBNull(14) ? null : reader.GetDecimal(14),
+            DiabetesRisk = reader.IsDBNull(15) ? null : reader.GetString(15),
+            DiabetesScore = reader.IsDBNull(16) ? null : reader.GetDecimal(16),
+            StrokeRisk = reader.IsDBNull(17) ? null : reader.GetString(17),
+            StrokeScore = reader.IsDBNull(18) ? null : reader.GetDecimal(18),
+            DiabeticRetinopathyDetected = reader.GetBoolean(19),
+            DiabeticRetinopathySeverity = reader.IsDBNull(20) ? null : reader.GetString(20),
+            HealthWarnings = reader.IsDBNull(21) ? null : reader.GetString(21),
+            DetectedAt = reader.GetDateTime(22),
+            IsAcknowledged = reader.GetBoolean(23),
+            AcknowledgedAt = reader.IsDBNull(24) ? null : reader.GetDateTime(24),
+            AcknowledgedBy = reader.IsDBNull(25) ? null : reader.GetString(25)
+        };
     }
 
     /// <summary>
@@ -459,20 +501,18 @@ public class HighRiskAlertService : IHighRiskAlertService
             clinicCommand.Parameters.AddWithValue("ClinicId", clinicId);
             var clinicName = await clinicCommand.ExecuteScalarAsync() as string ?? "Unknown Clinic";
 
-            // Get summary statistics
+            // Get summary statistics from analysis_results (patient = ri.UserId)
             var summarySql = @"
                 SELECT 
-                    COUNT(DISTINCT ar.UserId) FILTER (WHERE ar.OverallRiskLevel = 'High') as HighRiskCount,
-                    COUNT(DISTINCT ar.UserId) FILTER (WHERE ar.OverallRiskLevel = 'Critical') as CriticalRiskCount,
-                    COUNT(DISTINCT n.Id) FILTER (WHERE n.IsRead = false) as UnacknowledgedCount,
+                    COUNT(DISTINCT ri.UserId) FILTER (WHERE ar.OverallRiskLevel = 'High') as HighRiskCount,
+                    COUNT(DISTINCT ri.UserId) FILTER (WHERE ar.OverallRiskLevel = 'Critical') as CriticalRiskCount,
+                    COUNT(ar.Id) FILTER (WHERE n.Id IS NULL OR n.IsRead = false) as UnacknowledgedCount,
                     MAX(ar.AnalysisCompletedAt) as LastAlertDate
-                FROM notifications n
-                INNER JOIN analysis_results ar ON n.RelatedEntityId = ar.Id
-                INNER JOIN retinal_images ri ON ar.ImageId = ri.Id
-                WHERE n.NotificationType = 'HighRiskAlert'
-                    AND ri.ClinicId = @ClinicId
-                    AND n.IsDeleted = false
-                    AND ar.IsDeleted = false
+                FROM analysis_results ar
+                INNER JOIN retinal_images ri ON ar.ImageId = ri.Id AND ri.ClinicId = @ClinicId AND ri.IsDeleted = false
+                LEFT JOIN notifications n ON n.RelatedEntityId = ar.Id AND n.NotificationType = 'HighRiskAlert' AND COALESCE(n.IsDeleted, false) = false
+                WHERE ar.IsDeleted = false
+                    AND ar.AnalysisStatus = 'Completed'
                     AND (ar.OverallRiskLevel = 'High' OR ar.OverallRiskLevel = 'Critical')";
 
             using var summaryCommand = new NpgsqlCommand(summarySql, connection);
@@ -542,12 +582,13 @@ public class HighRiskAlertService : IHighRiskAlertService
                 }
             }
 
-            // Get analysis history
+            // Get analysis history (patient's analyses: ar.UserId or image owner ri.UserId)
             var trendSql = $@" 
                 SELECT 
                     ar.Id, ar.OverallRiskLevel, ar.RiskScore, ar.AnalysisCompletedAt
                 FROM analysis_results ar
-                WHERE ar.UserId = @UserId
+                LEFT JOIN retinal_images ri ON ar.ImageId = ri.Id AND ri.IsDeleted = false
+                WHERE (ar.UserId = @UserId OR ri.UserId = @UserId)
                     AND ar.IsDeleted = false
                     AND ar.AnalysisStatus = 'Completed'
                     AND ar.AnalysisCompletedAt >= CURRENT_DATE - INTERVAL '{days} days'
@@ -649,16 +690,15 @@ public class HighRiskAlertService : IHighRiskAlertService
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            // Get all patients in clinic with multiple analyses
+            // Get all patients in clinic (from image owner ri.UserId) with multiple analyses
             var sql = $@"
-                SELECT DISTINCT ar.UserId
+                SELECT ri.UserId
                 FROM analysis_results ar
-                INNER JOIN retinal_images ri ON ar.ImageId = ri.Id
-                WHERE ri.ClinicId = @ClinicId
-                    AND ar.IsDeleted = false
+                INNER JOIN retinal_images ri ON ar.ImageId = ri.Id AND ri.ClinicId = @ClinicId AND ri.IsDeleted = false
+                WHERE ar.IsDeleted = false
                     AND ar.AnalysisStatus = 'Completed'
                     AND ar.AnalysisCompletedAt >= CURRENT_DATE - INTERVAL '{days} days'
-                GROUP BY ar.UserId
+                GROUP BY ri.UserId
                 HAVING COUNT(*) >= 2";
 
             using var command = new NpgsqlCommand(sql, connection);
@@ -788,15 +828,16 @@ public class HighRiskAlertService : IHighRiskAlertService
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
+            // alertId may be notification Id or analysis result Id (when built from analysis_results)
             var sql = @"
                 UPDATE notifications 
                 SET IsRead = true, 
                     ReadAt = CURRENT_TIMESTAMP,
                     UpdatedBy = @AcknowledgedBy,
                     UpdatedDate = CURRENT_DATE
-                WHERE Id = @AlertId 
+                WHERE (Id = @AlertId OR RelatedEntityId = @AlertId)
                     AND NotificationType = 'HighRiskAlert'
-                    AND IsDeleted = false";
+                    AND COALESCE(IsDeleted, false) = false";
 
             using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("AlertId", alertId);

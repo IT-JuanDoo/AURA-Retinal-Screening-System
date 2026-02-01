@@ -5,7 +5,6 @@ import { useState } from 'react';
 const ClinicHeader = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
   
   const clinicInfo = clinicAuthService.getCurrentClinic();
@@ -16,13 +15,6 @@ const ClinicHeader = () => {
       return location.pathname === '/clinic/dashboard';
     }
     return location.pathname.startsWith(path);
-  };
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/clinic/patients?search=${encodeURIComponent(searchQuery.trim())}`);
-    }
   };
 
   const handleLogout = async () => {
@@ -62,26 +54,6 @@ const ClinicHeader = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <span className="text-xs font-medium text-yellow-700 dark:text-yellow-400">Đang chờ xét duyệt</span>
-            </div>
-          )}
-
-          {/* Search Bar - Only show if approved */}
-          {isApproved && (
-            <div className="hidden md:flex flex-1 max-w-md mx-8">
-              <form onSubmit={handleSearch} className="w-full">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Tìm kiếm bệnh nhân, bác sĩ..."
-                    className="w-full px-4 py-2 pl-10 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-                  />
-                  <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-              </form>
             </div>
           )}
 

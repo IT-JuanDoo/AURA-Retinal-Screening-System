@@ -567,6 +567,11 @@ const ClinicDashboardPage = () => {
                           <p className="text-sm text-slate-900 dark:text-white truncate">
                             {item.title}
                           </p>
+                          {item.patientName && (
+                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                              Bệnh nhân: {item.patientName}
+                            </p>
+                          )}
                           {item.description && (
                             <p
                               className={`text-xs mt-0.5 ${

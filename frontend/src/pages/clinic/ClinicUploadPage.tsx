@@ -5,6 +5,7 @@ import ClinicHeader from "../../components/clinic/ClinicHeader";
 import clinicAuthService from "../../services/clinicAuthService";
 import clinicImageService, { ClinicBulkUploadResponse } from "../../services/clinicImageService";
 import clinicPackageService, { CurrentPackage } from "../../services/clinicPackageService";
+import clinicManagementService, { ClinicPatient } from "../../services/clinicManagementService";
 import { getApiErrorMessage } from "../../utils/getApiErrorMessage";
 
 interface SelectedImage {
@@ -29,6 +30,9 @@ const ClinicUploadPage = () => {
   const [activePackage, setActivePackage] = useState<CurrentPackage | null>(null);
   const [loadingPackage, setLoadingPackage] = useState(true);
   const [canUpload, setCanUpload] = useState(false);
+  const [patients, setPatients] = useState<ClinicPatient[]>([]);
+  const [loadingPatients, setLoadingPatients] = useState(true);
+  const [selectedPatientId, setSelectedPatientId] = useState<string>("");
 
   useEffect(() => {
     (async () => {
@@ -39,6 +43,21 @@ const ClinicUploadPage = () => {
 
   useEffect(() => {
     loadPackage();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      if (!clinicAuthService.isLoggedIn()) return;
+      setLoadingPatients(true);
+      try {
+        const list = await clinicManagementService.getPatients();
+        setPatients(list ?? []);
+      } catch {
+        setPatients([]);
+      } finally {
+        setLoadingPatients(false);
+      }
+    })();
   }, []);
 
   const loadPackage = async () => {
@@ -166,7 +185,10 @@ const ClinicUploadPage = () => {
       const files = selected.map((s) => s.file);
       const uploadResult: ClinicBulkUploadResponse = await clinicImageService.bulkUploadImages(
         files,
-        { autoStartAnalysis: false }
+        {
+          autoStartAnalysis: false,
+          patientUserId: selectedPatientId || undefined,
+        }
       );
       toast.dismiss(loadingToast);
 
@@ -292,6 +314,50 @@ const ClinicUploadPage = () => {
               </div>
             </div>
           )}
+
+          {/* Gán ảnh cho bệnh nhân - để quản lý và xem lại theo từng bệnh nhân */}
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+              <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400">person</span>
+              Gán ảnh cho bệnh nhân
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+              Chọn bệnh nhân trước khi tải ảnh để lưu kết quả phân tích đúng hồ sơ, dễ quản lý và xem lại theo từng bệnh nhân.
+            </p>
+            {loadingPatients ? (
+              <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-indigo-500 border-t-transparent" />
+                Đang tải danh sách bệnh nhân...
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label htmlFor="patient-select" className="text-sm font-medium text-slate-700 dark:text-slate-300 shrink-0">
+                  Bệnh nhân:
+                </label>
+                <select
+                  id="patient-select"
+                  value={selectedPatientId}
+                  onChange={(e) => setSelectedPatientId(e.target.value)}
+                  className="flex-1 max-w-md px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="">— Không gán (upload chung) —</option>
+                  {patients.map((p) => (
+                    <option key={p.id} value={p.userId}>
+                      {p.fullName} {p.email ? `(${p.email})` : ""}
+                    </option>
+                  ))}
+                </select>
+                {patients.length === 0 && (
+                  <Link
+                    to="/clinic/patients"
+                    className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline shrink-0"
+                  >
+                    Thêm bệnh nhân →
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
 
           <div
             className={`w-full rounded-2xl border-2 border-dashed transition-all duration-300 group relative overflow-hidden bg-white dark:bg-slate-900 ${

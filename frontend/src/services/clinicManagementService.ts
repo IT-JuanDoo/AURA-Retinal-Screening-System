@@ -41,6 +41,7 @@ export interface ClinicActivity {
   id: string;
   type: string;
   title: string;
+  patientName?: string | null;
   description?: string;
   relatedEntityId?: string;
   createdAt: string;
@@ -107,10 +108,10 @@ const clinicManagementService = {
     return response.data;
   },
 
-  async getRecentActivity(limit: number = 10): Promise<ClinicActivity[]> {
-    const response = await clinicApi.get<ClinicActivity[]>('/dashboard/activity', {
-      params: { limit },
-    });
+  async getRecentActivity(limit: number = 10, search?: string): Promise<ClinicActivity[]> {
+    const params: Record<string, number | string> = { limit };
+    if (search != null && search.trim() !== '') params.search = search.trim();
+    const response = await clinicApi.get<ClinicActivity[]>('/dashboard/activity', { params });
     return response.data;
   },
 

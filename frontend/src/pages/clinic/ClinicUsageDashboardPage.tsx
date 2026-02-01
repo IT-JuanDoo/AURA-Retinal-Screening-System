@@ -15,6 +15,7 @@ const ClinicUsageDashboardPage = () => {
   const [statistics, setStatistics] = useState<ClinicUsageStatistics | null>(null);
   const [packageUsage, setPackageUsage] = useState<PackageUsage[]>([]);
   const [recentActivity, setRecentActivity] = useState<ClinicActivity[]>([]);
+  const [activitySearch, setActivitySearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState<string>(
     new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
@@ -37,7 +38,7 @@ const ClinicUsageDashboardPage = () => {
   useEffect(() => {
     if (!clinicAuthService.isLoggedIn()) return;
     loadData();
-  }, [startDate, endDate, location.pathname]);
+  }, [startDate, endDate, location.pathname, activitySearch]);
 
   const loadData = async () => {
     try {
@@ -45,7 +46,7 @@ const ClinicUsageDashboardPage = () => {
       const [statsData, packagesData, activityData] = await Promise.all([
         clinicUsageTrackingService.getClinicUsageStatistics(startDate, endDate),
         clinicUsageTrackingService.getClinicPackageUsage(),
-        clinicManagementService.getRecentActivity(20).catch(() => []),
+        clinicManagementService.getRecentActivity(20, activitySearch || undefined).catch(() => []),
       ]);
       setStatistics(statsData);
       setPackageUsage(packagesData);
@@ -113,6 +114,13 @@ const ClinicUsageDashboardPage = () => {
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
                   Kết quả phân tích AI gần đây
                 </h2>
+                <input
+                  type="search"
+                  placeholder="Tìm theo tên hoặc email bệnh nhân..."
+                  value={activitySearch}
+                  onChange={(e) => setActivitySearch(e.target.value)}
+                  className="mb-4 w-full max-w-md px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-500"
+                />
                 <ul className="space-y-3">
                   {recentActivity.map((item) => (
                     <li
@@ -123,6 +131,11 @@ const ClinicUsageDashboardPage = () => {
                         <p className="text-sm font-medium text-slate-900 dark:text-white">
                           {item.title}
                         </p>
+                        {item.patientName && (
+                          <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                            Bệnh nhân: {item.patientName}
+                          </p>
+                        )}
                         {item.description && (
                           <p className="text-xs text-slate-500 dark:text-slate-400">
                             Mức độ: {item.description}
@@ -462,12 +475,19 @@ const ClinicUsageDashboardPage = () => {
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
             Kết quả phân tích AI gần đây
           </h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
             Bấm &quot;Xem kết quả&quot; để xem lại chi tiết đánh giá AI (điểm rủi ro, tim mạch, đái tháo đường, đột quỵ, mạch máu).
           </p>
+          <input
+            type="search"
+            placeholder="Tìm theo tên hoặc email bệnh nhân..."
+            value={activitySearch}
+            onChange={(e) => setActivitySearch(e.target.value)}
+            className="mb-4 w-full max-w-md px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-500"
+          />
           {recentActivity.length === 0 ? (
             <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-              <p>Chưa có kết quả phân tích nào.</p>
+              <p>{activitySearch ? "Không tìm thấy kết quả nào theo từ khóa." : "Chưa có kết quả phân tích nào."}</p>
               <Link
                 to="/clinic/upload"
                 className="mt-3 inline-block text-indigo-600 dark:text-indigo-400 font-medium hover:underline"
@@ -486,6 +506,11 @@ const ClinicUsageDashboardPage = () => {
                     <p className="text-sm font-medium text-slate-900 dark:text-white">
                       {item.title}
                     </p>
+                    {item.patientName && (
+                      <p className="text-xs mt-0.5 text-slate-600 dark:text-slate-300">
+                        Bệnh nhân: {item.patientName}
+                      </p>
+                    )}
                     {item.description && (
                       <p className="text-xs mt-0.5 text-slate-500 dark:text-slate-400">
                         Mức độ rủi ro: {item.description}

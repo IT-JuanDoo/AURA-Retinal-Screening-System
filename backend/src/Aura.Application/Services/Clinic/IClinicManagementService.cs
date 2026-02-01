@@ -12,9 +12,9 @@ public interface IClinicManagementService
     Task<ClinicDashboardStatsDto> GetDashboardStatsAsync(string clinicId);
 
     /// <summary>
-    /// Get recent clinic activity
+    /// Get recent clinic activity. Optional search filters by patient name or email.
     /// </summary>
-    Task<List<ClinicActivityDto>> GetRecentActivityAsync(string clinicId, int limit = 10);
+    Task<List<ClinicActivityDto>> GetRecentActivityAsync(string clinicId, int limit = 10, string? search = null);
 
     #endregion
 

@@ -166,6 +166,8 @@ public class ClinicActivityDto
     public string Id { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty; // Analysis, PatientRegistered, DoctorAdded, Alert
     public string Title { get; set; } = string.Empty;
+    /// <summary>Tên bệnh nhân (nếu ảnh/ phân tích gán cho bệnh nhân).</summary>
+    public string? PatientName { get; set; }
     public string? Description { get; set; }
     public string? RelatedEntityId { get; set; }
     public DateTime CreatedAt { get; set; }
