@@ -114,21 +114,24 @@ public class ClinicManagementService : IClinicManagementService
 
         var activities = new List<ClinicActivityDto>();
 
-        // Get recent analyses
+        // Get recent analyses: include both patient-linked (ar.UserId in users) and clinic-only (ar.UserId = clinicId) analyses
         var sql = @"
             SELECT 
-                ar.Id, 'Analysis' as Type, 
-                CONCAT('Phân tích hoàn thành cho ', u.FirstName, ' ', u.LastName) as Title,
+                ar.Id,
+                'Analysis' as Type,
+                CASE 
+                    WHEN u.Id IS NOT NULL THEN 'Phân tích hoàn thành cho ' || COALESCE(u.FirstName || ' ' || NULLIF(TRIM(u.LastName), ''), u.Email, 'Bệnh nhân')
+                    ELSE 'Phân tích ảnh võng mạc hoàn thành'
+                END as Title,
                 ar.OverallRiskLevel as Description,
                 ar.Id as RelatedEntityId,
-                ar.AnalysisCompletedAt as CreatedAt
+                COALESCE(ar.AnalysisCompletedAt, ar.CreatedDate) as CreatedAt
             FROM analysis_results ar
-            INNER JOIN retinal_images ri ON ri.Id = ar.ImageId
-            INNER JOIN users u ON u.Id = ar.UserId
-            WHERE ri.ClinicId = @ClinicId 
-                AND ar.IsDeleted = false 
+            INNER JOIN retinal_images ri ON ri.Id = ar.ImageId AND ri.ClinicId = @ClinicId AND ri.IsDeleted = false
+            LEFT JOIN users u ON u.Id = ar.UserId AND u.IsDeleted = false
+            WHERE ar.IsDeleted = false 
                 AND ar.AnalysisStatus = 'Completed'
-            ORDER BY ar.AnalysisCompletedAt DESC
+            ORDER BY COALESCE(ar.AnalysisCompletedAt, ar.CreatedDate) DESC NULLS LAST
             LIMIT @Limit";
 
         using var cmd = new NpgsqlCommand(sql, connection);
@@ -149,7 +152,7 @@ public class ClinicManagementService : IClinicManagementService
             });
         }
 
-        return activities.OrderByDescending(a => a.CreatedAt).Take(limit).ToList();
+        return activities;
     }
 
     #endregion

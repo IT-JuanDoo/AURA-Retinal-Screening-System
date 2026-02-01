@@ -581,17 +581,27 @@ const ClinicDashboardPage = () => {
                               Mức độ: {item.description}
                             </p>
                           )}
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                            {new Date(item.createdAt).toLocaleDateString(
-                              "vi-VN",
-                              {
-                                day: "2-digit",
-                                month: "2-digit",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              },
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              {new Date(item.createdAt).toLocaleDateString(
+                                "vi-VN",
+                                {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                },
+                              )}
+                            </p>
+                            {item.type === "Analysis" && item.relatedEntityId && (
+                              <Link
+                                to={`/clinic/analysis/result/${item.relatedEntityId}`}
+                                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                              >
+                                Xem kết quả
+                              </Link>
                             )}
-                          </p>
+                          </div>
                         </div>
                       </div>
                     ))}

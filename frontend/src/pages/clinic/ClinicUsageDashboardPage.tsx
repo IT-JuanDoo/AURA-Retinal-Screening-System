@@ -1,14 +1,20 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
-import usageTrackingService, {
+import { useLocation, useNavigate, Link } from "react-router-dom";
+import clinicUsageTrackingService, {
   ClinicUsageStatistics,
   PackageUsage,
-} from "../../services/usageTrackingService";
+} from "../../services/clinicUsageTrackingService";
+import clinicManagementService, { ClinicActivity } from "../../services/clinicManagementService";
+import clinicAuthService from "../../services/clinicAuthService";
+import ClinicHeader from "../../components/clinic/ClinicHeader";
 import toast from "react-hot-toast";
 
 const ClinicUsageDashboardPage = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [statistics, setStatistics] = useState<ClinicUsageStatistics | null>(null);
   const [packageUsage, setPackageUsage] = useState<PackageUsage[]>([]);
+  const [recentActivity, setRecentActivity] = useState<ClinicActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState<string>(
     new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
@@ -17,24 +23,38 @@ const ClinicUsageDashboardPage = () => {
     new Date().toISOString().split("T")[0]
   );
 
-  const location = useLocation();
+  useEffect(() => {
+    (async () => {
+      const ok = await clinicAuthService.ensureLoggedIn();
+      if (!ok) {
+        navigate("/login");
+        return;
+      }
+      loadData();
+    })();
+  }, [navigate]);
 
   useEffect(() => {
+    if (!clinicAuthService.isLoggedIn()) return;
     loadData();
-  }, [startDate, endDate, location.pathname]); // Reload when route changes or date filters change
+  }, [startDate, endDate, location.pathname]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [statsData, packagesData] = await Promise.all([
-        usageTrackingService.getClinicUsageStatistics(startDate, endDate),
-        usageTrackingService.getClinicPackageUsage(),
+      const [statsData, packagesData, activityData] = await Promise.all([
+        clinicUsageTrackingService.getClinicUsageStatistics(startDate, endDate),
+        clinicUsageTrackingService.getClinicPackageUsage(),
+        clinicManagementService.getRecentActivity(20).catch(() => []),
       ]);
       setStatistics(statsData);
       setPackageUsage(packagesData);
+      setRecentActivity(activityData);
     } catch (error: any) {
       console.error("Error loading usage data:", error);
       toast.error(error?.response?.data?.message || "Lỗi khi tải dữ liệu sử dụng");
+      setStatistics(null);
+      setRecentActivity([]);
     } finally {
       setLoading(false);
     }
@@ -42,7 +62,7 @@ const ClinicUsageDashboardPage = () => {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("vi-VN", {
-      timeZone: 'Asia/Ho_Chi_Minh',
+      timeZone: "Asia/Ho_Chi_Minh",
     });
   };
 
@@ -50,12 +70,15 @@ const ClinicUsageDashboardPage = () => {
     return new Intl.NumberFormat("vi-VN").format(num);
   };
 
-  if (loading && !statistics) {
+  if (loading && !statistics && recentActivity.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-slate-600 dark:text-slate-400">Đang tải...</p>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+        <ClinicHeader />
+        <div className="flex items-center justify-center py-24">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
+            <p className="mt-4 text-slate-600 dark:text-slate-400">Đang tải...</p>
+          </div>
         </div>
       </div>
     );
@@ -63,11 +86,72 @@ const ClinicUsageDashboardPage = () => {
 
   if (!statistics) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-slate-600 dark:text-slate-400">
-            Không tìm thấy dữ liệu sử dụng
-          </p>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+        <ClinicHeader />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 text-center">
+            <p className="text-slate-600 dark:text-slate-400 mb-6">
+              Không tải được dữ liệu thống kê. Bạn có thể xem lại các kết quả phân tích AI bên dưới.
+            </p>
+            <div className="flex flex-wrap gap-3 justify-center mb-8">
+              <button
+                type="button"
+                onClick={() => loadData()}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
+              >
+                Thử lại
+              </button>
+              <Link
+                to="/clinic/dashboard"
+                className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-medium hover:bg-slate-300 dark:hover:bg-slate-600"
+              >
+                Về Tổng quan
+              </Link>
+            </div>
+            {recentActivity.length > 0 && (
+              <div className="text-left border-t border-slate-200 dark:border-slate-700 pt-8 mt-8">
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
+                  Kết quả phân tích AI gần đây
+                </h2>
+                <ul className="space-y-3">
+                  {recentActivity.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex items-center justify-between gap-4 py-2 border-b border-slate-100 dark:border-slate-800 last:border-0"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-slate-900 dark:text-white">
+                          {item.title}
+                        </p>
+                        {item.description && (
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Mức độ: {item.description}
+                          </p>
+                        )}
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                          {new Date(item.createdAt).toLocaleDateString("vi-VN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                      {item.relatedEntityId && (
+                        <Link
+                          to={`/clinic/analysis/result/${item.relatedEntityId}`}
+                          className="shrink-0 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+                        >
+                          Xem kết quả
+                        </Link>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -76,16 +160,33 @@ const ClinicUsageDashboardPage = () => {
   const { usageStatistics } = statistics;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <ClinicHeader />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-            Bảng Điều Khiển Sử Dụng (FR-27)
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400">
-            {statistics.clinicName} - Theo dõi hình ảnh và sử dụng gói dịch vụ
-          </p>
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
+              Thống kê chi tiết
+            </h1>
+            <p className="text-slate-600 dark:text-slate-400">
+              {statistics.clinicName} - Theo dõi hình ảnh và kết quả phân tích AI
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <Link
+              to="/clinic/dashboard"
+              className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700"
+            >
+              Tổng quan
+            </Link>
+            <Link
+              to="/clinic/upload"
+              className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700"
+            >
+              Upload &amp; phân tích mới
+            </Link>
+          </div>
         </div>
 
         {/* Date Range Selector */}
@@ -310,8 +411,8 @@ const ClinicUsageDashboardPage = () => {
         </div>
 
         {/* Daily Usage Chart */}
-        {usageStatistics.dailyUsage.length > 0 && (
-          <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+        {usageStatistics.dailyUsage && usageStatistics.dailyUsage.length > 0 && (
+          <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-6">
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
               Sử Dụng Theo Ngày
             </h2>
@@ -337,7 +438,7 @@ const ClinicUsageDashboardPage = () => {
                   {usageStatistics.dailyUsage.map((daily, index) => (
                     <tr key={index} className="hover:bg-slate-50 dark:hover:bg-slate-800">
                       <td className="px-4 py-2 text-sm text-slate-900 dark:text-white">
-                        {formatDate(daily.date)}
+                        {formatDate(typeof daily.date === "string" ? daily.date : String(daily.date))}
                       </td>
                       <td className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400">
                         {formatNumber(daily.imageCount)}
@@ -355,6 +456,64 @@ const ClinicUsageDashboardPage = () => {
             </div>
           </div>
         )}
+
+        {/* Kết quả phân tích AI gần đây - xem lại từng kết quả */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
+            Kết quả phân tích AI gần đây
+          </h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+            Bấm &quot;Xem kết quả&quot; để xem lại chi tiết đánh giá AI (điểm rủi ro, tim mạch, đái tháo đường, đột quỵ, mạch máu).
+          </p>
+          {recentActivity.length === 0 ? (
+            <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+              <p>Chưa có kết quả phân tích nào.</p>
+              <Link
+                to="/clinic/upload"
+                className="mt-3 inline-block text-indigo-600 dark:text-indigo-400 font-medium hover:underline"
+              >
+                Tải ảnh &amp; bắt đầu phân tích →
+              </Link>
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {recentActivity.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4 px-4 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-900 dark:text-white">
+                      {item.title}
+                    </p>
+                    {item.description && (
+                      <p className="text-xs mt-0.5 text-slate-500 dark:text-slate-400">
+                        Mức độ rủi ro: {item.description}
+                      </p>
+                    )}
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                      {new Date(item.createdAt).toLocaleDateString("vi-VN", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                  {item.relatedEntityId && (
+                    <Link
+                      to={`/clinic/analysis/result/${item.relatedEntityId}`}
+                      className="shrink-0 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 text-center"
+                    >
+                      Xem kết quả
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );
