@@ -200,7 +200,6 @@ public class AnalysisQueueService : IAnalysisQueueService
         }
         catch (PostgresException ex) when (ex.SqlState == "42P01") // Table doesn't exist
         {
-            // Table doesn't exist, create it
             await CreateAnalysisJobsTableAsync(connection);
             await command.ExecuteNonQueryAsync();
         }
@@ -208,11 +207,12 @@ public class AnalysisQueueService : IAnalysisQueueService
 
     private async Task CreateAnalysisJobsTableAsync(NpgsqlConnection connection)
     {
+        // Create table without FK on ClinicId so INSERT always succeeds (clinics table may not exist or Id format may differ)
         var createTableSql = @"
             CREATE TABLE IF NOT EXISTS analysis_jobs (
                 Id VARCHAR(255) PRIMARY KEY,
                 BatchId VARCHAR(255) NOT NULL,
-                ClinicId VARCHAR(255) REFERENCES clinics(Id) ON DELETE CASCADE,
+                ClinicId VARCHAR(255) NOT NULL,
                 Status VARCHAR(50) DEFAULT 'Queued' CHECK (Status IN ('Queued', 'Processing', 'Completed', 'Failed')),
                 TotalImages INTEGER NOT NULL,
                 ProcessedCount INTEGER DEFAULT 0,
@@ -296,6 +296,56 @@ public class AnalysisQueueService : IAnalysisQueueService
             CompletedAt = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
             ImageIds = imageIds
         };
+    }
+
+    public async Task<List<BatchAnalysisStatusDto>> ListJobsForClinicAsync(string clinicId, int limit = 10)
+    {
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var sql = @"
+                SELECT Id, BatchId, Status, TotalImages, ProcessedCount, SuccessCount, FailedCount,
+                       CreatedAt, StartedAt, CompletedAt, ImageIds
+                FROM analysis_jobs
+                WHERE ClinicId = @ClinicId AND IsDeleted = false
+                ORDER BY CreatedAt DESC
+                LIMIT @Limit";
+
+            using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.AddWithValue("ClinicId", clinicId);
+            command.Parameters.AddWithValue("Limit", limit);
+
+            var list = new List<BatchAnalysisStatusDto>();
+            using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var imageIdsJson = reader.IsDBNull(10) ? "[]" : reader.GetString(10);
+                var imageIds = System.Text.Json.JsonSerializer.Deserialize<List<string>>(imageIdsJson) ?? new List<string>();
+                list.Add(new BatchAnalysisStatusDto
+                {
+                    JobId = reader.GetString(0),
+                    BatchId = reader.GetString(1),
+                    Status = reader.GetString(2),
+                    TotalImages = reader.GetInt32(3),
+                    ProcessedCount = reader.GetInt32(4),
+                    SuccessCount = reader.GetInt32(5),
+                    FailedCount = reader.GetInt32(6),
+                    CreatedAt = reader.GetDateTime(7),
+                    StartedAt = reader.IsDBNull(8) ? null : reader.GetDateTime(8),
+                    CompletedAt = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
+                    ImageIds = imageIds
+                });
+            }
+            return list;
+        }
+        catch (PostgresException ex) when (ex.SqlState == "42P01")
+        {
+            // Table analysis_jobs does not exist yet (e.g. schema not applied or no job ever created)
+            _logger?.LogWarning("Table analysis_jobs does not exist, returning empty list. Run schema or create a job first.");
+            return new List<BatchAnalysisStatusDto>();
+        }
     }
 }
 

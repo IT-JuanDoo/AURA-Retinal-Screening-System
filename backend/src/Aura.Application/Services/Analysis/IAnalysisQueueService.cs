@@ -21,5 +21,10 @@ public interface IAnalysisQueueService
     /// Process queued analysis jobs (should be called by background worker)
     /// </summary>
     Task ProcessQueuedJobsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// List recent analysis jobs for a clinic (for dashboard)
+    /// </summary>
+    Task<List<BatchAnalysisStatusDto>> ListJobsForClinicAsync(string clinicId, int limit = 10);
 }
 

@@ -9,6 +9,8 @@ import toast from 'react-hot-toast';
 interface AnalysisResultDisplayProps {
   result: AnalysisResult;
   onValidated?: () => void;
+  /** Ẩn phần xuất báo cáo (dùng khi hiển thị từ trang clinic) */
+  showExport?: boolean;
 }
 
 const AI_CORE_BASE_URL =
@@ -20,7 +22,7 @@ const resolveImageUrl = (path?: string | null) => {
   return `${AI_CORE_BASE_URL}${path}`;
 };
 
-const AnalysisResultDisplay = ({ result, onValidated }: AnalysisResultDisplayProps) => {
+const AnalysisResultDisplay = ({ result, onValidated, showExport = true }: AnalysisResultDisplayProps) => {
   const { user } = useAuthStore();
   const isDoctor = user?.userType === 'Doctor';
   const [exporting, setExporting] = useState<string | null>(null);
@@ -462,7 +464,8 @@ const AnalysisResultDisplay = ({ result, onValidated }: AnalysisResultDisplayPro
         </div>
       )}
 
-      {/* Export Actions */}
+      {/* Export Actions - ẩn khi dùng từ clinic (showExport=false) */}
+      {showExport && (
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 md:p-8 mb-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
           Xuất Báo cáo
@@ -526,6 +529,7 @@ const AnalysisResultDisplay = ({ result, onValidated }: AnalysisResultDisplayPro
           </Link>
         </div>
       </div>
+      )}
 
       {/* FR-15: Validate/Correct Modal */}
       {showValidateModal && (

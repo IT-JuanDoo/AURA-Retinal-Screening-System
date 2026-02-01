@@ -18,6 +18,7 @@ import AnalysisResultPage from "../pages/patient/AnalysisResultPage";
 import ChatPage from "../pages/patient/ChatPage";
 import ClinicBulkUploadPage from "../pages/clinic/ClinicBulkUploadPage";
 import ClinicUploadPage from "../pages/clinic/ClinicUploadPage";
+import ClinicAnalysisResultPage from "../pages/clinic/ClinicAnalysisResultPage";
 import ClinicAlertsPage from "../pages/clinic/ClinicAlertsPage";
 import PatientTrendPage from "../pages/clinic/PatientTrendPage";
 import ClinicUsageDashboardPage from "../pages/clinic/ClinicUsageDashboardPage";
@@ -334,6 +335,7 @@ const AppRoutes = () => {
         <Route path="/clinic/patients" element={<ClinicPatientsPage />} />
         <Route path="/clinic/packages" element={<ClinicPackagesPage />} />
         <Route path="/clinic/upload" element={<ClinicUploadPage />} />
+        <Route path="/clinic/analysis/result/:analysisId" element={<ClinicAnalysisResultPage />} />
         <Route path="/clinic/bulk-upload" element={<ClinicBulkUploadPage />} />
         <Route path="/clinic/alerts" element={<ClinicAlertsPage />} />
         <Route path="/clinic/patient-trend/:patientUserId" element={<PatientTrendPage />} />

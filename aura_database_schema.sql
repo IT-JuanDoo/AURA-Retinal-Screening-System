@@ -756,7 +756,37 @@ CREATE TABLE bulk_upload_batches (
 );
 
 -- Add BatchId to retinal_images for bulk upload tracking
-ALTER TABLE retinal_images ADD COLUMN BatchId VARCHAR(255) REFERENCES bulk_upload_batches(Id) ON DELETE SET NULL;
+ALTER TABLE retinal_images ADD COLUMN IF NOT EXISTS BatchId VARCHAR(255) REFERENCES bulk_upload_batches(Id) ON DELETE SET NULL;
+
+-- =====================================================
+-- 25. ANALYSIS JOBS (clinic batch AI analysis tracking)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS analysis_jobs (
+    Id VARCHAR(255) PRIMARY KEY,
+    BatchId VARCHAR(255) NOT NULL,
+    ClinicId VARCHAR(255) REFERENCES clinics(Id) ON DELETE CASCADE,
+    Status VARCHAR(50) DEFAULT 'Queued' CHECK (Status IN ('Queued', 'Processing', 'Completed', 'Failed')),
+    TotalImages INTEGER NOT NULL,
+    ProcessedCount INTEGER DEFAULT 0,
+    SuccessCount INTEGER DEFAULT 0,
+    FailedCount INTEGER DEFAULT 0,
+    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    StartedAt TIMESTAMP,
+    CompletedAt TIMESTAMP,
+    ImageIds JSONB,
+    ErrorMessage TEXT,
+    CreatedDate DATE DEFAULT CURRENT_DATE,
+    IsDeleted BOOLEAN DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS idx_analysis_jobs_clinic_id ON analysis_jobs(ClinicId);
+CREATE INDEX IF NOT EXISTS idx_analysis_jobs_created_at ON analysis_jobs(CreatedAt DESC);
+
+-- Clinic support: allow analysis_results.UserId to store clinic Id (phòng khám dùng UserId = ClinicId khi tạo phân tích)
+-- Nếu không drop FK này, INSERT analysis_results với UserId = clinicId sẽ lỗi vì clinicId không có trong users(Id)
+ALTER TABLE analysis_results DROP CONSTRAINT IF EXISTS analysis_results_userid_fkey;
+
+-- Clinic support: allow retinal_images.UserId to be placeholder Guid khi upload từ clinic (không có patientUserId)
+ALTER TABLE retinal_images DROP CONSTRAINT IF EXISTS retinal_images_userid_fkey;
 
 -- Add ViewedByPatientAt for patient "đã xem" badge (chạy nếu DB đã tồn tại trước khi thêm cột)
 ALTER TABLE medical_notes ADD COLUMN IF NOT EXISTS ViewedByPatientAt TIMESTAMP NULL;

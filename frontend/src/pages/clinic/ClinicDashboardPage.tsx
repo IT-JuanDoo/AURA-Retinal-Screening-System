@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import ClinicHeader from "../../components/clinic/ClinicHeader";
 import clinicAuthService, {
@@ -8,6 +8,7 @@ import clinicManagementService, {
   ClinicDashboardStats,
   ClinicActivity,
 } from "../../services/clinicManagementService";
+import clinicImageService, { BatchAnalysisStatus } from "../../services/clinicImageService";
 import toast from "react-hot-toast";
 
 const ClinicDashboardPage = () => {
@@ -18,6 +19,7 @@ const ClinicDashboardPage = () => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<ClinicDashboardStats | null>(null);
   const [activity, setActivity] = useState<ClinicActivity[]>([]);
+  const [analysisJobs, setAnalysisJobs] = useState<BatchAnalysisStatus[]>([]);
   const prevStatusRef = useRef<string | undefined>(
     clinicInfo?.verificationStatus,
   );
@@ -25,13 +27,50 @@ const ClinicDashboardPage = () => {
   const isPending = clinicInfo?.verificationStatus === "Pending";
   const isRejected = clinicInfo?.verificationStatus === "Rejected";
 
+  const fetchDashboardData = useCallback(async () => {
+    if (!clinicAuthService.isLoggedIn()) return;
+    try {
+      setLoading(true);
+      const [statsData, activityData, jobsData] = await Promise.all([
+        clinicManagementService.getDashboardStats(),
+        clinicManagementService.getRecentActivity(5),
+        clinicImageService.getAnalysisJobs(5).catch(() => []),
+      ]);
+      setStats(statsData);
+      setActivity(activityData);
+      setAnalysisJobs(jobsData);
+    } catch (error: any) {
+      console.error("Error fetching dashboard:", error);
+      if (error.response?.status === 401) {
+        toast.error("Phiên đăng nhập hết hạn");
+        navigate("/login");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [navigate]);
+
   useEffect(() => {
     if (!clinicAuthService.isLoggedIn()) {
       navigate("/login");
       return;
     }
     fetchDashboardData();
-  }, [navigate]);
+  }, [navigate, fetchDashboardData]);
+
+  // Cập nhật thống kê khi quay lại trang (focus / visibility) để số liệu phân tích mới được cập nhật
+  useEffect(() => {
+    const onFocus = () => fetchDashboardData();
+    const onVisibility = () => {
+      if (!document.hidden) fetchDashboardData();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [fetchDashboardData]);
 
   // Poll trạng thái duyệt khi đang "Đang chờ xét duyệt" → khi admin duyệt/hủy hiện toast nổi, có thể tắt
   useEffect(() => {
@@ -76,26 +115,6 @@ const ClinicDashboardPage = () => {
     const interval = setInterval(checkStatus, 15000);
     return () => clearInterval(interval);
   }, [clinicInfo?.verificationStatus]);
-
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true);
-      const [statsData, activityData] = await Promise.all([
-        clinicManagementService.getDashboardStats(),
-        clinicManagementService.getRecentActivity(5),
-      ]);
-      setStats(statsData);
-      setActivity(activityData);
-    } catch (error: any) {
-      console.error("Error fetching dashboard:", error);
-      if (error.response?.status === 401) {
-        toast.error("Phiên đăng nhập hết hạn");
-        navigate("/login");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Pending status page
   if (isPending) {
@@ -215,14 +234,27 @@ const ClinicDashboardPage = () => {
       <ClinicHeader />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-            Xin chào, {clinicInfo?.clinicName}
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
-            Tổng quan hoạt động phòng khám
-          </p>
+        {/* Welcome Section + Làm mới */}
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+              Xin chào, {clinicInfo?.clinicName}
+            </h1>
+            <p className="text-slate-600 dark:text-slate-400 mt-1">
+              Tổng quan hoạt động phòng khám
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => fetchDashboardData()}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium transition-colors disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined text-lg">
+              {loading ? "progress_activity" : "refresh"}
+            </span>
+            {loading ? "Đang tải..." : "Làm mới"}
+          </button>
         </div>
 
         {loading ? (
@@ -566,6 +598,82 @@ const ClinicDashboardPage = () => {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Job phân tích gần đây */}
+            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 mb-8">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+                Job phân tích gần đây
+              </h3>
+              {analysisJobs.length === 0 ? (
+                <div className="text-center py-6 text-slate-500 dark:text-slate-400 text-sm">
+                  Chưa có job phân tích. Tải ảnh và bấm &quot;Bắt đầu phân tích&quot; tại trang Upload để tạo job.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {analysisJobs.map((job) => (
+                    <div
+                      key={job.jobId}
+                      className="flex flex-wrap items-center justify-between gap-3 py-3 border-b border-slate-200 dark:border-slate-700 last:border-0"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            job.status === "Completed"
+                              ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                              : job.status === "Processing" || job.status === "Queued"
+                                ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+                                : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                          }`}
+                        >
+                          {job.status === "Completed"
+                            ? "Hoàn thành"
+                            : job.status === "Processing"
+                              ? "Đang xử lý"
+                              : job.status === "Queued"
+                                ? "Đang chờ"
+                                : "Thất bại"}
+                        </span>
+                        <span className="text-sm text-slate-600 dark:text-slate-400 truncate font-mono">
+                          {job.jobId.slice(0, 8)}…
+                        </span>
+                        <span className="text-sm text-slate-500 dark:text-slate-500">
+                          {job.processedCount}/{job.totalImages} ảnh
+                          {job.status === "Completed" &&
+                            ` • ${job.successCount} thành công`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {new Date(job.createdAt).toLocaleString("vi-VN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                        {job.status === "Completed" && (
+                          <Link
+                            to="/clinic/upload"
+                            className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                          >
+                            Tải ảnh &amp; phân tích
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Link
+                to="/clinic/upload"
+                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                Tải ảnh &amp; phân tích AI
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
             </div>
 
             {/* Quick Actions */}

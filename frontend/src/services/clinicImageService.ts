@@ -86,7 +86,39 @@ export interface QueueAnalysisRequest {
   batchId?: string;
 }
 
+/** Giống patient: response từ POST analysis/start */
+export interface ClinicAnalysisStartResponse {
+  analysisId: string;
+  imageId: string;
+  status: "Processing" | "Completed" | "Failed";
+  startedAt?: string;
+  completedAt?: string;
+}
+
 const clinicImageService = {
+  /**
+   * Bắt đầu phân tích (giống patient). Gọi sau khi upload xong, có imageIds.
+   * Trả về analysisId để redirect sang trang kết quả.
+   */
+  async startAnalysis(request: { imageIds: string[] }): Promise<ClinicAnalysisStartResponse | ClinicAnalysisStartResponse[]> {
+    const response = await clinicApi.post<ClinicAnalysisStartResponse | ClinicAnalysisStartResponse[]>(
+      "clinic/analysis/start",
+      request,
+      { timeout: 90000 }
+    );
+    return response.data;
+  },
+
+  /**
+   * Lấy kết quả phân tích theo analysisId (giống patient GET /analysis/:id).
+   */
+  async getAnalysisResult(analysisId: string): Promise<ClinicAnalysisResult> {
+    const response = await clinicApi.get<ClinicAnalysisResult>(
+      `clinic/analysis/result/${analysisId}`
+    );
+    return response.data;
+  },
+
   /**
    * Bulk upload retinal images for clinic (FR-24)
    * @param files Array of File objects
@@ -139,7 +171,7 @@ const clinicImageService = {
     }
 
     const response = await clinicApi.post<ClinicBulkUploadResponse>(
-      "/clinic/images/bulk-upload",
+      "clinic/images/bulk-upload",
       formData,
       {
         headers: {
@@ -157,7 +189,7 @@ const clinicImageService = {
    */
   async getBatchAnalysisStatus(jobId: string): Promise<BatchAnalysisStatus> {
     const response = await clinicApi.get<BatchAnalysisStatus>(
-      `/clinic/images/analysis/${jobId}/status`
+      `clinic/images/analysis/${jobId}/status`
     );
     return response.data;
   },
@@ -167,7 +199,7 @@ const clinicImageService = {
    */
   async getBatchAnalysisResults(jobId: string): Promise<ClinicAnalysisResult[]> {
     const response = await clinicApi.get<ClinicAnalysisResult[]>(
-      `/clinic/images/analysis/${jobId}/results`
+      `clinic/images/analysis/${jobId}/results`
     );
     return response.data;
   },
@@ -179,7 +211,7 @@ const clinicImageService = {
     request: QueueAnalysisRequest
   ): Promise<BatchAnalysisStatus> {
     const response = await clinicApi.post<BatchAnalysisStatus>(
-      "/clinic/images/queue-analysis",
+      "clinic/images/queue-analysis",
       request
     );
     return response.data;
@@ -190,7 +222,17 @@ const clinicImageService = {
    */
   async getBatchStatus(batchId: string): Promise<BulkUploadBatchStatus> {
     const response = await clinicApi.get<BulkUploadBatchStatus>(
-      `/clinic/images/batches/${batchId}/status`
+      `clinic/images/batches/${batchId}/status`
+    );
+    return response.data;
+  },
+
+  /**
+   * List recent analysis jobs for the clinic (dashboard)
+   */
+  async getAnalysisJobs(limit = 10): Promise<BatchAnalysisStatus[]> {
+    const response = await clinicApi.get<BatchAnalysisStatus[]>(
+      `clinic/images/analysis/jobs?limit=${limit}`
     );
     return response.data;
   },
@@ -209,7 +251,7 @@ const clinicImageService = {
     if (options?.status) params.append("status", options.status);
 
     const response = await clinicApi.get<BulkUploadBatchStatus[]>(
-      `/clinic/images/batches?${params.toString()}`
+      `clinic/images/batches?${params.toString()}`
     );
     return response.data;
   },

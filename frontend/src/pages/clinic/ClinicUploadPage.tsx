@@ -1,39 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import ClinicHeader from "../../components/clinic/ClinicHeader";
 import clinicAuthService from "../../services/clinicAuthService";
-import clinicImageService, {
-  BatchAnalysisStatus,
-  ClinicAnalysisResult,
-  ClinicBulkUploadResponse,
-} from "../../services/clinicImageService";
-import clinicPackageService from "../../services/clinicPackageService";
+import clinicImageService, { ClinicBulkUploadResponse } from "../../services/clinicImageService";
+import clinicPackageService, { CurrentPackage } from "../../services/clinicPackageService";
+import { getApiErrorMessage } from "../../utils/getApiErrorMessage";
 
 interface SelectedImage {
   id: string;
   file: File;
   preview: string;
+  status: "idle" | "uploading" | "uploaded" | "error";
+  progress: number;
 }
 
-const AI_CORE_BASE_URL = import.meta.env.VITE_AI_CORE_BASE_URL || "http://localhost:8000";
-
-const resolveImageUrl = (path?: string | null) => {
-  if (!path) return undefined;
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
-  return `${AI_CORE_BASE_URL}${path}`;
-};
-
+/**
+ * Trang upload + phân tích AI cho clinic. Luồng 100% giống patient:
+ * 1) Chọn ảnh → 2) Bắt đầu phân tích (upload + gọi analysis/start) → 3) Redirect sang trang kết quả theo analysisId.
+ */
 const ClinicUploadPage = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const startAnalysisInFlightRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
   const [selected, setSelected] = useState<SelectedImage[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [batchId, setBatchId] = useState<string | null>(null);
-  const [status, setStatus] = useState<BatchAnalysisStatus | null>(null);
-  const [results, setResults] = useState<ClinicAnalysisResult[] | null>(null);
+  const [activePackage, setActivePackage] = useState<CurrentPackage | null>(null);
+  const [loadingPackage, setLoadingPackage] = useState(true);
+  const [canUpload, setCanUpload] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -42,6 +37,44 @@ const ClinicUploadPage = () => {
     })();
   }, [navigate]);
 
+  useEffect(() => {
+    loadPackage();
+  }, []);
+
+  const loadPackage = async () => {
+    setLoadingPackage(true);
+    try {
+      const pkg = await clinicPackageService.getCurrentPackage();
+      setActivePackage(pkg ?? null);
+      const now = new Date();
+      const valid =
+        pkg &&
+        pkg.isActive &&
+        pkg.remainingAnalyses > 0 &&
+        (!pkg.expiresAt || new Date(pkg.expiresAt) > now);
+      setCanUpload(!!valid);
+    } catch {
+      setCanUpload(false);
+    } finally {
+      setLoadingPackage(false);
+    }
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDate = (dateString?: string): string => {
+    if (!dateString) return "Không giới hạn";
+    return new Date(dateString).toLocaleDateString("vi-VN", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
+
   const createPreview = (file: File): Promise<string> =>
     new Promise((resolve) => {
       const reader = new FileReader();
@@ -49,10 +82,10 @@ const ClinicUploadPage = () => {
       reader.readAsDataURL(file);
     });
 
-  const validateFiles = (files: FileList | null) => {
+  const validateFiles = (files: FileList | null): File[] => {
     if (!files?.length) return [];
     const validExtensions = [".jpg", ".jpeg", ".png", ".dicom", ".dcm"];
-    const maxFileSize = 50 * 1024 * 1024;
+    const maxSize = 50 * 1024 * 1024;
     const out: File[] = [];
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
@@ -61,7 +94,7 @@ const ClinicUploadPage = () => {
         toast.error(`File ${f.name} không được hỗ trợ (JPG/PNG/DICOM)`);
         continue;
       }
-      if (f.size > maxFileSize) {
+      if (f.size > maxSize) {
         toast.error(`File ${f.name} vượt quá 50MB`);
         continue;
       }
@@ -70,21 +103,23 @@ const ClinicUploadPage = () => {
     return out;
   };
 
-  const addFiles = useCallback(
-    async (files: FileList | null) => {
-      const valid = validateFiles(files);
-      if (valid.length === 0) return;
-
-      const newItems: SelectedImage[] = [];
-      for (let i = 0; i < valid.length; i++) {
-        const file = valid[i];
-        const preview = await createPreview(file);
-        newItems.push({ id: `sel-${Date.now()}-${i}`, file, preview });
-      }
-      setSelected((prev) => [...prev, ...newItems]);
-    },
-    [setSelected]
-  );
+  const addFiles = useCallback(async (files: FileList | null) => {
+    const valid = validateFiles(files);
+    if (valid.length === 0) return;
+    const newItems: SelectedImage[] = [];
+    for (let i = 0; i < valid.length; i++) {
+      const file = valid[i];
+      const preview = await createPreview(file);
+      newItems.push({
+        id: `sel-${Date.now()}-${i}`,
+        file,
+        preview,
+        status: "idle",
+        progress: 0,
+      });
+    }
+    setSelected((prev) => [...prev, ...newItems]);
+  }, []);
 
   const onPickFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     await addFiles(e.target.files);
@@ -100,269 +135,261 @@ const ClinicUploadPage = () => {
   const removeOne = (id: string) => setSelected((prev) => prev.filter((x) => x.id !== id));
   const clearAll = () => setSelected([]);
 
-  const pollStatus = async (id: string) => {
-    const s = await clinicImageService.getBatchAnalysisStatus(id);
-    setStatus(s);
-    if (s.status === "Completed" || s.status === "Failed") return s;
-    return null;
-  };
-
+  /** Giống patient: upload (bulk, không auto start) → startAnalysis(imageIds) → redirect theo analysisId */
   const startUploadAndAnalyze = async () => {
+    if (startAnalysisInFlightRef.current) return;
     if (selected.length === 0) {
       toast.error("Vui lòng chọn ít nhất một ảnh");
       return;
     }
-
-    // Must have clinic package/credits
-    try {
-      const current = await clinicPackageService.getCurrentPackage();
-      if (!current || current.remainingAnalyses <= 0) {
-        toast.error("Phòng khám không còn lượt phân tích. Vui lòng mua gói dịch vụ.");
-        navigate("/clinic/packages");
-        return;
-      }
-      if (current.remainingAnalyses < selected.length) {
-        toast.error(`Chỉ còn ${current.remainingAnalyses} lượt phân tích, không đủ cho ${selected.length} ảnh.`);
-        navigate("/clinic/packages");
-        return;
-      }
-    } catch {
-      // If current package endpoint fails, still allow user to try (backend will enforce)
+    await loadPackage();
+    const pkg = activePackage ?? (await clinicPackageService.getCurrentPackage());
+    if (!pkg || !pkg.isActive || pkg.remainingAnalyses <= 0) {
+      toast.error("Phòng khám cần có gói dịch vụ hợp lệ. Vui lòng mua gói tại Gói dịch vụ.");
+      navigate("/clinic/packages");
+      return;
+    }
+    if (pkg.remainingAnalyses < selected.length) {
+      toast.error(
+        `Chỉ còn ${pkg.remainingAnalyses} lượt phân tích, không đủ cho ${selected.length} ảnh.`
+      );
+      navigate("/clinic/packages");
+      return;
     }
 
     setUploading(true);
-    setResults(null);
-    setStatus(null);
-    setJobId(null);
-    setBatchId(null);
+    startAnalysisInFlightRef.current = true;
 
     try {
+      // Bước 1: Upload ảnh (không bật autoStartAnalysis – dùng API analysis/start riêng giống patient)
+      const loadingToast = toast.loading("Đang tải ảnh lên...");
       const files = selected.map((s) => s.file);
-      const result: ClinicBulkUploadResponse = await clinicImageService.bulkUploadImages(files, {
-        autoStartAnalysis: true,
-      });
+      const uploadResult: ClinicBulkUploadResponse = await clinicImageService.bulkUploadImages(
+        files,
+        { autoStartAnalysis: false }
+      );
+      toast.dismiss(loadingToast);
 
-      setBatchId(result.batchId);
-      if (!result.analysisJobId) {
-        toast.success("Upload thành công. (Chưa có job phân tích AI)");
+      if (!uploadResult.successfullyUploaded?.length) {
+        const firstError = uploadResult.failed?.[0];
+        const reason = firstError
+          ? `${firstError.filename}: ${firstError.errorMessage}`
+          : "Máy chủ không trả về chi tiết lỗi.";
+        toast.error(`Không có ảnh nào upload thành công. ${reason}`);
         return;
       }
 
-      setJobId(result.analysisJobId);
-      toast.success("Upload thành công, đang chạy AI phân tích...");
-
-      // Poll status until completed
-      let final: BatchAnalysisStatus | null = null;
-      for (let i = 0; i < 60; i++) {
-        final = await pollStatus(result.analysisJobId);
-        if (final) break;
-        await new Promise((r) => setTimeout(r, 2000));
-      }
-
-      if (!final) {
-        toast("Đang xử lý AI... vui lòng đợi thêm", { duration: 4000 });
+      const imageIds = uploadResult.successfullyUploaded.map((x) => x.id).filter(Boolean);
+      if (imageIds.length === 0) {
+        toast.error("Không lấy được ID ảnh sau khi upload.");
         return;
       }
 
-      if (final.status === "Failed") {
-        toast.error("Phân tích AI thất bại");
-        return;
-      }
+      // Bước 2: Gọi start analysis (giống patient) – trả về analysisId
+      toast.loading("Đang bắt đầu phân tích AI... (có thể mất 15–30 giây)", { id: "analysis-start" });
+      const response = await clinicImageService.startAnalysis({ imageIds });
+      toast.dismiss("analysis-start");
+      toast.success("Phân tích đã được bắt đầu thành công");
 
-      const res = await clinicImageService.getBatchAnalysisResults(result.analysisJobId);
-      setResults(res);
-      toast.success("AI đã phân tích xong");
+      // Bước 3: Redirect sang trang kết quả theo analysisId (giống patient)
+      const analysisId = Array.isArray(response) && response.length > 0
+        ? response[0].analysisId
+        : (response as { analysisId: string }).analysisId;
+      if (analysisId) {
+        navigate(`/clinic/analysis/result/${analysisId}`);
+      } else {
+        toast.error("Không nhận được mã kết quả phân tích.");
+      }
+      await loadPackage();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Không thể upload/phân tích");
+      toast.error(getApiErrorMessage(err, "Không thể upload hoặc bắt đầu phân tích"));
     } finally {
       setUploading(false);
-    }
-  };
-
-  const riskBadge = (risk?: string) => {
-    switch (risk) {
-      case "Low":
-        return "bg-green-50 text-green-700 border-green-200";
-      case "Medium":
-        return "bg-amber-50 text-amber-700 border-amber-200";
-      case "High":
-      case "Critical":
-        return "bg-red-50 text-red-700 border-red-200";
-      default:
-        return "bg-slate-50 text-slate-700 border-slate-200";
+      startAnalysisInFlightRef.current = false;
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 font-sans antialiased min-h-screen flex flex-col transition-colors duration-200">
       <ClinicHeader />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="max-w-4xl mx-auto space-y-6">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Upload ảnh & phân tích AI</h1>
-            <p className="text-slate-600 dark:text-slate-400 mt-1">
-              Tải ảnh Fundus/OCT và chạy AI phân tích trực tiếp cho phòng khám.
+      <main className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+        <div className="w-full max-w-3xl mx-auto flex flex-col gap-8">
+          <div className="flex flex-col gap-4 text-center md:text-left">
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-black leading-tight tracking-tight text-slate-900 dark:text-white">
+              Tải ảnh võng mạc
+            </h1>
+            <p className="text-slate-600 dark:text-slate-400 text-base md:text-lg leading-relaxed max-w-2xl mx-auto md:mx-0">
+              Vui lòng tải lên ảnh chụp đáy mắt (Fundus) hoặc ảnh cắt lớp quang học (OCT). AI sẽ
+              phân tích các dấu hiệu sức khỏe mạch máu để phát hiện sớm các nguy cơ tiềm ẩn.
             </p>
           </div>
 
+          {loadingPackage ? (
+            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+              <div className="flex items-center gap-3">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+                <p className="text-slate-600 dark:text-slate-400">Đang kiểm tra gói dịch vụ...</p>
+              </div>
+            </div>
+          ) : activePackage && activePackage.remainingAnalyses > 0 ? (
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl shadow-sm border border-blue-200 dark:border-blue-800 p-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">
+                      Gói dịch vụ: {activePackage.packageName || "Đang hoạt động"}
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <p className="text-slate-600 dark:text-slate-400">Lượt còn lại</p>
+                      <p className="font-bold text-xl text-blue-600 dark:text-blue-400">{activePackage.remainingAnalyses}</p>
+                    </div>
+                    {activePackage.expiresAt && (
+                      <div>
+                        <p className="text-slate-600 dark:text-slate-400">Hết hạn</p>
+                        <p className="font-semibold text-slate-900 dark:text-white">{formatDate(activePackage.expiresAt)}</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-slate-600 dark:text-slate-400">Trạng thái</p>
+                      <p className="font-semibold text-green-600 dark:text-green-400">Đang hoạt động</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={loadPackage}
+                    disabled={loadingPackage}
+                    className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <span className="material-symbols-outlined text-lg">refresh</span>
+                    Làm mới
+                  </button>
+                  <Link to="/clinic/packages" className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium whitespace-nowrap">
+                    Gói dịch vụ
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-red-50 dark:bg-red-900/20 rounded-xl shadow-sm border-2 border-red-200 dark:border-red-800 p-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <span className="material-symbols-outlined text-red-600 dark:text-red-400 text-2xl">warning</span>
+                  <div>
+                    <h3 className="font-bold text-lg text-red-900 dark:text-red-200 mb-1">Chưa có gói dịch vụ hoặc đã hết lượt</h3>
+                    <p className="text-red-700 dark:text-red-300">Để phân tích ảnh, phòng khám cần mua hoặc gia hạn gói dịch vụ.</p>
+                  </div>
+                </div>
+                <Link to="/clinic/packages" className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold whitespace-nowrap text-center">
+                  Xem gói dịch vụ
+                </Link>
+              </div>
+            </div>
+          )}
+
           <div
-            className={`w-full rounded-2xl border-2 border-dashed transition-all bg-white dark:bg-slate-900 ${
-              isDragging ? "border-indigo-500 bg-indigo-50/50" : "border-slate-300 dark:border-slate-700"
+            className={`w-full rounded-2xl border-2 border-dashed transition-all duration-300 group relative overflow-hidden bg-white dark:bg-slate-900 ${
+              isDragging ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-lg" : "border-slate-300 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 shadow-sm"
             }`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragging(true);
-            }}
-            onDragLeave={() => setIsDragging(false)}
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
             onDrop={onDrop}
           >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".jpg,.jpeg,.png,.dicom,.dcm"
-              multiple
-              className="hidden"
-              onChange={onPickFiles}
-            />
-            <div className="p-10 text-center space-y-4">
-              <div className="text-slate-600 dark:text-slate-300">
-                Kéo thả ảnh vào đây hoặc bấm để chọn (JPG/PNG/DICOM, tối đa 50MB/ảnh)
+            <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.dicom,.dcm" multiple className="hidden" onChange={onPickFiles} />
+            <div className="flex flex-col items-center justify-center gap-6 py-20 px-6 text-center">
+              <div className={`size-24 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-500 dark:text-blue-400 transition-all duration-300 ${isDragging ? "scale-110 shadow-lg" : "group-hover:scale-105 shadow-md"}`}>
+                <span className="material-symbols-outlined text-6xl">cloud_upload</span>
+              </div>
+              <div className="flex flex-col items-center gap-3">
+                <p className="text-xl font-bold leading-tight text-slate-900 dark:text-white">Kéo thả ảnh vào đây hoặc nhấn để chọn</p>
+                <div className="flex flex-col gap-1 text-slate-600 dark:text-slate-400 text-sm">
+                  <p>Hỗ trợ định dạng: <span className="font-semibold text-slate-700 dark:text-slate-300">JPG, PNG, DICOM</span> (Fundus hoặc OCT)</p>
+                  <p>Kích thước tối đa: <span className="font-semibold text-slate-700 dark:text-slate-300">50MB/ảnh</span></p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+                disabled={loadingPackage || !canUpload}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white px-8 py-3.5 rounded-lg text-base font-semibold shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2"
               >
-                Chọn ảnh
+                <span className="material-symbols-outlined text-xl">add_photo_alternate</span>
+                {loadingPackage ? "Đang kiểm tra..." : canUpload ? "Chọn ảnh từ thiết bị" : "Cần mua gói dịch vụ"}
               </button>
             </div>
           </div>
 
           {selected.length > 0 && (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-slate-900 dark:text-white">Ảnh đã chọn ({selected.length})</h2>
-                <button className="text-sm text-red-600 hover:underline" onClick={clearAll}>
+            <div className="flex flex-col gap-6 bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-700">
+                <h3 className="font-bold text-xl text-slate-900 dark:text-white">
+                  Ảnh đã chọn <span className="text-blue-600 dark:text-blue-400">({selected.length})</span>
+                </h3>
+                <button onClick={clearAll} className="text-red-600 dark:text-red-400 text-sm font-semibold hover:underline flex items-center gap-2">
+                  <span className="material-symbols-outlined text-lg">delete_sweep</span>
                   Xóa tất cả
                 </button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-4">
                 {selected.map((img) => (
-                  <div key={img.id} className="flex gap-3 border border-slate-200 dark:border-slate-800 rounded-xl p-3">
-                    <div
-                      className="w-20 h-20 rounded-lg bg-slate-200 dark:bg-slate-800 bg-cover bg-center"
-                      style={{ backgroundImage: `url(${img.preview})` }}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium text-slate-900 dark:text-white truncate">{img.file.name}</div>
-                      <div className="text-xs text-slate-500">{Math.round(img.file.size / 1024)} KB</div>
+                  <div key={img.id} className="flex flex-col md:flex-row gap-4 p-5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                    <div className="w-full md:w-24 h-48 md:h-24 shrink-0 rounded-lg overflow-hidden bg-black relative">
+                      <div className="absolute inset-0 bg-cover bg-center opacity-90" style={{ backgroundImage: `url(${img.preview})` }} />
                     </div>
-                    <button className="text-slate-500 hover:text-red-600" onClick={() => removeOne(img.id)}>
-                      ✕
-                    </button>
+                    <div className="flex flex-1 flex-col justify-center gap-2">
+                      <div className="flex justify-between items-center">
+                        <div className="min-w-0 flex-1 pr-4">
+                          <p className="font-bold text-base truncate text-slate-900 dark:text-white">{img.file.name}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{formatFileSize(img.file.size)}</p>
+                        </div>
+                        <button onClick={() => removeOne(img.id)} className="text-slate-500 hover:text-red-500 transition-colors p-1 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20">
+                          <span className="material-symbols-outlined">close</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button
-              disabled={uploading || selected.length === 0}
-              onClick={startUploadAndAnalyze}
-              className="flex-1 px-6 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white font-bold"
-            >
-              {uploading ? "Đang upload & phân tích..." : "Upload & phân tích AI"}
-            </button>
+          <div className="flex flex-col gap-6 pt-6 border-t border-slate-200 dark:border-slate-800">
+            <div className="flex flex-col sm:flex-row gap-4 w-full">
+              <button
+                onClick={() => navigate("/clinic/dashboard")}
+                className="flex-1 px-6 py-3.5 rounded-lg border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                onClick={startUploadAndAnalyze}
+                disabled={selected.length === 0 || uploading || !canUpload || !activePackage?.remainingAnalyses}
+                className="flex-[2] px-8 py-3.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white font-bold shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2"
+              >
+                {uploading ? (
+                  <>
+                    <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                    <span>Đang xử lý AI... (vui lòng đợi)</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined">analytics</span>
+                    <span>Bắt đầu phân tích</span>
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400 text-xs bg-slate-50 dark:bg-slate-800/50 py-3 px-5 rounded-lg border border-slate-200 dark:border-slate-700">
+              <span className="material-symbols-outlined text-base text-green-600 dark:text-green-400">lock</span>
+              <span>Dữ liệu được mã hóa an toàn & tuân thủ chuẩn HIPAA.</span>
+            </div>
           </div>
-
-          {(jobId || batchId) && (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5">
-              <div className="text-sm text-slate-600 dark:text-slate-400 space-y-1">
-                {batchId && (
-                  <div>
-                    <span className="font-medium text-slate-700 dark:text-slate-200">Batch:</span> {batchId}
-                  </div>
-                )}
-                {jobId && (
-                  <div>
-                    <span className="font-medium text-slate-700 dark:text-slate-200">Job AI:</span> {jobId}
-                  </div>
-                )}
-                {status && (
-                  <div>
-                    <span className="font-medium text-slate-700 dark:text-slate-200">Trạng thái:</span> {status.status} (
-                    {status.processedCount}/{status.totalImages})
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {results && (
-            <div className="space-y-4">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">Kết quả AI</h2>
-              {results.length === 0 ? (
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 text-slate-600 dark:text-slate-400">
-                  Chưa có kết quả.
-                </div>
-              ) : (
-                results.map((r) => (
-                  <div key={r.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="font-semibold text-slate-900 dark:text-white">
-                        Image: <span className="font-mono text-sm">{r.imageId.slice(0, 8)}…</span>
-                      </div>
-                      <div className={`px-3 py-1 rounded-full border text-sm font-semibold w-fit ${riskBadge(r.overallRiskLevel)}`}>
-                        {r.overallRiskLevel || "Unknown"} {r.riskScore != null ? `(${r.riskScore})` : ""}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                      <div className="space-y-2">
-                        <div className="text-sm text-slate-600 dark:text-slate-400">Ảnh gốc/annotated</div>
-                        {resolveImageUrl(r.annotatedImageUrl) ? (
-                          <img
-                            src={resolveImageUrl(r.annotatedImageUrl)}
-                            className="w-full rounded-xl border border-slate-200 dark:border-slate-800"
-                          />
-                        ) : (
-                          <div className="text-sm text-slate-500">Chưa có ảnh annotated</div>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        <div className="text-sm text-slate-600 dark:text-slate-400">Heatmap</div>
-                        {resolveImageUrl(r.heatmapUrl) ? (
-                          <img
-                            src={resolveImageUrl(r.heatmapUrl)}
-                            className="w-full rounded-xl border border-slate-200 dark:border-slate-800"
-                          />
-                        ) : (
-                          <div className="text-sm text-slate-500">Chưa có heatmap</div>
-                        )}
-                      </div>
-                    </div>
-
-                    {(r.recommendations || r.healthWarnings) && (
-                      <div className="mt-4 space-y-2">
-                        {r.healthWarnings && (
-                          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-sm">
-                            <b>Cảnh báo:</b> {r.healthWarnings}
-                          </div>
-                        )}
-                        {r.recommendations && (
-                          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 text-sm">
-                            <b>Khuyến nghị:</b> {r.recommendations}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
         </div>
       </main>
     </div>
@@ -370,4 +397,3 @@ const ClinicUploadPage = () => {
 };
 
 export default ClinicUploadPage;
-

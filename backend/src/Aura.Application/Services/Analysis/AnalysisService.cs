@@ -229,7 +229,7 @@ public class AnalysisService : IAnalysisService
                 ar.DetailedFindings
             FROM analysis_results ar
             INNER JOIN retinal_images ri ON ar.ImageId = ri.Id
-            WHERE ar.Id = @AnalysisId AND ri.UserId = @UserId AND ar.IsDeleted = false";
+            WHERE ar.Id = @AnalysisId AND (ri.UserId = @UserId OR ri.ClinicId = @UserId) AND ar.IsDeleted = false";
 
         using var command = new Npgsql.NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("AnalysisId", analysisId);
@@ -381,6 +381,9 @@ public class AnalysisService : IAnalysisService
         };
     }
 
+    /// <summary>
+    /// Get image URL and type. userId can be patient UserId or clinic ClinicId (ảnh clinic lưu với ClinicId).
+    /// </summary>
     private async Task<(string CloudinaryUrl, string ImageType)?> GetImageInfoAsync(string imageId, string userId)
     {
         using var connection = new Npgsql.NpgsqlConnection(_connectionString);
@@ -389,7 +392,7 @@ public class AnalysisService : IAnalysisService
         var sql = @"
             SELECT CloudinaryUrl, ImageType 
             FROM retinal_images 
-            WHERE Id = @ImageId AND UserId = @UserId AND IsDeleted = false";
+            WHERE Id = @ImageId AND (UserId = @UserId OR ClinicId = @UserId) AND IsDeleted = false";
 
         using var command = new Npgsql.NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("ImageId", imageId);

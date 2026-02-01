@@ -138,12 +138,12 @@ public class ClinicImagesController : ControllerBase
                     var jobId = await _analysisQueueService.QueueBatchAnalysisAsync(clinicId, imageIds, result.BatchId);
                     result.AnalysisJobId = jobId;
 
-                    _logger.LogInformation("Queued batch analysis job {JobId} for batch {BatchId}", jobId, result.BatchId);
+                    _logger.LogInformation("Queued batch analysis job {JobId} for batch {BatchId}, clinic {ClinicId}", jobId, result.BatchId, clinicId);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to queue batch analysis for batch {BatchId}", result.BatchId);
-                    // Don't fail the upload if analysis queueing fails
+                    _logger.LogError(ex, "Failed to queue batch analysis for batch {BatchId}, clinic {ClinicId}. Error: {Message}", result.BatchId, clinicId, ex.Message);
+                    // Don't fail the upload if analysis queueing fails - frontend can use "Kiểm tra & tải kết quả" with batchId
                 }
             }
 
@@ -158,6 +158,32 @@ public class ClinicImagesController : ControllerBase
         {
             _logger.LogError(ex, "Error during bulk upload for clinic {ClinicId}", clinicId);
             return StatusCode(500, new { message = "Failed to upload images", error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// List recent analysis jobs for the current clinic (dashboard)
+    /// </summary>
+    [HttpGet("analysis/jobs")]
+    [ProducesResponseType(typeof(List<BatchAnalysisStatusDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListAnalysisJobs([FromQuery] int limit = 10)
+    {
+        var clinicId = User.FindFirstValue("clinic_id") ??
+                       User.FindFirstValue("ClinicId") ??
+                       User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrEmpty(clinicId))
+            return Unauthorized(new { message = "Clinic ID not found" });
+
+        try
+        {
+            var jobs = await _analysisQueueService.ListJobsForClinicAsync(clinicId, Math.Min(limit, 50));
+            return Ok(jobs);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error listing analysis jobs for clinic {ClinicId}", clinicId);
+            return StatusCode(500, new { message = "Failed to list analysis jobs" });
         }
     }
 
